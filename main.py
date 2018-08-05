@@ -24,14 +24,14 @@ class events_combinator(object):
         self.n_consumer_threads=4
         self.lock = threading.Lock()
         self.tx_whitelist=whitelist
-        self.file1="/mnt/home1/kouzarides/tl344/projects/nanopore_7SK/analysis_wt/nanopolish/events.txt"
-        #self.file1="events.txt"
-        #self.file2="events2.txt"
-        self.file2="/mnt/home1/kouzarides/tl344/projects/nanopore_7SK/analysis_kd/nanopolish/events.txt"
-        
+        #self.file1="/mnt/home1/kouzarides/tl344/projects/nanopore_7SK/analysis_wt/nanopolish/events.txt"
+        self.file1="events.txt"
+        self.file2="events2.txt"
+        #self.file2="/mnt/home1/kouzarides/tl344/projects/nanopore_7SK/analysis_kd/nanopolish/events.txt"
+        outfolder="/mnt/home1/kouzarides/tl344/projects/nanopore/tombo2/"
         self.reader1 = threading.Thread(name="reader1", target=self.__parse_events_file, args=(self.file1, self.data_f1,))
         self.reader2 = threading.Thread(name="reader2", target=self.__parse_events_file, args=(self.file2, self.data_f2,))
-        
+        checkpoint=True
         consumers=[]
         for i in range(self.n_consumer_threads):
             consumers.append(threading.Thread(name="consumer%s"%i, target=self.__consumer))
@@ -49,7 +49,9 @@ class events_combinator(object):
             c.join()
         for r in self.results:
             print(r)
-
+        if checkpoint:
+            with open(outfolder+'/results.p', 'wb') as pfile:
+                pickle.dump(self.results, pfile)
 
     @staticmethod
     def mmap_readline(file, sep="\t"):
