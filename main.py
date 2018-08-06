@@ -1,10 +1,13 @@
 import logging
-from time import sleep
 import queue 
 import threading
 import mmap
 import pysam
+import argparse
+import pickle
+from pathlib import Path
 from collections import defaultdict
+from os import makedirs
 
 
 logging.basicConfig(level=logging.DEBUG, format='%(threadName)s %(message)s')
@@ -12,45 +15,90 @@ logger = logging.getLogger('simple_example')
 #logger.setLevel(logging.DEBUG)
 logger.setLevel(logging.INFO)
 
-class events_combinator(object):
+class nanocompore(object):
     """ Produce usefule results """
     
-    def __init__(self, whitelist):
+    def __init__(self, file1, file2, outfolder=None, nthreads=4, whitelist=None):
+        """ Main routine that starts readers and consumers 
+            file1: path to file1
+            file2: path to file2
+            outfolder: path to folder where to save output
+            nthreads: number of consumer threads
+            whitelist: list of transcripts to process. If None (default) process all transcripts
+        """
+
+        # Check that input files exist
+        for f in (file1, file2):
+            if not Path(f).exists():
+                raise nanocomporeError("%s not found)" % f)
+        self.file1=file1
+        self.file2=file2
+
+
+        # Check that output folder doesn't exist and create it
+        if Path(outfolder).exists():
+            raise nanocomporeError("The output folder specified already exists")
+        else:
+            try: 
+                makedirs(outfolder)
+            except:
+                raise nanocomporeError("Error creating output folder %s" % outfolder)
+            self.__outfolder=outfolder
+
+        # Check thread number is valid
+        try:
+            self.n_consumer_threads=int(nthreads)
+        except:
+            raise nanocomporeError("Number of threads not valid")
+
+        # Check whitelist is valid
+        if not isinstance(whitelist, list) and whitelist is not None:
+            raise nanocomporeError("Whitelist not valid")
+        else:
+            self.tx_whitelist=whitelist
+
+
+    def process(self, checkpoint=True):
+        # Main processing queue
         self.__main_queue = queue.Queue(maxsize=20)
+        # Threading lock
+        self.__lock = threading.Lock()
+        # Final results
         self.results=[] 
+        # Data read by the readers
         self.data_f1=dict()
         self.data_f2=dict()
+        # Set containg names of already processed transcripts
         self.processed=set()
-        self.n_consumer_threads=4
-        self.lock = threading.Lock()
-        self.tx_whitelist=whitelist
-        #self.file1="/mnt/home1/kouzarides/tl344/projects/nanopore_7SK/analysis_wt/nanopolish/events.txt"
-        self.file1="events.txt"
-        self.file2="events2.txt"
-        #self.file2="/mnt/home1/kouzarides/tl344/projects/nanopore_7SK/analysis_kd/nanopolish/events.txt"
-        outfolder="/mnt/home1/kouzarides/tl344/projects/nanopore/tombo2/"
-        self.reader1 = threading.Thread(name="reader1", target=self.__parse_events_file, args=(self.file1, self.data_f1,))
-        self.reader2 = threading.Thread(name="reader2", target=self.__parse_events_file, args=(self.file2, self.data_f2,))
-        checkpoint=True
+
+
+        self.__reader1 = threading.Thread(name="reader1", target=self.__parse_events_file, args=(self.file1, self.data_f1,))
+        self.__reader2 = threading.Thread(name="reader2", target=self.__parse_events_file, args=(self.file2, self.data_f2,))
+
         consumers=[]
         for i in range(self.n_consumer_threads):
             consumers.append(threading.Thread(name="consumer%s"%i, target=self.__consumer))
         
-        self.reader1.start()
-        self.reader2.start()
+     
+        self.__reader1.start()
+        self.__reader2.start()
         
         for c in consumers:
             c.start()
-        
-        self.reader1.join()
-        self.reader2.join()
+
+        # Wait for the readers to complete    
+        self.__reader1.join()
+        self.__reader2.join()
+        # Wait for the queue to be empty
         self.__main_queue.join()
+        # Wait for the consumers to complete
         for c in consumers:
             c.join()
+        # Print results
         for r in self.results:
             print(r)
         if checkpoint:
-            with open(outfolder+'/results.p', 'wb') as pfile:
+            with open(self.__outfolder+'/results.p', 'wb') as pfile:
                 pickle.dump(self.results, pfile)
 
     @staticmethod
@@ -69,28 +117,27 @@ class events_combinator(object):
         is read entirely, add its name to the __main_queue and the
         the data to data. """
         tx=""
-        res=[]
+        block=[]
         for line in self.mmap_readline(file):
-            if(line[0] in self.tx_whitelist):
+            if(line[0] != "contig" and (self.tx_whitelist == None or line[0] in self.tx_whitelist)):
                 if line[0]==tx:
-                    res.append(line)
+                    block.append(line)
                     tx=line[0]
                 else:
-                    if len(res)!=0:
-                        # Might be worth making res an object of a dedicated class
-                        data[tx]=res
+                    if len(block)!=0:
+                        data[tx]=block
                         self.__main_queue.put(tx)
                     logger.debug("Finished processing (%s)" % (tx))
-                    res=[line]
+                    block=[line]
                     tx=line[0]
-        if len(res)!=0:
-            data[tx]=res
+        if len(block)!=0:
+            data[tx]=block
             self.__main_queue.put(tx)
             logger.debug("Finished processing (%s)" % (tx))
 
     def __consumer(self):
         while True:
-            if self.__main_queue.empty() and not self.reader1.is_alive() and not self.reader2.is_alive():
+            if self.__main_queue.empty() and not self.__reader1.is_alive() and not self.__reader2.is_alive():
                 logger.debug("Queue is empty and readers have finished, terminating")
                 break
             # This timeout prevents threads to get stuck in case the 
@@ -103,7 +150,7 @@ class events_combinator(object):
             # If the data is not ready 
             if tx not in self.data_f1.keys() or tx not in self.data_f2.keys():
                 # If one of the readers is still alive return tx to the queue
-                if self.reader1.is_alive() or self.reader2.is_alive():
+                if self.__reader1.is_alive() or self.__reader2.is_alive():
                     self.__main_queue.put(tx)
                     logger.debug("Returning (%s) to Q. Q has (%s) items" % (tx, self.__main_queue.qsize()))
                 # Else, if either of the readers has finished, remove the task from queue
@@ -115,13 +162,13 @@ class events_combinator(object):
             else: 
                 logger.debug("Picked (%s) from Q. Q has (%s) items." % (tx, self.__main_queue.qsize()))
                 # Acquire lock to make sure nothing is written to processed after we check
-                self.lock.acquire()
+                self.__lock.acquire()
                 if tx not in self.processed:
                     self.processed.add(tx)
-                    self.lock.release()
+                    self.__lock.release()
                     self.results.append(self.process_tx(self.data_f1[tx], self.data_f2[tx]))
                 else:
-                    self.lock.release()
+                    self.__lock.release()
                 self.__main_queue.task_done()
 
     @staticmethod
@@ -134,22 +181,65 @@ class events_combinator(object):
     
 class alignements(object):
     def __init__(self, bam):
+        # Check that bam file exists
+        if not Path(bam).exists():
+            raise nanocomporeError("Bam file %s not found)" % bam)
         self.__samfile = pysam.AlignmentFile(bam, "rb")
 
     def tx_coverage_filter(self, n=10):
         """ Return the name of transcripts with more than n primary alignemnts """
+        try:
+            n = int(n)
+        except:
+            raise nanocomporeError("Read coverage argument for whitelisting is not valid")
         tx_sam_counts=defaultdict(int)
         for record in self.__samfile:
+            # Filter alignmenets without "Secondary alignment" or "Not mapped" flags
             if not record.flag & (256+4):
                 tx_sam_counts[record.reference_name]+= 1   
         return set( [ k for (k,v) in tx_sam_counts.items() if v>n ])
 
 
 
+def main():
+    parser = argparse.ArgumentParser(description="""Find differences in two nanopolish events files""")
+    parser.add_argument('--version', '-v', action='version', version="0.1a")
+    parser.add_argument("--file1", required=True,
+        help="Path to the Nanopolish events file for sample 1")
+    parser.add_argument("--file2", required=True,
+        help="Path to the Nanopolish events file for sample 2")
+    parser.add_argument("-o", "--outfolder", required=True,
+        help="Path to a directory where to store the results. Must not exist")
+    parser.add_argument("-n", type=int, default=6, required=False,
+        help="Number of threads (two are used for reading files, all the other for processing in parallel).")
+    parser.add_argument("--bam1", required=False,
+        help="Path to the Minimap2 BAM file for sample 1")
+    parser.add_argument("--bam2", required=False,
+        help="Path to the Minimap2 BAM file for sample 2")
+    parser.add_argument("--mincoverage", type=int, default=0, required=False,
+        help="Minimum number of reads covering a transcript (in each sample) for it to be considered. Set to 0 to consider all transcripts.")
+    parser.add_argument("--debug", default=False,
+        help="Print debug information")
+    args = parser.parse_args()
+
+    if(args.debug):
+        logger.setLevel(logging.DEBUG)
+
+    if(args.mincoverage is 0):
+        whitelist=None
+    else:
+        if args.bam1 is None or args.bam2 is None:
+            raise nanocomporeError("Bam files must be provided if the --mincoverage option is used")
+        else:
+            aln_f1=alignements(args.bam1).tx_coverage_filter(n=args.mincoverage)
+            aln_f2=alignements(args.bam2).tx_coverage_filter(n=args.mincoverage)
+            whitelist=set.intersection(aln_f1, aln_f2)
+    n = nanocompore(file1=args.file1, file2=args.file2, nthreads=args.n, whitelist=whitelist, outfolder=args.outfolder)
+    n.process()
+    
+class nanocomporeError(Exception):
+    """ Basic exception class for nanocompore module """
+    pass
+
 if __name__ == '__main__':
-    bam1="/mnt/home1/kouzarides/tl344/projects/nanopore_7SK/analysis_wt/minimap/aln_transcriptome.sorted.bam"
-    bam2="/mnt/home1/kouzarides/tl344/projects/nanopore_7SK/analysis_kd/minimap/aln_transcriptome.sorted.bam"
-    aln_f1=alignements(bam1).tx_coverage_filter(n=10)
-    aln_f2=alignements(bam2).tx_coverage_filter(n=10)
-    whitelist=set.intersection(aln_f1, aln_f2)
-    d = events_combinator(whitelist=whitelist)
+    main()
