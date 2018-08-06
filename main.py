@@ -102,16 +102,6 @@ class nanocompore(object):
             with open(self.__outfolder+'/results.p', 'wb') as pfile:
                 pickle.dump(self.results, pfile)
 
-    @staticmethod
-    def mmap_readline(file, sep="\t"):
-        """ Iterator for opening files as mem maps """
-        with open(file, "r+b") as f:
-            m = mmap.mmap(f.fileno(), 0, prot=mmap.PROT_READ)
-            while True:
-                line=m.readline()
-                if line == b'': break
-                yield line.decode().split(sep)
-     
     def __parse_events_file(self, file, data, barPos=1):
         """ Parse an events file line by line and extract lines
         corresponding to the same transcripts. When a transcript
@@ -120,20 +110,22 @@ class nanocompore(object):
         tx=""
         block=[]
         # Reading the whole file to count lines is too expensive. 148.52bytes is the average line size in the events files
-        bar=tqdm(total=int(os.stat(file).st_size/148.52), desc="File%s progress" % barPos, position=barPos, unit_scale=True, disable=(logLevel in [logging.DEBUG, logging.INFO]))
-        for line in self.mmap_readline(file):
-            bar.update()
-            if(line[0] != "contig" and line[0] in self.tx_whitelist):
-                if line[0]==tx:
-                    block.append(line)
-                    tx=line[0]
-                else:
-                    if len(block)!=0:
-                        data[tx]=block
-                        self.__main_queue.put(tx)
-                    logger.debug("Finished processing (%s)" % (tx))
-                    block=[line]
-                    tx=line[0]
+        bar=tqdm(total=int(os.stat(file).st_size/148.52), desc="File%s progress" % barPos, position=barPos, unit_scale=True, disable=logLevel in [logging.DEBUG, logging.INFO])
+        with open(file, "r") as f:
+            for l in f:
+                line=l.split("\t")
+                bar.update()
+                if(line[0] != "contig" and line[0] in self.tx_whitelist):
+                    if line[0]==tx:
+                        block.append(line)
+                        tx=line[0]
+                    else:
+                        if len(block)!=0:
+                            data[tx]=block
+                            self.__main_queue.put(tx)
+                        logger.debug("Finished processing (%s)" % (tx))
+                        block=[line]
+                        tx=line[0]
         if len(block)!=0:
             data[tx]=block
             self.__main_queue.put(tx)
