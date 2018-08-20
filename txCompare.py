@@ -63,7 +63,7 @@ class txCompare(object):
         for (k,v) in self.adj_pvals.items():
             if float(v)<0.1:
                 kmer=''.join(set([i[2] for i in data[1][0]  if i[1] == k ]))
-                self.significant.append(["chr"+comp.chrom, int(comp.start)+int(k), int(comp.start)+int(k)+5, comp.tx_id, comp.tx_name,kmer,k,v])
+                self.significant.append(["chr"+self.chrom, int(self.start)+int(k), int(self.start)+int(k)+5, self.tx_id, self.tx_name,kmer,k,v])
 
 
     @staticmethod
