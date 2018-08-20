@@ -7,20 +7,23 @@ import argparse
 import pickle
 import os
 from tqdm import tqdm
+from tqdm import tqdm_notebook
 from pathlib import Path
 from collections import defaultdict
 from os import makedirs
 from txCompare import txCompare
 
 
-logging.basicConfig(level=logging.DEBUG, format='%(threadName)s %(message)s')
+logging.basicConfig(level=logging.INFO, format='%(threadName)s %(message)s')
 logger = logging.getLogger('nanocompore')
-logLevel=logging.WARNING
+logLevel=logging.INFO
+
+
 
 class nanocompore(object):
     """ Produce usefule results """
     
-    def __init__(self, file1, file2, outfolder=None, nthreads=4, whitelist=None, checkpoint=True):
+    def __init__(self, file1, file2, outfolder=None, nthreads=4, whitelist=None, checkpoint=True, logLevel=logging.INFO):
         """ Main routine that starts readers and consumers 
             file1: path to file1
             file2: path to file2
@@ -28,6 +31,8 @@ class nanocompore(object):
             nthreads: number of consumer threads
             whitelist: list of transcripts to process. If None (default) process all transcripts
         """
+        self.logLevel=logLevel
+        logger.setLevel(self.logLevel)
         self.__checkpoint=checkpoint
         # Check that input files exist
         for f in (file1, file2):
@@ -112,7 +117,7 @@ class nanocompore(object):
         tx=""
         block=[]
         # Reading the whole file to count lines is too expensive. 148.52bytes is the average line size in the events files
-        bar=tqdm(total=int(os.stat(file).st_size/148.52), desc="File%s progress" % barPos, position=barPos, unit_scale=True, disable=logLevel in [logging.DEBUG, logging.INFO])
+        bar=self.__mytqdm(total=int(os.stat(file).st_size/148.52), desc="File%s progress" % barPos, position=barPos, unit_scale=True, disable=self.logLevel in [logging.DEBUG, logging.INFO])
         with open(file, "r") as f:
             for l in f:
                 line=l.split("\t")
@@ -177,6 +182,16 @@ class nanocompore(object):
         else: tx=data1[0][0]
         logger.info("Processed %s" % (tx))
         return(txCompare([tx, [data1, data2]]).significant)
+
+    @staticmethod
+    def __mytqdm(**kwargs):
+        try:
+            if get_ipython().__class__.__name__ == 'ZMQInteractiveShell':
+                return tqdm_notebook(**kwargs)
+            else:
+                return tqdm(**kwargs)
+        except NameError:
+            return tqdm(**kwargs)
     
 class alignements(object):
     def __init__(self, bam):
@@ -238,7 +253,7 @@ def main():
     whitelist=set.intersection(aln_f1, aln_f2)
     logger.debug(whitelist)
     logger.warning("Keeping %s transcripts for processing" % len(whitelist))
-    n = nanocompore(file1=args.file1, file2=args.file2, nthreads=args.n, whitelist=whitelist, outfolder=args.outfolder)
+    n = nanocompore(file1=args.file1, file2=args.file2, nthreads=args.n, whitelist=whitelist, outfolder=args.outfolder, logLevel=logLevel)
     logger.warning("Starting multi-threaded processing of events files")
     n.process()
     logger.warning("All completed")
