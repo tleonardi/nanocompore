@@ -10,6 +10,7 @@ from tqdm import tqdm
 from pathlib import Path
 from collections import defaultdict
 from os import makedirs
+from txCompare import txCompare
 
 
 logging.basicConfig(level=logging.DEBUG, format='%(threadName)s %(message)s')
@@ -174,7 +175,7 @@ class nanocompore(object):
             print("Error")
         else: tx=data1[0][0]
         logger.info("Processed %s" % (tx))
-        return([tx, [data1, data2]])
+        return(txCompare([tx, [data1, data2]]).significant)
     
 class alignements(object):
     def __init__(self, bam):
@@ -234,6 +235,7 @@ def main():
     aln_f1=alignements(args.bam1).tx_coverage_filter(n=args.mincoverage)
     aln_f2=alignements(args.bam2).tx_coverage_filter(n=args.mincoverage)
     whitelist=set.intersection(aln_f1, aln_f2)
+    logger.debug(whitelist)
     logger.warning("Keeping %s transcripts for processing" % len(whitelist))
     n = nanocompore(file1=args.file1, file2=args.file2, nthreads=args.n, whitelist=whitelist, outfolder=args.outfolder)
     logger.warning("Starting multi-threaded processing of events files")

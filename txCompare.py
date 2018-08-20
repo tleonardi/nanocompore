@@ -1,4 +1,3 @@
-
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 from sklearn.cluster import KMeans
@@ -12,16 +11,16 @@ from scipy import stats
 from statsmodels.stats.multitest import multipletests
 
 
-mpl.rcParams['figure.dpi']= 300 
-%matplotlib inline
-%config InlineBackend.figure_format = 'svg'
-
-
 class txCompare(object):
     def __init__(self, data):
         # data [0]: Tx name
         # data [1]: [0]: data_f1 [1]: data_f2
-        self.tx_name = data[0]
+        self.significant=[]
+        (self.tx_name, rest) = data[0].split(sep="##")
+        (self.tx_id, rest) = rest.split(sep="::")
+        (self.chrom, rest) = rest.split(sep=":")
+        self.start = rest.split(sep="-")[0]
+
         data_f1 = defaultdict(list)
         data_f2 = defaultdict(list)
         # Make data dictionaries:
@@ -52,13 +51,18 @@ class txCompare(object):
             f1_counts = Counter(self.clusters[p][file_labels=="F1"])
             f2_counts = Counter(self.clusters[p][file_labels=="F2"])
             f_obs = np.array([[f1_counts[0],f1_counts[1]],[f2_counts[0],f2_counts[1]]], dtype="int64")
-            chi = stats.chi2_contingency(f_obs)
-            pvals[p] = chi[1]
+            try:
+                chi = stats.chi2_contingency(f_obs)
+                pvals[p] = chi[1]
+            except:
+                pvals[p]="1"
 
-        p = np.transpose( [ [k,p] for (k,p) in pvals.items() ] )
-        adj = multipletests(np.array(p[1], dtype="float"), method="fdr_bh")[1]
-        self.adj_pvals = { i[0]:i[1] for i in np.transpose([p[0], adj]) }
-
+        self.p = np.transpose( [ [k,p] for (k,p) in pvals.items() ] )
+        adj = multipletests(np.array(self.p[1], dtype="float"), method="fdr_bh")[1]
+        self.adj_pvals = { i[0]:i[1] for i in np.transpose([self.p[0], adj]) }
+        for (k,v) in self.adj_pvals.items():
+            if float(v)<0.1:
+                self.significant.append(["chr"+self.chrom, int(self.start)+int(k), int(self.start)+int(k)+5, self.tx_id, self.tx_name,k,v])
 
 
     @staticmethod
