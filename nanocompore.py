@@ -20,7 +20,7 @@ logLevel=logging.WARNING
 class nanocompore(object):
     """ Produce usefule results """
     
-    def __init__(self, file1, file2, outfolder=None, nthreads=4, whitelist=None):
+    def __init__(self, file1, file2, outfolder=None, nthreads=4, whitelist=None, checkpoint=True):
         """ Main routine that starts readers and consumers 
             file1: path to file1
             file2: path to file2
@@ -28,7 +28,7 @@ class nanocompore(object):
             nthreads: number of consumer threads
             whitelist: list of transcripts to process. If None (default) process all transcripts
         """
-
+        self.__checkpoint=checkpoint
         # Check that input files exist
         for f in (file1, file2):
             if not Path(f).exists():
@@ -38,14 +38,15 @@ class nanocompore(object):
 
 
         # Check that output folder doesn't exist and create it
-        if Path(outfolder).exists():
-            raise nanocomporeError("The output folder specified already exists")
-        else:
-            try: 
-                makedirs(outfolder)
-            except:
-                raise nanocomporeError("Error creating output folder %s" % outfolder)
-            self.__outfolder=outfolder
+        if self.__checkpoint:
+            if Path(outfolder).exists():
+                raise nanocomporeError("The output folder specified already exists")
+            else:
+                try: 
+                    makedirs(outfolder)
+                except:
+                    raise nanocomporeError("Error creating output folder %s" % outfolder)
+                self.__outfolder=outfolder
 
         # Check thread number is valid
         try:
@@ -60,7 +61,7 @@ class nanocompore(object):
             self.tx_whitelist=whitelist
 
 
-    def process(self, checkpoint=True):
+    def process(self):
         max_qsize=5000
         # Main processing queue
         self.__main_queue = queue.Queue(maxsize=max_qsize)
@@ -99,7 +100,7 @@ class nanocompore(object):
         for c in consumers:
             c.join()
         # Print results
-        if checkpoint:
+        if self.__checkpoint:
             with open(self.__outfolder+'/results.p', 'wb') as pfile:
                 pickle.dump(self.results, pfile)
 
