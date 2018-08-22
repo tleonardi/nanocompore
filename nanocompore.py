@@ -12,6 +12,9 @@ from pathlib import Path
 from collections import defaultdict
 from os import makedirs
 from txCompare import txCompare
+import numpy as np
+from bedparse import bedline
+import csv
 
 
 logging.basicConfig(level=logging.INFO, format='%(threadName)s %(message)s')
@@ -23,7 +26,7 @@ logLevel=logging.INFO
 class nanocompore(object):
     """ Produce usefule results """
     
-    def __init__(self, file1, file2, outfolder=None, nthreads=4, whitelist=None, checkpoint=True, logLevel=logging.INFO):
+    def __init__(self, file1, file2, outfolder=None, nthreads=4, whitelist=None, checkpoint=True, logLevel=logging.INFO, padj_threshold=0.1):
         """ Main routine that starts readers and consumers 
             file1: path to file1
             file2: path to file2
@@ -34,6 +37,7 @@ class nanocompore(object):
         self.logLevel=logLevel
         logger.setLevel(self.logLevel)
         self.__checkpoint=checkpoint
+        self.__padj_threshold=padj_threshold
         # Check that input files exist
         for f in (file1, file2):
             if not Path(f).exists():
@@ -73,7 +77,7 @@ class nanocompore(object):
         # Threading lock
         self.__lock = threading.Lock()
         # Final results
-        self.results=[] 
+        self.__results=[] 
         # Data read by the readers
         self.data_f1=dict()
         self.data_f2=dict()
@@ -107,7 +111,7 @@ class nanocompore(object):
         # Print results
         if self.__checkpoint:
             with open(self.__outfolder+'/results.p', 'wb') as pfile:
-                pickle.dump(self.results, pfile)
+                pickle.dump(self.__results, pfile)
 
     def __parse_events_file(self, file, data, barPos=1):
         """ Parse an events file line by line and extract lines
@@ -116,8 +120,8 @@ class nanocompore(object):
         the data to data. """
         tx=""
         block=[]
-        # Reading the whole file to count lines is too expensive. 148.52bytes is the average line size in the events files
-        bar=self.__mytqdm(total=int(os.stat(file).st_size/148.52), desc="File%s progress" % barPos, position=barPos, unit_scale=True, disable=self.logLevel in [logging.DEBUG, logging.INFO])
+        # Reading the whole file to count lines is too expensive. 128bytes is the average line size in the collapsed events files
+        bar=self.__mytqdm(total=int(os.stat(file).st_size/128), desc="File%s progress" % barPos, position=barPos, unit_scale=True, disable=self.logLevel in [logging.DEBUG, logging.INFO])
         with open(file, "r") as f:
             for l in f:
                 line=l.split("\t")
@@ -170,18 +174,18 @@ class nanocompore(object):
                 if tx not in self.processed:
                     self.processed.add(tx)
                     self.__lock.release()
-                    self.results.append(self.process_tx(self.data_f1[tx], self.data_f2[tx]))
+                    self.__results.append(self.process_tx(self.data_f1.pop(tx), self.data_f2.pop(tx)))
                 else:
                     self.__lock.release()
                 self.__main_queue.task_done()
 
-    @staticmethod
-    def process_tx(data1, data2):
+    def process_tx(self, data1, data2):
         if data1[0][0] != data2[0][0]:
             print("Error")
         else: tx=data1[0][0]
         logger.info("Processed %s" % (tx))
-        return(txCompare([tx, [data1, data2]]).significant)
+        return(txCompare([tx, [data1, data2]]).significant(self.__padj_threshold))
+        #return([tx, [data1, data2]])
 
     @staticmethod
     def __mytqdm(**kwargs):
@@ -192,6 +196,40 @@ class nanocompore(object):
                 return tqdm(**kwargs)
         except NameError:
             return tqdm(**kwargs)
+
+    def print_results(self, bedfile=None, outfile=None):
+        """ Return the list of significant regions. 
+        If a bed file is provided also return the genome coordinates """
+        b=[]
+        if bedfile is None:
+            for i in [ i for k in self.__results for i in k]:
+                b.append(i)
+        else:
+            bed=dict()
+            sig = { i[0]+"##"+i[1] for k in self.__results for i in k }
+            r = []
+            with open(bedfile, 'r') as tsvfile:
+                for line in tsvfile:
+                    line = line.split('\t')
+                    tx_name=line[3]
+                    if(tx_name in sig):
+                        bed[tx_name] = bedline(line)
+            for i in [ i for k in self.__results for i in k]:
+                name=i[0]+"##"+i[1]
+                chr_coord=bed[name].tx2genome(i[4])
+                b.append(["chr"+i[2], chr_coord, chr_coord+5, name+"##"+str(i[4]), -np.log10(i[5])*100])
+        if outfile is None:
+            for i in b:
+                print(*i, sep="\t")
+        else:
+            with open(outfile, 'w', newline='') as f:
+                try:
+                    wr = csv.writer(f, quoting=csv.QUOTE_NONE, delimiter="\t")
+                    for i in b:
+                        wr.writerow(i)
+                except:
+                    raise nanocomporeError("Error writing to file")
+
     
 class alignements(object):
     def __init__(self, bam):
@@ -226,10 +264,14 @@ def main():
         help="Path to a directory where to store the results. Must not exist")
     parser.add_argument("-n", type=int, default=6, required=False,
         help="Number of threads (two are used for reading files, all the other for processing in parallel).")
+    parser.add_argument("--pthr", type=float, default=0.1, required=False,
+        help="Adjusted p-value threshold for reporting sites.")
     parser.add_argument("--bam1", required=True,
         help="Path to the Minimap2 BAM file for sample 1")
     parser.add_argument("--bam2", required=True,
         help="Path to the Minimap2 BAM file for sample 2")
+    parser.add_argument("--bedfile", default=None, required=False,
+        help="Bedfile for annotating results")
     parser.add_argument("--mincoverage", type=int, default=0, required=False,
         help="Minimum number of reads covering a transcript (in each sample) for it to be considered. Set to 0 to consider all transcripts.")
     parser.add_argument("--logLevel", default="warning",
@@ -257,6 +299,8 @@ def main():
     logger.warning("Starting multi-threaded processing of events files")
     n.process()
     logger.warning("All completed")
+    n.print_results(bedfile=args.bedfile, outfile=args.outfolder+"/significant_sites.bed")
+    n.print_results(outfile=args.outfolder+"/significant_sites.txt")
     
 class nanocomporeError(Exception):
     """ Basic exception class for nanocompore module """
