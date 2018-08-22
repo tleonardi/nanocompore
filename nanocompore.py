@@ -272,7 +272,7 @@ def main():
         help="Path to the Minimap2 BAM file for sample 2")
     parser.add_argument("--bedfile", default=None, required=False,
         help="Bedfile for annotating results")
-    parser.add_argument("--mincoverage", type=int, default=0, required=False,
+    parser.add_argument("--mincoverage", type=int, default=10, required=False,
         help="Minimum number of reads covering a transcript (in each sample) for it to be considered. Set to 0 to consider all transcripts.")
     parser.add_argument("--logLevel", default="warning",
         help="Set the log level. Valida values: warning, info, debug.")
