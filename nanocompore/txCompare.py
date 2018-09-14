@@ -22,7 +22,7 @@ class txCompare(object):
         (self.tx_id, rest) = rest.split(sep="::")
         (self.chrom, rest) = rest.split(sep=":")
         self.start = rest.split(sep="-")[0]
-        
+
         Events = namedtuple('Events', ['file', 'ref_name', 'ref_pos', 'ref_kmer', 'read_name', 'n_events', 'mean', 'median', 'std', 'var'])
         # Make a dictionary of Events using ref_pos as key
         self.data = defaultdict(list)
@@ -30,12 +30,12 @@ class txCompare(object):
             self.data[int(i[1])].append(Events(*['F1']+i))
         for i in data[1][1]:
             self.data[int(i[1])].append(Events(*['F2']+i))
-            
+
         # Save positions of interest
         file_one_A_positions = {k for k,v in self.data.items() for e in v if e.file=='F2' and e.ref_kmer[2]=='A'}
         file_two_A_positions = {k for k,v in self.data.items() for e in v if e.file=='F1' and e.ref_kmer[2]=='A'}
         self.positions = set.intersection( file_one_A_positions, file_two_A_positions)
-        
+
         self.clusters = dict()
         pvals = dict()
         for p in self.positions:
@@ -62,10 +62,10 @@ class txCompare(object):
         X = StandardScaler().fit_transform(x)
         y_pred = KMeans(n_clusters=2, random_state=146).fit_predict(X)
         return y_pred
-  
+
 
     def significant(self, thr=0.1):
-        """ Return the list of significant regions. 
+        """ Return the list of significant regions.
         If a bed file is provided also return the genome coordinates """
         results = []
         for k,v in self.adj_pvals.items():
