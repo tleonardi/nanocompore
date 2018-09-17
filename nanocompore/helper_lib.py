@@ -4,6 +4,7 @@
 # Standard library imports
 import os
 from nanocompore.NanocomporeError import NanocomporeError
+from tqdm import tqdm, tqdm_notebook
 
 #~~~~~~~~~~~~~~FUNCTIONS~~~~~~~~~~~~~~#
 
@@ -21,10 +22,7 @@ def mkdir (fn):
 def access_file (fn, **kwargs):
     """Check if the file is readable
     """
-    if not os.path.isfile (fn):
-        raise NanocomporeError("{} not found)".format (fn))
-    if not os.access (fn, os.R_OK):
-        raise NanocomporeError("{} not readable)".format (fn))
+    return os.path.isfile (fn) and os.access (fn, os.R_OK)
 
 def counter_to_str (c):
     """Transform a counter dict to a tabulated str"""
@@ -32,3 +30,12 @@ def counter_to_str (c):
     for i, j in c.most_common():
         m += "\t{}: {:,}".format(i, j)
     return m
+
+def mytqdm (**kwargs):
+    try:
+        if get_ipython().__class__.__name__ == 'ZMQInteractiveShell':
+            return tqdm_notebook(**kwargs)
+        else:
+            return tqdm(**kwargs)
+    except NameError:
+        return tqdm(**kwargs)
