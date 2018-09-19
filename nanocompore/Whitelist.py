@@ -28,7 +28,7 @@ class Whitelist (object):
         s2_index_fn,
         fasta_index_fn = None,
         min_coverage = 10,
-        max_coverage = 1000,
+        downsample_high_coverage = None,
         max_NNNNN_kmers_freq = 0.2,
         max_mismatching_kmers_freq = 0.2,
         max_missing_kmers_freq = 0.2,
@@ -57,7 +57,7 @@ class Whitelist (object):
 
         # Save other args
         self.__min_coverage = min_coverage
-        self.__max_coverage = max_coverage
+        self.__downsample_high_coverage = downsample_high_coverage
         self.__max_NNNNN_kmers_freq = max_NNNNN_kmers_freq
         self.__max_mismatching_kmers_freq = max_mismatching_kmers_freq
         self.__max_missing_kmers_freq = max_missing_kmers_freq
@@ -237,8 +237,8 @@ class Whitelist (object):
                                 break
 
                     # Down sample if coverage too high
-                    if self.__max_coverage and len(valid_reads) > self.__max_coverage:
-                        valid_reads = random.sample (valid_reads, self.__max_coverage)
+                    if self.__downsample_high_coverage and len(valid_reads) > self.__downsample_high_coverage:
+                        valid_reads = random.sample (valid_reads, self.__downsample_high_coverage)
 
                     if self.__logLevel == "debug":
                         c["{}_reads".format(sample_id)] += len(valid_reads)
