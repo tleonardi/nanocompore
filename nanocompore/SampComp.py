@@ -70,7 +70,6 @@ class SampComp (object):
         self.__nthreads = nthreads - 2 # Remove reader and writer threads
         self.__logLevel = logLevel
 
-
         logger.info ("Start data processing")
         # Init Multiprocessing variables
         in_q = mp.Queue (maxsize = 1000)
@@ -106,7 +105,7 @@ class SampComp (object):
                 position_dict = OrderedDict ()
                 for interval_start, interval_end in ref_dict["interval_list"]:
                     for i in range (interval_start, interval_end+1):
-                        position_dict[i] = {"S1_mean":[], "S1_dwell":[], "S2_mean":[], "S2_dwell":[]}
+                        position_dict[i] = {"S1":[], "S2":[]}
 
                 # Parse S1 and S2 reads data and add to mean and dwell time per position
                 for lab, fp in (("S1", s1_fp), ("S2", s2_fp)):
@@ -122,10 +121,9 @@ class SampComp (object):
                             ls = line.split("\t")
                             ref_pos = int(ls[0])
 
-                            # Append mean value and dwell time
+                            # Append mean value and dwell time per position
                             if ref_pos in position_dict:
-                                position_dict[ref_pos][lab+"_mean"].append(float(ls[8]))
-                                position_dict[ref_pos][lab+"_dwell"].append(int(ls[9]))
+                                position_dict[ref_pos][lab].append((float(ls[8]), int(ls[9])))
 
                 in_q.put ((ref_id, position_dict))
 
@@ -144,7 +142,7 @@ class SampComp (object):
         # Add poison pill in queues
         out_q.put (None)
 
-    def __write_output (self, out_q): ############################################# Or pickle dict or flat file....
+    def __write_output (self, out_q): ############################################# Or pickle dict or flat file ...
         # Get results out of the out queue and write in shelve
         with shelve.open (self.__output_db_fn) as db:
             # Iterate over the counter queue and process items until all poison pills are found
