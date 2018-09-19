@@ -4,6 +4,7 @@
 # Std lib
 from collections import namedtuple, Counter, OrderedDict
 import logging
+import random
 
 # Third party
 import numpy as np
@@ -27,6 +28,7 @@ class Whitelist (object):
         s2_index_fn,
         fasta_index_fn = None,
         min_coverage = 10,
+        max_coverage = 1000,
         max_NNNNN_kmers_freq = 0.2,
         max_mismatching_kmers_freq = 0.2,
         max_missing_kmers_freq = 0.2,
@@ -55,6 +57,7 @@ class Whitelist (object):
 
         # Save other args
         self.__min_coverage = min_coverage
+        self.__max_coverage = max_coverage
         self.__max_NNNNN_kmers_freq = max_NNNNN_kmers_freq
         self.__max_mismatching_kmers_freq = max_mismatching_kmers_freq
         self.__max_missing_kmers_freq = max_missing_kmers_freq
@@ -231,9 +234,14 @@ class Whitelist (object):
                         for interval_start, interval_end in valid_interval_list:
                             if read.ref_end >= interval_start and read.ref_start <= interval_end:
                                 valid_reads.append (read)
-                                if self.__logLevel == "debug":
-                                    c["{}_reads".format(sample_id)] += 1
                                 break
+
+                    # Down sample if coverage too high
+                    if self.__max_coverage and len(valid_reads) > self.__max_coverage:
+                        valid_reads = random.sample (valid_reads, self.__max_coverage)
+
+                    if self.__logLevel == "debug":
+                        c["{}_reads".format(sample_id)] += len(valid_reads)
                     ref_interval_reads [ref_id] [sample_id] = valid_reads
 
         pbar.close ()
