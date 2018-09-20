@@ -12,7 +12,7 @@ from tqdm import tqdm
 
 # Local package
 #from nanocompore.txCompare import txCompare
-from nanocompore.helper_lib import mkdir, access_file, mytqdm
+from nanocompore.helper_lib import mkdir, access_file
 from nanocompore.Whitelist import Whitelist
 from nanocompore.NanocomporeError import NanocomporeError
 
@@ -77,7 +77,7 @@ class SampComp (object):
 
         # Define processes
         ps_list = []
-        ps_list.append (mp.Process (target=self.__read_eventalign_files, args=(in_q,)))
+        ps_list.append (mp.Process (target=self.__list_refid, args=(in_q,)))
         for i in range (self.__nthreads):
             ps_list.append (mp.Process (target=self.__process_references, args=(in_q, out_q)))
         ps_list.append (mp.Process (target=self.__write_output, args=(out_q,)))
@@ -96,13 +96,24 @@ class SampComp (object):
                 ps.terminate ()
 
     #~~~~~~~~~~~~~~PRIVATE MULTIPROCESSING METHOD~~~~~~~~~~~~~~#
-    def __read_eventalign_files (self, in_q):
+    def __list_refid (self, in_q):
         # Add refid to inqueue to dispatch the data among the workers
-        with open (self.__s1_fn) as s1_fp, open (self.__s2_fn) as s2_fp:
-            for ref_id, ref_dict in self.__whitelist:
+        for ref_id in self.__whitelist.ref_id_list:
+            in_q.put (ref_id)
 
-                # Init empty dict for all positions in valid intervals
+        # Add 1 poison pill for each worker thread
+        for i in range (self.__nthreads):
+            in_q.put (None)
+
+    def __process_references (self, in_q, out_q):
+        # Consumme ref_id and position_dict until empty and perform statiscical analysis
+
+        with open (self.__s1_fn) as s1_fp, open (self.__s2_fn) as s2_fp: # More efficient to open only once the files
+            for ref_id in iter (in_q.get, None):
+
+                ref_dict = self.__whitelist[ref_id]
                 position_dict = OrderedDict ()
+
                 for interval_start, interval_end in ref_dict["interval_list"]:
                     for i in range (interval_start, interval_end+1):
                         position_dict[i] = {"S1":[], "S2":[]}
@@ -125,20 +136,11 @@ class SampComp (object):
                             if ref_pos in position_dict:
                                 position_dict[ref_pos][lab].append((float(ls[8]), int(ls[9])))
 
-                in_q.put ((ref_id, position_dict))
-
-        # Add 1 poison pill for each worker thread
-        for i in range (self.__nthreads):
-            in_q.put (None)
-
-    def __process_references (self, in_q, out_q):
-        # Consumme ref_id and position_dict until empty and perform statiscical analysis
-        for ref_id, position_dict in iter (in_q.get, None):
-            # Do stats with position_dicts
-            ####### ## Add p-value per position to the position_dict #######
-            ####### position_dict = tx_compare (self.__padj_threshold, self.__comparison_method, self.__sequence_context) #######
-            # Add the current read details to queue
-            out_q.put ((ref_id, position_dict))
+                # Do stats with position_dicts
+                ####### ## Add p-value per position to the position_dict #######
+                ####### position_dict = tx_compare (self.__padj_threshold, self.__comparison_method, self.__sequence_context) #######
+                # Add the current read details to queue
+                out_q.put ((ref_id, position_dict))
         # Add poison pill in queues
         out_q.put (None)
 
