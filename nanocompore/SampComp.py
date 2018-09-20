@@ -58,7 +58,7 @@ class SampComp (object):
             raise NanocomporeError("Whitelist is not valid")
         for fn in (s1_fn, s2_fn):
             if not access_file (fn):
-                raise NanocomporeError("Cannot access file {}".format(fp))
+                raise NanocomporeError("Cannot access file {}".format(fn))
         if nthreads < 3:
             raise NanocomporeError("Number of threads not valid")
 
