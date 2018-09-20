@@ -30,7 +30,7 @@ Nanocompore compares 2 nanopore sequencing datasets from 2 experimental conditio
 
 To use nanocompore raw nanopore sequencing data have to be prepared using a basecaller (Albacore or MInKNOW. Ask ONT), your favorite long read aligner such as [Minimap2](https://github.com/lh3/minimap2) and resquiggled using [Nanopolish](https://github.com/jts/nanopolish). Finally eventalign data have to be collapsed per kmer using [NanopolishComp Eventalign_collapse](https://github.com/a-slide/NanopolishComp)
 
-The preparation of data and the package usage are detailed in the [usage jupyter notebook](https://nbviewer.jupyter.org/github/a-slide/nanocompore/blob/master/tests/nanocompore_usage.ipynb?flush_cache=true)
+The preparation of data and the package usage are detailed in the [usage jupyter notebook](https://github.com/a-slide/nanocompore/blob/master/tests/nanocompore_usage.ipynb)
 
 # Note to power-users and developers
 
