@@ -37,10 +37,12 @@ class Whitelist (object):
         s1_index_fn: Path to sample 1 eventalign_collapse index file
         s2_index_fn: Path to sample 2 eventalign_collapse index file
         fasta_index_fn: Path to a fasta index corresponding to the reference used for read alignemnt (see samtools faidx)
-        min_coverage: minimal coverage required
+        min_coverage: minimal coverage required in both samples
+        downsample_high_coverage: For reference with higher coverage, downsample by randomly selecting reads.
         max_NNNNN_kmers_freq: maximum frequency of NNNNN kmers in reads (1 to deactivate)
         max_mismatching_kmers_freq: maximum frequency of mismatching kmers in reads (1 to deactivate)
         max_missing_kmers_freq: maximum frequency of missing kmers in reads (1 to deactivate)
+        logLevel: Set the log level. Valid values: warning, info, debug
         """
 
         # Set logging level
