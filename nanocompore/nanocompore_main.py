@@ -19,53 +19,86 @@ def main ():
         args = sys.argv
         if len(args) == 1:
             raise ValueError ("Error: Missing command\n")
-        if args[1] == "sample_compare":
+        elif args[1] == "sample_compare":
             sample_compare_main ()
-        if args[1] == "model_compare":
+        elif args[1] == "model_compare":
             model_compare_main ()
         elif args[1] in ["-v", "--version"]:
-            stderr_print ("{} v{}\n".format(package_name, package_version))
+            print ("{} v{}\n".format(package_name, package_version))
         elif args[1] in ["-h", "--help"]:
             raise ValueError ("nanocompore help\n")
         else:
             raise ValueError ("Error: Invalid command '{}'\n".format(args[1]))
 
     except ValueError as E:
-        stderr_print (E)
-        stderr_print ("Usage: nanocompore [command] [options]\n")
-        stderr_print ("Valid command:\n\t-v/--version\n\tsample_compare\n\tmodel_compare\n")
-        stderr_print ("For help on given command, type nanocompore [command] -h\n")
+        print (E)
+        print ("Usage: nanocompore [command] [options]\n")
+        print ("Valid command:\n\t-v/--version\n\tsample_compare\n\tmodel_compare\n")
+        print ("For help on given command, type nanocompore [command] -h\n")
         sys.exit()
 
 #~~~~~~~~~~~~~~SAMPLE COMPARE~~~~~~~~~~~~~~#
 def sample_compare_main ():
     # Define parser object
-    parser = argparse.ArgumentParser (description="Find differences in two nanopolish events files")
+    parser = argparse.ArgumentParser (description="Find differences in two nanopolish eventalign collapsed files")
     parser.prog = "nanocompore sample_compare"
 
     # Define arguments
     parser.add_argument("subprogram")
-    parser.add_argument("--file1", required=True,
-        help="Path to the Nanopolish events file for sample 1")
-    parser.add_argument("--file2", required=True,
-        help="Path to the Nanopolish events file for sample 2")
-    parser.add_argument("-o", "--outfolder", required=True,
-        help="Path to a directory where to store the results. Must not exist")
-    parser.add_argument("-n", type=int, default=6, required=False,
-        help="Number of threads (two are used for reading files, all the other for processing in parallel).")
-    parser.add_argument("--pthr", type=float, default=0.1, required=False,
-        help="Adjusted p-value threshold for reporting sites.")
-    parser.add_argument("--bedfile", default=None, required=False,
-        help="Bedfile for annotating results")
-    parser.add_argument("--min_coverage", type=int, default=10, required=False,
-        help="Minimum number of reads covering a transcript (in each sample) for it to be considered. Set to 0 to consider all transcripts.")
-    parser.add_argument("--logLevel", default="warning",
-        help="Set the log level. Valid values: warning, info, debug.")
-    # Parse Arguments
+
+    parser.add_argument("-1", "--s1_fn", required=True,
+        help= "Path to sample 1 eventalign_collapse data file")
+    parser.add_argument("-2", "--s2_fn", required=True,
+        help= "Path to sample 2 eventalign_collapse data file")
+    parser.add_argument("-f", "--fasta_index_fn", required=True,
+        help= "Path to a fasta index corresponding to the reference used for read alignemnt (see samtools faidx)")
+    parser.add_argument("-o", "--output_db_fn", required=True,
+        help= "Path where to write the result database")
+    parser.add_argument("--min_coverage", default=10 , type=int,
+        help= "minimal coverage required in both samples")
+    parser.add_argument("--downsample_high_coverage", default=0 , type=int,
+        help= "For reference with higher coverage, downsample by randomly selecting reads.")
+    parser.add_argument("--max_NNNNN_kmers_freq", default=0.2 , type=float,
+        help= "maximum frequency of NNNNN kmers in reads (1 to deactivate)")
+    parser.add_argument("--max_mismatching_kmers_freq", default=0.2 , type=float,
+        help= "maximum frequency of mismatching kmers in reads (1 to deactivate)")
+    parser.add_argument("--max_missing_kmers_freq", default=0.2 , type=float,
+        help= "maximum frequency of missing kmers in reads (1 to deactivate)")
+    parser.add_argument("--padj_threshold", default=0.1 , type=float,
+        help= "Adjusted p-value threshold for reporting sites")
+    parser.add_argument("--comparison_method", default="kmean",
+        help= "Statistical method to compare the 2 samples signal")
+    parser.add_argument("--sequence_context", default=0 , type=int,
+        help= "Extend statistical analysis to contigous adjacent base is available")
+    parser.add_argument("-t", "--nthreads", default=4 , type=int,
+        help= "Number of threads, 2 are used for reading and writing, all the others for processing in parallel")
+    parser.add_argument("--logLevel", default="info",
+        help= "Set the log level. Valid values: warning, info, debug")
+
     a = parser.parse_args()
 
-    # w = Whitelist ()
-    # s = SampComp ()
+    w = Whitelist (
+        s1_index_fn = a.s1_fn+".idx",
+        s2_index_fn = a.s2_fn+".idx",
+        fasta_index_fn = a.fasta_index_fn,
+        min_coverage = a.min_coverage,
+        downsample_high_coverage = a.downsample_high_coverage,
+        max_NNNNN_kmers_freq = a.max_NNNNN_kmers_freq,
+        max_mismatching_kmers_freq = a.max_mismatching_kmers_freq,
+        max_missing_kmers_freq = a.max_missing_kmers_freq,
+        logLevel = a.logLevel)
+
+    s = SampComp(
+        s1_fn = a.s1_fn,
+        s2_fn = a.s2_fn,
+        whitelist = w,
+        output_db_fn = a.output_db_fn,
+        padj_threshold = a.padj_threshold,
+        comparison_method = a.comparison_method,
+        sequence_context = a.sequence_context,
+        nthreads = a.nthreads,
+        logLevel = a.logLevel)
+
     # s.write_results ()
     # s.do_other_stuff ()
 
