@@ -11,8 +11,7 @@ import numpy as np
 from tqdm import tqdm
 
 # Local package
-from nanocompore.helper_lib import counter_to_str, access_file, mytqdm
-from nanocompore.NanocomporeError import NanocomporeError
+from nanocompore.common import counter_to_str, access_file, mytqdm, NanocomporeError
 
 # Logger setup
 logging.basicConfig(level=logging.INFO, format='%(message)s')

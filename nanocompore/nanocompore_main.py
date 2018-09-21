@@ -11,6 +11,8 @@ from nanocompore import __version__ as package_version
 from nanocompore import __name__ as package_name
 from nanocompore.SampComp import SampComp
 from nanocompore.Whitelist import Whitelist
+from nanocompore.common import NanocomporeError
+
 
 #~~~~~~~~~~~~~~TOP LEVEL ENTRY POINT~~~~~~~~~~~~~~#
 def main ():
@@ -18,7 +20,7 @@ def main ():
     try:
         args = sys.argv
         if len(args) == 1:
-            raise ValueError ("Error: Missing command\n")
+            raise NanocomporeError ("Error: Missing command\n")
         elif args[1] == "sample_compare":
             sample_compare_main ()
         elif args[1] == "model_compare":
@@ -26,11 +28,11 @@ def main ():
         elif args[1] in ["-v", "--version"]:
             print ("{} v{}\n".format(package_name, package_version))
         elif args[1] in ["-h", "--help"]:
-            raise ValueError ("nanocompore help\n")
+            raise NanocomporeError ("nanocompore help\n")
         else:
-            raise ValueError ("Error: Invalid command '{}'\n".format(args[1]))
+            raise NanocomporeError ("Error: Invalid command '{}'\n".format(args[1]))
 
-    except ValueError as E:
+    except NanocomporeError as E:
         print (E)
         print ("Usage: nanocompore [command] [options]\n")
         print ("Valid command:\n\t-v/--version\n\tsample_compare\n\tmodel_compare\n")

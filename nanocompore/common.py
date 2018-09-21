@@ -3,11 +3,14 @@
 #~~~~~~~~~~~~~~IMPORTS~~~~~~~~~~~~~~#
 # Standard library imports
 import os
-from nanocompore.NanocomporeError import NanocomporeError
 from tqdm import tqdm, tqdm_notebook
 
-#~~~~~~~~~~~~~~FUNCTIONS~~~~~~~~~~~~~~#
+#~~~~~~~~~~~~~~CUSTOM EXCEPTION CLASS~~~~~~~~~~~~~~#
+class NanocomporeError (Exception):
+    """ Basic exception class for nanocompore module """
+    pass
 
+#~~~~~~~~~~~~~~FUNCTIONS~~~~~~~~~~~~~~#
 def mkdir (fn):
     """Create directory recursivelly. Raise IO error if path exist or if error at creation
     """

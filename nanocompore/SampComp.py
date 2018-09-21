@@ -12,9 +12,8 @@ from tqdm import tqdm
 
 # Local package
 #from nanocompore.txCompare import txCompare
-from nanocompore.helper_lib import mkdir, access_file
+from nanocompore.common import counter_to_str, access_file, mytqdm, NanocomporeError
 from nanocompore.Whitelist import Whitelist
-from nanocompore.NanocomporeError import NanocomporeError
 
 # Logger setup
 logging.basicConfig(level=logging.INFO, format='%(message)s')
