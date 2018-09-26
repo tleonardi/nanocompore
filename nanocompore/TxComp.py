@@ -13,39 +13,37 @@ import numpy as np
 from nanocompore.common import NanocomporeError
 
 #~~~~~~~~~~~~~~NON PARAMETRIC STATS METHOD~~~~~~~~~~~~~~#
-def paired_test (ref_pos_dict, method="mann_whitney", sequence_context=0, min_coverage=20, pval_adjust='fdr_bh'):
+def paired_test (ref_pos_dict, method="mann_whitney", sequence_context=0, min_coverage=20):
 
+    np.random.seed (42)
     # Predefine stat test
-    if method=="mann_whitney":
+    if method in ["mann_whitney", "MW"]:
         stat_test = mannwhitneyu
-    elif method=="kolmogorov_smirnov":
+    elif method in ["kolmogorov_smirnov", "KS"]:
         stat_test = ks_2samp
-    elif method=="t_test":
+    elif method in ["t_test", "TT"]:
         stat_test = ttest_ind
     else:
         raise NanocomporeError ("Invalid statistical method name (MW, KS, ttest)")
 
     # Perform pair comparison position per position if coverage is sufficient
-    pos_list = []
-    pval_median_list = []
-    pval_dwell_list = []
+    res_dict = OrderedDict ()
+
     for pos, pos_dict in ref_pos_dict.items():
         if pos_dict["S1_count"] >= min_coverage and pos_dict["S2_count"] >= min_coverage:
-            pos_list.append (pos)
-            pval_median_list.append (stat_test (pos_dict["S1_median"], pos_dict["S2_median"])[1])
-            pval_dwell_list.append (stat_test (pos_dict["S1_dwell"], pos_dict["S2_dwell"])[1])
+            res_dict[pos] = OrderedDict ()
 
-    # Perform multiple tests correction ####################################################################### To be done at the end after all as been calculated.
-    if pval_adjust:
-        pval_median_list = multipletests (np.array (pval_median_list), method=pval_adjust) [1]
-        pval_dwell_list = multipletests (np.array (pval_dwell_list), method=pval_adjust) [1]
+            # Number of batch tests dependent on coverage
+            n_batch = (max((pos_dict["S1_count"], pos_dict["S2_count"]))*3)//min_coverage
 
-    # Write results to res_dict
-    res_dict = OrderedDict ()
-    for pos, pval_median, pval_dwell in zip (pos_list, pval_median_list, pval_dwell_list):
-        res_dict [pos] = OrderedDict()
-        res_dict [pos]["median"] = pval_median
-        res_dict [pos]["dwell"] = pval_dwell
+            # Compute
+            for var in ("median", "dwell"):
+                s1_data = pos_dict["S1_"+var]
+                s2_data = pos_dict["S2_"+var]
+                pval_array = np.empty (shape=n_batch, dtype=np.float64)
+                for i in range (n_batch):
+                    pval_array[i] = stat_test (np.random.choice (s1_data, min_coverage), np.random.choice (s2_data, min_coverage))[1]
+                res_dict[pos][var] = np.mean (pval_array)
 
     if not sequence_context:
         return res_dict

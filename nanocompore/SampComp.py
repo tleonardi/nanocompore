@@ -34,7 +34,7 @@ class SampComp (object):
         fasta_index_fn=None,
         whitelist=None,
         padj_threshold = 0.1,
-        comparison_method = "kmean",
+        comparison_method = None,
         sequence_context = 0,
         min_coverage = 10,
         downsample_high_coverage = None, ########################################## Not super happy with that
@@ -67,7 +67,7 @@ class SampComp (object):
         if nthreads < 3:
             raise NanocomporeError("Number of threads not valid")
 
-        if not comparison_method in ["kmean", "mann_whitney", "kolmogorov_smirnov", "t_test"]:
+        if not comparison_method in ["kmean", "mann_whitney", "kolmogorov_smirnov", "t_test", None]:
             raise NanocomporeError("Invalid comparison method")
 
         if whitelist:
@@ -164,11 +164,18 @@ class SampComp (object):
                         line_list = fp.read (read.byte_len).split("\n")
                         fp.seek (0)
 
-                        # Extract info from line
-                        header = line_list[1].split("\t")
-                        line_tuple = namedtuple("line_tuple", header)
+                        # Check read_id ref_id concordance between index and data file (#6f885af6-5844-476e-9e51-133dc5617dfd	YHR055C)
+                        header = line_list[0][1:].split("\t")
+                        if not header[0] == read.read_id or not header[1] == read.ref_id:
+                            raise NanocomporeError ("Index and data files are not matching")
+
+                        # Extract col names from second line
+                        col_names = line_list[1].split("\t")
+                        line_tuple = namedtuple ("line_tuple", col_names)
+
+                        # Parse data files kmers per kmers
                         for line in line_list[2:]:
-                            lt = line_tuple(*line.split("\t"))
+                            lt = line_tuple (*line.split("\t"))
 
                             # filter out lines with high NNNNN or mismatching events
                             # if int(lt.NNNNN_events)/int(lt.events) > self.__max_NNNNN_freq:
@@ -195,8 +202,12 @@ class SampComp (object):
                 elif self.__comparison_method == "kmean":
                     res_dict = ref_pos_dict
 
-                # Add the current read details to queue
-                out_q.put ((ref_id, res_dict))
+                elif not self.__comparison_method:
+                    res_dict = ref_pos_dict
+
+                # Add the current read details to queue if not empty
+                if res_dict:
+                    out_q.put ((ref_id, res_dict))
         # Add poison pill in queues
         out_q.put (None)
 
