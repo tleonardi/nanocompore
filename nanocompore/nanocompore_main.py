@@ -60,11 +60,11 @@ def sample_compare_main ():
         help= "minimal coverage required in both samples")
     parser.add_argument("--downsample_high_coverage", default=0 , type=int,
         help= "For reference with higher coverage, downsample by randomly selecting reads.")
-    parser.add_argument("--max_NNNNN_kmers_freq", default=0.2 , type=float,
+    parser.add_argument("--max_NNNNN_freq", default=0.2 , type=float,
         help= "maximum frequency of NNNNN kmers in reads (1 to deactivate)")
-    parser.add_argument("--max_mismatching_kmers_freq", default=0.2 , type=float,
+    parser.add_argument("--max_mismatching_freq", default=0.2 , type=float,
         help= "maximum frequency of mismatching kmers in reads (1 to deactivate)")
-    parser.add_argument("--max_missing_kmers_freq", default=0.2 , type=float,
+    parser.add_argument("--max_missing_freq", default=0.2 , type=float,
         help= "maximum frequency of missing kmers in reads (1 to deactivate)")
     parser.add_argument("--padj_threshold", default=0.1 , type=float,
         help= "Adjusted p-value threshold for reporting sites")
@@ -79,25 +79,20 @@ def sample_compare_main ():
 
     a = parser.parse_args()
 
-    w = Whitelist (
-        s1_index_fn = a.s1_fn+".idx",
-        s2_index_fn = a.s2_fn+".idx",
-        fasta_index_fn = a.fasta_index_fn,
-        min_coverage = a.min_coverage,
-        downsample_high_coverage = a.downsample_high_coverage,
-        max_NNNNN_kmers_freq = a.max_NNNNN_kmers_freq,
-        max_mismatching_kmers_freq = a.max_mismatching_kmers_freq,
-        max_missing_kmers_freq = a.max_missing_kmers_freq,
-        logLevel = a.logLevel)
-
     s = SampComp(
         s1_fn = a.s1_fn,
         s2_fn = a.s2_fn,
-        whitelist = w,
         output_db_fn = a.output_db_fn,
+        fasta_index_fn = a.fasta_index_fn,
+        whitelist = a.whitelist,
         padj_threshold = a.padj_threshold,
         comparison_method = a.comparison_method,
         sequence_context = a.sequence_context,
+        min_coverage = a.min_coverage,
+        downsample_high_coverage = a.downsample_high_coverage,
+        max_NNNNN_freq = a.max_NNNNN_freq,
+        max_mismatching_freq = a.max_mismatching_freq,
+        max_missing_freq = a.max_missing_freq,
         nthreads = a.nthreads,
         logLevel = a.logLevel)
 

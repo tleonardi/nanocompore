@@ -28,9 +28,9 @@ class Whitelist (object):
         fasta_index_fn = None,
         min_coverage = 10,
         downsample_high_coverage = None,
-        max_NNNNN_kmers_freq = 0.2,
-        max_mismatching_kmers_freq = 0.2,
-        max_missing_kmers_freq = 0.2,
+        max_NNNNN_freq = 0.2,
+        max_mismatching_freq = 0.2,
+        max_missing_freq = 0.2,
         logLevel="info"):
         """
         s1_index_fn: Path to sample 1 eventalign_collapse index file
@@ -38,9 +38,9 @@ class Whitelist (object):
         fasta_index_fn: Path to a fasta index corresponding to the reference used for read alignemnt (see samtools faidx)
         min_coverage: minimal coverage required in both samples
         downsample_high_coverage: For reference with higher coverage, downsample by randomly selecting reads.
-        max_NNNNN_kmers_freq: maximum frequency of NNNNN kmers in reads (1 to deactivate)
-        max_mismatching_kmers_freq: maximum frequency of mismatching kmers in reads (1 to deactivate)
-        max_missing_kmers_freq: maximum frequency of missing kmers in reads (1 to deactivate)
+        max_NNNNN_freq: maximum frequency of NNNNN kmers in reads (1 to deactivate)
+        max_mismatching_freq: maximum frequency of mismatching kmers in reads (1 to deactivate)
+        max_missing_freq: maximum frequency of missing kmers in reads (1 to deactivate)
         logLevel: Set the log level. Valid values: warning, info, debug
         """
 
@@ -59,9 +59,9 @@ class Whitelist (object):
         # Save other args
         self.__min_coverage = min_coverage
         self.__downsample_high_coverage = downsample_high_coverage
-        self.__max_NNNNN_kmers_freq = max_NNNNN_kmers_freq
-        self.__max_mismatching_kmers_freq = max_mismatching_kmers_freq
-        self.__max_missing_kmers_freq = max_missing_kmers_freq
+        self.__max_NNNNN_freq = max_NNNNN_freq
+        self.__max_mismatching_freq = max_mismatching_freq
+        self.__max_missing_freq = max_missing_freq
 
         # Read fasta index to get reference length
         logger.info ("Read fasta index files")
@@ -139,11 +139,11 @@ class Whitelist (object):
                     ls = line.rstrip().split()
                     lt = line_tuple (ls[0], int(ls[1]), int(ls[2]), ls[3], int(ls[4]), int(ls[5]) , int(ls[6]) , int(ls[7]) , int(ls[8]), int(ls[9]))
                     # filter out reads with high number of problematic kmers
-                    if lt.NNNNN_kmers/lt.kmers > self.__max_NNNNN_kmers_freq:
+                    if lt.NNNNN_kmers/lt.kmers > self.__max_NNNNN_freq:
                         c ["high NNNNN_kmers reads"] += 1
-                    elif lt.mismatching_kmers/lt.kmers > self.__max_mismatching_kmers_freq:
+                    elif lt.mismatching_kmers/lt.kmers > self.__max_mismatching_freq:
                         c ["high mismatching_kmers reads"] += 1
-                    elif lt.missing_kmers/lt.kmers > self.__max_missing_kmers_freq:
+                    elif lt.missing_kmers/lt.kmers > self.__max_missing_freq:
                         c ["high missing_kmers reads"] += 1
                     # Save valid reads
                     else:

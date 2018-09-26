@@ -14,6 +14,7 @@ from tqdm import tqdm
 #from nanocompore.txCompare import txCompare
 from nanocompore.common import counter_to_str, access_file, mytqdm, NanocomporeError
 from nanocompore.Whitelist import Whitelist
+from nanocompore.TxComp import paired_test
 
 # Logger setup
 logging.basicConfig(level=logging.INFO, format='%(message)s')
@@ -29,21 +30,27 @@ class SampComp (object):
     def __init__(self,
         s1_fn,
         s2_fn,
-        whitelist,
         output_db_fn,
+        fasta_index_fn=None,
+        whitelist=None,
         padj_threshold = 0.1,
         comparison_method = "kmean",
-        sequence_context=0,
+        sequence_context = 0,
+        min_coverage = 10,
+        downsample_high_coverage = None, ########################################## Not super happy with that
+        max_NNNNN_freq = 0.2,
+        max_mismatching_freq = 0.2,
+        max_missing_freq = 0.2,
         nthreads = 4,
-        logLevel = "info",):
+        logLevel = "info"):
 
         """
         s1_fn: Path to sample 1 eventalign_collapse data file
         s2_fn: Path to sample 2 eventalign_collapse data file
-        whitelist: Whitelist object previously generated with nanocompore Whitelist
         output_db_fn: Path where to write the result database
+        whitelist: Whitelist object previously generated with nanocompore Whitelist. If not given, will be generated
         padj_threshold: Adjusted p-value threshold for reporting sites.
-        comparison_method: Statistical method to compare the 2 samples signal (default kmean)
+        comparison_method: Statistical method to compare the 2 samples (kmean, mann_whitney, kolmogorov_smirnov, t_test)
         sequence_context: Extend statistical analysis to contigous adjacent base is available
         nthreads: Number of threads (two are used for reading and writing, all the others for processing in parallel).
         logLevel: Set the log level. Valid values: warning, info, debug
@@ -53,23 +60,48 @@ class SampComp (object):
         logger.info ("Initialise and checks options")
 
         # Check args
-        if not isinstance (whitelist, Whitelist):
-            raise NanocomporeError("Whitelist is not valid")
         for fn in (s1_fn, s2_fn):
             if not access_file (fn):
                 raise NanocomporeError("Cannot access file {}".format(fn))
+
         if nthreads < 3:
             raise NanocomporeError("Number of threads not valid")
+
+        if not comparison_method in ["kmean", "mann_whitney", "kolmogorov_smirnov", "t_test"]:
+            raise NanocomporeError("Invalid comparison method")
+
+        if whitelist:
+            if not isinstance (whitelist, Whitelist):
+                raise NanocomporeError("Whitelist is not valid")
+        else:
+            if not fasta_index_fn:
+                raise NanocomporeError("fasta_index_fn is required if no whitelist is provided")
+
+            whitelist = Whitelist (
+                s1_index_fn = s1_fn+".idx",
+                s2_index_fn = s2_fn+".idx",
+                fasta_index_fn = fasta_index_fn,
+                min_coverage = min_coverage,
+                downsample_high_coverage = downsample_high_coverage,
+                max_NNNNN_freq = max_NNNNN_freq,
+                max_mismatching_freq = max_mismatching_freq,
+                max_missing_freq = max_missing_freq,
+                logLevel = logLevel)
 
         # Save private args
         self.__s1_fn = s1_fn
         self.__s2_fn = s2_fn
-        self.__whitelist = whitelist
         self.__output_db_fn = output_db_fn
+        self.__whitelist = whitelist
         self.__padj_threshold = padj_threshold
         self.__comparison_method = comparison_method
         self.__sequence_context = sequence_context
-        self.__nthreads = nthreads - 2 # Remove reader and writer threads
+        self.__min_coverage = min_coverage
+        self.__downsample_high_coverage = downsample_high_coverage
+        self.__max_NNNNN_freq = max_NNNNN_freq
+        self.__max_mismatching_freq = max_mismatching_freq
+        self.__max_missing_freq = max_missing_freq
+        self.__nthreads = nthreads - 2
         self.__logLevel = logLevel
 
         logger.info ("Start data processing")
@@ -108,23 +140,26 @@ class SampComp (object):
             in_q.put (None)
 
     def __process_references (self, in_q, out_q):
-        # Consumme ref_id and position_dict until empty and perform statiscical analysis
+        # Consumme ref_id until empty and perform statiscical analysis
 
         with open (self.__s1_fn) as s1_fp, open (self.__s2_fn) as s2_fp: # More efficient to open only once the files
             for ref_id in iter (in_q.get, None):
 
                 ref_dict = self.__whitelist[ref_id]
-                position_dict = OrderedDict ()
+                ref_pos_dict = OrderedDict ()
 
                 for interval_start, interval_end in ref_dict["interval_list"]:
                     for i in range (interval_start, interval_end+1):
-                        position_dict[i] = {"S1":[], "S2":[]}
+                        ref_pos_dict[i] = {
+                            "S1_count":0, "S2_count":0,
+                            "S1_median":[],"S2_median":[],
+                            "S1_dwell":[], "S2_dwell":[]} # Get sequence here from reference genome ??
 
                 # Parse S1 and S2 reads data and add to mean and dwell time per position
                 for lab, fp in (("S1", s1_fp), ("S2", s2_fp)):
                     for read in ref_dict[lab]:
 
-                        # Move to read save read data chunk and reset file pointer
+                        # Move to read, save read data chunk and reset file pointer
                         fp.seek (read.byte_offset)
                         line_list = fp.read (read.byte_len).split("\n")
                         fp.seek (0)
@@ -135,21 +170,38 @@ class SampComp (object):
                         for line in line_list[2:]:
                             lt = line_tuple(*line.split("\t"))
 
+                            # filter out lines with high NNNNN or mismatching events
+                            # if int(lt.NNNNN_events)/int(lt.events) > self.__max_NNNNN_freq:
+                            #     continue
+                            # if int(lt.mismatching_events)/int(lt.events) > self.__max_mismatching_freq:
+                            #     continue
+
                             # Check if positions are in the ones found in the whitelist intervals
                             ref_pos = int(lt.ref_pos)
-                            if ref_pos in position_dict:
+                            if ref_pos in ref_pos_dict:
                                 # Append mean value and dwell time per position
-                                position_dict[ref_pos][lab].append ((float(lt.mean), int(lt.n_signals)))
+                                ref_pos_dict[ref_pos][lab+"_median"].append (float(lt.median))
+                                ref_pos_dict[ref_pos][lab+"_dwell"].append (int(lt.n_signals))
+                                ref_pos_dict[ref_pos][lab+"_count"] +=1
 
-                # Do stats with position_dicts
-                ####### ## Add p-value per position to the position_dict #######
-                ####### position_dict = tx_compare (self.__padj_threshold, self.__comparison_method, self.__sequence_context) #######
+                # Filter out low coverage postions and if the sequence context is higher than 0 select only position
+                if self.__comparison_method in ["mann_whitney", "kolmogorov_smirnov", "t_test"]:
+                    res_dict = paired_test (
+                        ref_pos_dict=ref_pos_dict,
+                        method=self.__comparison_method,
+                        sequence_context=self.__sequence_context,
+                        min_coverage=self.__min_coverage)
+
+                elif self.__comparison_method == "kmean":
+                    res_dict = ref_pos_dict
+
                 # Add the current read details to queue
-                out_q.put ((ref_id, position_dict))
+                out_q.put ((ref_id, res_dict))
         # Add poison pill in queues
         out_q.put (None)
 
-    def __write_output (self, out_q): ############################################# Or pickle dict or flat file ...
+
+    def __write_output (self, out_q):
         # Get results out of the out queue and write in shelve
         with shelve.open (self.__output_db_fn, flag='n') as db:
             # Iterate over the counter queue and process items until all poison pills are found
