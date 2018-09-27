@@ -67,7 +67,7 @@ class SampComp (object):
         if nthreads < 3:
             raise NanocomporeError("Number of threads not valid")
 
-        if not comparison_method in ["kmean", "mann_whitney", "kolmogorov_smirnov", "t_test", None]:
+        if not comparison_method in ["kmean", "mann_whitney", "MW", "kolmogorov_smirnov", "KS","t_test", "TT", None]:
             raise NanocomporeError("Invalid comparison method")
 
         if whitelist:
@@ -151,7 +151,6 @@ class SampComp (object):
                 for interval_start, interval_end in ref_dict["interval_list"]:
                     for i in range (interval_start, interval_end+1):
                         ref_pos_dict[i] = {
-                            "S1_count":0, "S2_count":0,
                             "S1_median":[],"S2_median":[],
                             "S1_dwell":[], "S2_dwell":[]} # Get sequence here from reference genome ??
 
@@ -177,37 +176,35 @@ class SampComp (object):
                         for line in line_list[2:]:
                             lt = line_tuple (*line.split("\t"))
 
-                            # filter out lines with high NNNNN or mismatching events
-                            # if int(lt.NNNNN_events)/int(lt.events) > self.__max_NNNNN_freq:
-                            #     continue
-                            # if int(lt.mismatching_events)/int(lt.events) > self.__max_mismatching_freq:
-                            #     continue
-
                             # Check if positions are in the ones found in the whitelist intervals
                             ref_pos = int(lt.ref_pos)
                             if ref_pos in ref_pos_dict:
                                 # Append mean value and dwell time per position
                                 ref_pos_dict[ref_pos][lab+"_median"].append (float(lt.median))
                                 ref_pos_dict[ref_pos][lab+"_dwell"].append (int(lt.n_signals))
-                                ref_pos_dict[ref_pos][lab+"_count"] +=1
 
-                # Filter out low coverage postions and if the sequence context is higher than 0 select only position
-                if self.__comparison_method in ["mann_whitney", "kolmogorov_smirnov", "t_test"]:
-                    res_dict = paired_test (
-                        ref_pos_dict=ref_pos_dict,
-                        method=self.__comparison_method,
-                        sequence_context=self.__sequence_context,
-                        min_coverage=self.__min_coverage)
+                # Filter low coverage positions
+                low_cov_pos = []
+                for pos, pos_dict in ref_pos_dict.items():
+                    if len(pos_dict["S1_median"]) < self.__min_coverage or len(pos_dict["S2_median"]) < self.__min_coverage:
+                        low_cov_pos.append (pos)
+                for pos in low_cov_pos:
+                    del ref_pos_dict [pos]
 
-                elif self.__comparison_method == "kmean":
-                    res_dict = ref_pos_dict
+                if ref_pos_dict:
 
-                elif not self.__comparison_method:
-                    res_dict = ref_pos_dict
+                    if self.__comparison_method in ["mann_whitney", "MW", "kolmogorov_smirnov", "KS","t_test", "TT"]:
+                        ref_pos_dict = paired_test (
+                            ref_pos_dict=ref_pos_dict,
+                            method=self.__comparison_method,
+                            sequence_context=self.__sequence_context,
+                            min_coverage=self.__min_coverage)
 
-                # Add the current read details to queue if not empty
-                if res_dict:
-                    out_q.put ((ref_id, res_dict))
+                    elif self.__comparison_method == "kmean":
+                        pass
+
+                    # Add the current read details to queue
+                    out_q.put ((ref_id, ref_pos_dict))
         # Add poison pill in queues
         out_q.put (None)
 
@@ -218,9 +215,9 @@ class SampComp (object):
             # Iterate over the counter queue and process items until all poison pills are found
             pbar = tqdm (total = len(self.__whitelist), unit=" Processed References", disable=self.__logLevel=="warning")
             for _ in range (self.__nthreads):
-                for ref_id, stat_dict in iter (out_q.get, None):
+                for ref_id, ref_pos_dict in iter (out_q.get, None):
                     # Write results in a shelve db to get around multithreaded isolation
-                    db [ref_id] = stat_dict
+                    db [ref_id] = ref_pos_dict
                     pbar.update ()
             pbar.close()
 
