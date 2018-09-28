@@ -33,8 +33,8 @@ def paired_test (ref_pos_dict, method="mann_whitney", sequence_context=0, min_co
     for pos, pos_dict in ref_pos_dict.items():
 
         # Number of batch tests dependent on coverage
-        #n_batch = (max((pos_dict["S1_count"], pos_dict["S2_count"]))*2)//min_coverage
-        n_batch = 20
+        n_batch = (max((len(pos_dict["S1_median"]), len(pos_dict["S2_median"])))*2)//min_coverage
+        #n_batch = 20
 
         # Compute pvalues
         for var in ("median", "dwell"):

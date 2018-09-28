@@ -11,10 +11,10 @@ import multiprocessing as mp
 from tqdm import tqdm
 
 # Local package
-#from nanocompore.txCompare import txCompare
-from nanocompore.common import counter_to_str, access_file, mytqdm, NanocomporeError
+from nanocompore.common import counter_to_str, access_file, NanocomporeError
 from nanocompore.Whitelist import Whitelist
 from nanocompore.TxComp import paired_test
+from nanocompore.SampCompDB import SampCompDB
 
 # Logger setup
 logging.basicConfig(level=logging.INFO, format='%(message)s')
@@ -23,21 +23,21 @@ logLevel_dict = {"debug":logging.DEBUG, "info":logging.INFO, "warning":logging.W
 
 #~~~~~~~~~~~~~~MAIN CLASS~~~~~~~~~~~~~~#
 class SampComp (object):
-    """ Produce useful results. => Thanks Tommaso ! That's a very *useful* comment :P """
+    """ Init analysis and check args"""
 
-    #~~~~~~~~~~~~~~MAGIC METHODS~~~~~~~~~~~~~~#
+    #~~~~~~~~~~~~~~FUNDAMENTAL METHODS~~~~~~~~~~~~~~#
 
     def __init__(self,
         s1_fn,
         s2_fn,
         output_db_fn,
-        fasta_index_fn=None,
+        fasta_fn,
         whitelist=None,
         padj_threshold = 0.1,
         comparison_method = None,
         sequence_context = 0,
         min_coverage = 10,
-        downsample_high_coverage = None, ########################################## Not super happy with that
+        downsample_high_coverage = None,
         max_NNNNN_freq = 0.2,
         max_mismatching_freq = 0.2,
         max_missing_freq = 0.2,
@@ -48,6 +48,7 @@ class SampComp (object):
         s1_fn: Path to sample 1 eventalign_collapse data file
         s2_fn: Path to sample 2 eventalign_collapse data file
         output_db_fn: Path where to write the result database
+        fasta_fn: Path to a fasta file corresponding to the reference used for read alignemnt
         whitelist: Whitelist object previously generated with nanocompore Whitelist. If not given, will be generated
         padj_threshold: Adjusted p-value threshold for reporting sites.
         comparison_method: Statistical method to compare the 2 samples (kmean, mann_whitney, kolmogorov_smirnov, t_test)
@@ -57,10 +58,10 @@ class SampComp (object):
         """
         # Set logging level
         logger.setLevel (logLevel_dict.get (logLevel, logging.WARNING))
-        logger.info ("Initialise and checks options")
+        logger.info ("Initialise SampComp and checks options")
 
         # Check args
-        for fn in (s1_fn, s2_fn):
+        for fn in (s1_fn, s2_fn, fasta_fn):
             if not access_file (fn):
                 raise NanocomporeError("Cannot access file {}".format(fn))
 
@@ -74,13 +75,10 @@ class SampComp (object):
             if not isinstance (whitelist, Whitelist):
                 raise NanocomporeError("Whitelist is not valid")
         else:
-            if not fasta_index_fn:
-                raise NanocomporeError("fasta_index_fn is required if no whitelist is provided")
-
             whitelist = Whitelist (
                 s1_index_fn = s1_fn+".idx",
                 s2_index_fn = s2_fn+".idx",
-                fasta_index_fn = fasta_index_fn,
+                fasta_fn = fasta_fn,
                 min_coverage = min_coverage,
                 downsample_high_coverage = downsample_high_coverage,
                 max_NNNNN_freq = max_NNNNN_freq,
@@ -92,6 +90,7 @@ class SampComp (object):
         self.__s1_fn = s1_fn
         self.__s2_fn = s2_fn
         self.__output_db_fn = output_db_fn
+        self.__fasta_fn = fasta_fn
         self.__whitelist = whitelist
         self.__padj_threshold = padj_threshold
         self.__comparison_method = comparison_method
@@ -104,10 +103,13 @@ class SampComp (object):
         self.__nthreads = nthreads - 2
         self.__logLevel = logLevel
 
+    def __call__ (self):
+        """Run analysis"""
+
         logger.info ("Start data processing")
         # Init Multiprocessing variables
-        in_q = mp.Queue (maxsize = 1000)
-        out_q = mp.Queue (maxsize = 1000)
+        in_q = mp.Queue (maxsize = 100)
+        out_q = mp.Queue (maxsize = 100)
 
         # Define processes
         ps_list = []
@@ -128,6 +130,9 @@ class SampComp (object):
             if self.verbose: stderr_print ("Early stop. Kill processes\n")
             for ps in ps_list:
                 ps.terminate ()
+
+        # Return database wrapper object
+        return SampCompDB (db_fn=self.__output_db_fn, fasta_fn=self.__fasta_fn)
 
     #~~~~~~~~~~~~~~PRIVATE MULTIPROCESSING METHOD~~~~~~~~~~~~~~#
     def __list_refid (self, in_q):
@@ -150,9 +155,7 @@ class SampComp (object):
 
                 for interval_start, interval_end in ref_dict["interval_list"]:
                     for i in range (interval_start, interval_end+1):
-                        ref_pos_dict[i] = {
-                            "S1_median":[],"S2_median":[],
-                            "S1_dwell":[], "S2_dwell":[]} # Get sequence here from reference genome ??
+                        ref_pos_dict[i] = {"S1_median":[],"S2_median":[],"S1_dwell":[],"S2_dwell":[]}
 
                 # Parse S1 and S2 reads data and add to mean and dwell time per position
                 for lab, fp in (("S1", s1_fp), ("S2", s2_fp)):
@@ -179,6 +182,11 @@ class SampComp (object):
                             # Check if positions are in the ones found in the whitelist intervals
                             ref_pos = int(lt.ref_pos)
                             if ref_pos in ref_pos_dict:
+                                if not "kmer" in ref_pos_dict[ref_pos]:
+                                    ref_pos_dict[ref_pos]["kmer"] = lt.ref_kmer
+                                else:
+                                    assert ref_pos_dict[ref_pos]["kmer"] == lt.ref_kmer, "WTF?"
+
                                 # Append mean value and dwell time per position
                                 ref_pos_dict[ref_pos][lab+"_median"].append (float(lt.median))
                                 ref_pos_dict[ref_pos][lab+"_dwell"].append (int(lt.n_signals))
@@ -216,39 +224,7 @@ class SampComp (object):
             pbar = tqdm (total = len(self.__whitelist), unit=" Processed References", disable=self.__logLevel=="warning")
             for _ in range (self.__nthreads):
                 for ref_id, ref_pos_dict in iter (out_q.get, None):
-                    # Write results in a shelve db to get around multithreaded isolation
+                    # Write results in a shelve db
                     db [ref_id] = ref_pos_dict
                     pbar.update ()
             pbar.close()
-
-
-#~~~~~~~~~~~~~~PROPERTY HELPER AND MAGIC METHODS~~~~~~~~~~~~~~#
-
-    def __len__ (self):
-        try:
-            return self.__len
-        except:
-            with shelve.open (self.__output_db_fn, flag='r') as db:
-                self.__len = len(db)
-                return self.__len
-
-    def __iter__ (self):
-        with shelve.open (self.__output_db_fn, flag = "r") as db:
-            for k, v in db.items():
-                yield (k,v)
-
-    def __getitem__(self, items):
-        with shelve.open (self.__output_db_fn, flag = "r") as db:
-            if items in db:
-                return db[items]
-            else:
-                return None
-
-    @property
-    def ref_id_list (self):
-        try:
-            return self.__ref_id_list
-        except:
-            with shelve.open (self.__output_db_fn, flag='r') as db:
-                self.__ref_id_list = list (db.keys())
-                return self.__ref_id_list

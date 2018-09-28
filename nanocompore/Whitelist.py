@@ -9,9 +9,10 @@ import random
 # Third party
 import numpy as np
 from tqdm import tqdm
+from pyfaidx import Fasta
 
 # Local package
-from nanocompore.common import counter_to_str, access_file, mytqdm, NanocomporeError
+from nanocompore.common import counter_to_str, access_file, NanocomporeError
 
 # Logger setup
 logging.basicConfig(level=logging.INFO, format='%(message)s')
@@ -25,7 +26,7 @@ class Whitelist (object):
     def __init__ (self,
         s1_index_fn,
         s2_index_fn,
-        fasta_index_fn = None,
+        fasta_fn = None,
         min_coverage = 10,
         downsample_high_coverage = None,
         max_NNNNN_freq = 0.2,
@@ -35,7 +36,7 @@ class Whitelist (object):
         """
         s1_index_fn: Path to sample 1 eventalign_collapse index file
         s2_index_fn: Path to sample 2 eventalign_collapse index file
-        fasta_index_fn: Path to a fasta index corresponding to the reference used for read alignemnt (see samtools faidx)
+        fasta_fn: Path to a fasta file corresponding to the reference used for read alignemnt
         min_coverage: minimal coverage required in both samples
         downsample_high_coverage: For reference with higher coverage, downsample by randomly selecting reads.
         max_NNNNN_freq: maximum frequency of NNNNN kmers in reads (1 to deactivate)
@@ -46,15 +47,15 @@ class Whitelist (object):
 
         # Set logging level
         logger.setLevel (logLevel_dict.get (logLevel, logging.WARNING))
-        logger.info ("Initialise and checks options")
+        logger.info ("Initialise Whitelist and checks options")
         self.__logLevel = logLevel
 
         # Check files
-        for fn in (s1_index_fn, s2_index_fn, fasta_index_fn):
+        for fn in (s1_index_fn, s2_index_fn, fasta_fn):
             access_file (fn)
+        self.__fasta_fn = fasta_fn
         self.__s1_index_fn = s1_index_fn
         self.__s2_index_fn = s2_index_fn
-        self.__fasta_index_fn = fasta_index_fn
 
         # Save other args
         self.__min_coverage = min_coverage
@@ -64,8 +65,12 @@ class Whitelist (object):
         self.__max_missing_freq = max_missing_freq
 
         # Read fasta index to get reference length
-        logger.info ("Read fasta index files")
-        self.ref_len_dict = self._read_fasta_index ()
+        logger.info ("Index Fasta file")
+        # Try to open Fasta file
+        try:
+            self.__fasta = Fasta(self.__fasta_fn)
+        except:
+            raise NanocomporeError("The fasta reference file cannot be read")
 
         # Create reference index for both files
         logger.info ("Read eventalign index files")
@@ -105,19 +110,6 @@ class Whitelist (object):
         return list (self.ref_interval_reads.keys())
 
     #~~~~~~~~~~~~~~PRIVATE METHODS~~~~~~~~~~~~~~#
-    def _read_fasta_index (self):
-        """Read a fasta index file and return a refid:ref length dictionary"""
-
-        ref_len_dict = OrderedDict ()
-        with open (self.__fasta_index_fn) as fp:
-            for line in fp:
-                ls = line.rstrip().split()
-                if len(ls) != 5:
-                    raise NanocomporeError ("Invalid fasta index file: {}".format(fn))
-                ref_len_dict[ls[0]] = int(ls[1])
-        logger.info ("\tTotal references: {}".format(len(ref_len_dict)))
-        return ref_len_dict
-
     def _read_eventalign_index (self):
         """Read the 2 index files and sort by sample and ref_id in a multi level dict"""
 
@@ -170,7 +162,7 @@ class Whitelist (object):
                 selected_ref_reads [ref_id] = sample_reads
                 if self.__logLevel == "debug":
                     c["ref_id"] += 1
-                    c["positions"] += self.ref_len_dict[ref_id]
+                    c["positions"] += len(self.__fasta[ref_id])
                     c["S1_reads"] += len (sample_reads["S1"])
                     c["S2_reads"] += len (sample_reads["S2"])
 
@@ -189,7 +181,7 @@ class Whitelist (object):
             pbar.update()
 
             # Compute reference coverage in a single numpy array
-            cov_array = np.zeros ((2, self.ref_len_dict[ref_id]))
+            cov_array = np.zeros ((2, len(self.__fasta[ref_id])))
             for sample_index, (sample_id, read_list) in enumerate (sample_reads.items()):
                 for read in read_list:
                     cov_array [sample_index][np.arange(read.ref_start, read.ref_end)] += 1

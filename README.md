@@ -8,7 +8,7 @@
 
 # Installation
 
-IIdeally, before installation, create a clean python3 virtual environment to deploy the package, using virtualenvwrapper for example ([see tutorial](http://www.simononsoftware.com/virtualenv-tutorial-part-2/)).
+Ideally, before installation, create a clean python3 virtual environment to deploy the package, using virtualenvwrapper for example ([see tutorial](http://www.simononsoftware.com/virtualenv-tutorial-part-2/)).
 
 ## Dependencies
 

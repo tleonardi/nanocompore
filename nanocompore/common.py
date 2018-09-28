@@ -33,12 +33,3 @@ def counter_to_str (c):
     for i, j in c.most_common():
         m += "\t{}: {:,}".format(i, j)
     return m
-
-def mytqdm (**kwargs):
-    try:
-        if get_ipython().__class__.__name__ == 'ZMQInteractiveShell':
-            return tqdm_notebook(**kwargs)
-        else:
-            return tqdm(**kwargs)
-    except NameError:
-        return tqdm(**kwargs)
