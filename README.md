@@ -35,11 +35,11 @@ The preparation of data and the package usage are detailed in the [usage jupyter
 
 Example of pvalue analysis using Mann_Whitney paired test:
 
-[!](pictures/pvalues.png)
+![pvalues](pictures/pvalues.png)
 
 Example of signal shift between 2 samples:
 
-[!](pictures/signal_shift.png)
+![signal_shift](pictures/signal_shift.png)
 
 
 # Note to power-users and developers
