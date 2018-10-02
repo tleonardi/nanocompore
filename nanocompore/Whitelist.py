@@ -2,7 +2,7 @@
 
 #~~~~~~~~~~~~~~IMPORTS~~~~~~~~~~~~~~#
 # Std lib
-from collections import namedtuple, Counter, OrderedDict
+from collections import namedtuple, Counter, OrderedDict, defaultdict
 import logging
 import random
 
@@ -108,6 +108,14 @@ class Whitelist (object):
     @property
     def ref_id_list (self):
         return list (self.ref_interval_reads.keys())
+
+    @property
+    def interval_dict (self):
+        d = defaultdict (list)
+        for red_id, ref_dict in self.ref_interval_reads.items():
+            for interval in ref_dict["interval_list"]:
+                d[red_id].append(interval)
+        return d
 
     #~~~~~~~~~~~~~~PRIVATE METHODS~~~~~~~~~~~~~~#
     def _read_eventalign_index (self):
