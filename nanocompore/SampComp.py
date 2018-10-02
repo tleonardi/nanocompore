@@ -9,6 +9,7 @@ import multiprocessing as mp
 
 # Third party
 from tqdm import tqdm
+import numpy as np
 
 # Local package
 from nanocompore.common import counter_to_str, access_file, NanocomporeError
@@ -155,7 +156,7 @@ class SampComp (object):
 
                 for interval_start, interval_end in ref_dict["interval_list"]:
                     for i in range (interval_start, interval_end+1):
-                        ref_pos_dict[i] = {"S1_median":[],"S2_median":[],"S1_dwell":[],"S2_dwell":[]}
+                        ref_pos_dict[i] = {"S1_median":[],"S2_median":[],"S1_dwell":[],"S2_dwell":[],"S1_count":0,"S2_count":0}
 
                 # Parse S1 and S2 reads data and add to mean and dwell time per position
                 for lab, fp in (("S1", s1_fp), ("S2", s2_fp)):
@@ -190,17 +191,22 @@ class SampComp (object):
                                 # Append mean value and dwell time per position
                                 ref_pos_dict[ref_pos][lab+"_median"].append (float(lt.median))
                                 ref_pos_dict[ref_pos][lab+"_dwell"].append (int(lt.n_signals))
+                                ref_pos_dict[ref_pos][lab+"_count"] += 1
 
-                # Filter low coverage positions
-                low_cov_pos = []
+                # Filter low coverage positions and castlists to numpy array for efficiency
+                ref_pos_dict_filtered = OrderedDict ()
                 for pos, pos_dict in ref_pos_dict.items():
-                    if len(pos_dict["S1_median"]) < self.__min_coverage or len(pos_dict["S2_median"]) < self.__min_coverage:
-                        low_cov_pos.append (pos)
-                for pos in low_cov_pos:
-                    del ref_pos_dict [pos]
+                    if pos_dict["S1_count"] >= self.__min_coverage and pos_dict["S2_count"] >= self.__min_coverage:
+                        pos_dict_filtered = OrderedDict ()
+                        for field in ["S1_median", "S2_median", "S1_dwell", "S2_dwell"]:
+                            pos_dict_filtered[field] = np.array (pos_dict[field])
+                        ref_pos_dict_filtered[pos] = pos_dict_filtered
+                ref_pos_dict = ref_pos_dict_filtered
 
+                # Perform stat if there are still data in dict after position level coverage filtering
                 if ref_pos_dict:
 
+                    # Conventional statistics
                     if self.__comparison_method in ["mann_whitney", "MW", "kolmogorov_smirnov", "KS","t_test", "TT"]:
                         ref_pos_dict = paired_test (
                             ref_pos_dict=ref_pos_dict,
@@ -208,16 +214,19 @@ class SampComp (object):
                             sequence_context=self.__sequence_context,
                             min_coverage=self.__min_coverage)
 
+                    # kmean stat
                     elif self.__comparison_method == "kmean":
                         pass
 
                     # Add the current read details to queue
                     out_q.put ((ref_id, ref_pos_dict))
-        # Add poison pill in queues
+
+        # Add a poison pill in queues and say goodbye!
         out_q.put (None)
 
-
     def __write_output (self, out_q):
+        #################################################################################################################### If a pvalue correction as to be done it should be here
+        #################################################################################################################### But it might require to buffer everything in memory instead...
         # Get results out of the out queue and write in shelve
         with shelve.open (self.__output_db_fn, flag='n') as db:
             # Iterate over the counter queue and process items until all poison pills are found
