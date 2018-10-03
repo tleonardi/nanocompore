@@ -146,7 +146,7 @@ class SampComp (object):
             in_q.put (None)
 
     def __process_references (self, in_q, out_q):
-        # Consumme ref_id until empty and perform statiscical analysis
+        # Consume ref_id until empty and perform statistical analysis
 
         with open (self.__s1_fn) as s1_fp, open (self.__s2_fn) as s2_fp: # More efficient to open only once the files
             for ref_id in iter (in_q.get, None):
