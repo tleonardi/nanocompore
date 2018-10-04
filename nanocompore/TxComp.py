@@ -52,19 +52,19 @@ def paired_test (ref_pos_dict, method="mann_whitney", sequence_context=0, min_co
                 pval_array[i] = stat_test (np.random.choice (s1_data, min_coverage), np.random.choice (s2_data, min_coverage))[1]
             pval = np.median (pval_array)
 
-            ref_pos_dict[pos]["pvalue_"+var] = pval
+            ref_pos_dict[pos]["pvalue_"+method+"_"+var] = pval
 
     # If a sequence context is required combine adjacent pvalues with fishers method when possible
     if sequence_context:
-        lab_median = "pvalue_median_context={}".format(sequence_context)
-        lab_dwell = "pvalue_dwell_context={}".format(sequence_context)
+        lab_median = "pvalue_{}_median_context={}".format(method, sequence_context)
+        lab_dwell = "pvalue_{}_dwell_context={}".format(method, sequence_context)
         for mid_pos in ref_pos_dict.keys():
             pval_median_list = []
             pval_dwell_list = []
             try:
                 for pos in range (mid_pos-sequence_context, mid_pos+sequence_context+1):
-                    pval_median_list.append (ref_pos_dict[pos]["pvalue_median"])
-                    pval_dwell_list.append (ref_pos_dict[pos]["pvalue_dwell"])
+                    pval_median_list.append (ref_pos_dict[pos]["pvalue_"+method+"_median"])
+                    pval_dwell_list.append (ref_pos_dict[pos]["pvalue_"+method+"_dwell"])
                 ref_pos_dict[mid_pos][lab_median] = combine_pvalues (pval_median_list, method='fisher') [1]
                 ref_pos_dict[mid_pos][lab_dwell] = combine_pvalues (pval_dwell_list, method='fisher') [1]
 
@@ -101,7 +101,7 @@ def kmeans_test(ref_pos_dict, method="kmeans", sequence_context=0, min_coverage=
         ref_pos_dict[pos]["pvalue_kmeans"] = pval
 
     if sequence_context:
-        lab = "pvalue_context={}".format(sequence_context)
+        lab = "pvalue_kmeans_context={}".format(sequence_context)
         for mid_pos in ref_pos_dict.keys():
             pval_list = []
             try:
