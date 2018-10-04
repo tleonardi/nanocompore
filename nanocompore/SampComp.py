@@ -15,6 +15,7 @@ import numpy as np
 from nanocompore.common import counter_to_str, access_file, NanocomporeError
 from nanocompore.Whitelist import Whitelist
 from nanocompore.TxComp import paired_test
+from nanocompore.TxComp import kmeans_test
 from nanocompore.SampCompDB import SampCompDB
 
 # Logger setup
@@ -52,7 +53,7 @@ class SampComp (object):
         fasta_fn: Path to a fasta file corresponding to the reference used for read alignemnt
         whitelist: Whitelist object previously generated with nanocompore Whitelist. If not given, will be generated
         padj_threshold: Adjusted p-value threshold for reporting sites.
-        comparison_method: Statistical method to compare the 2 samples (kmean, mann_whitney, kolmogorov_smirnov, t_test)
+        comparison_method: Statistical method to compare the 2 samples (kmean, mann_whitney, kolmogorov_smirnov, t_test). This can be a comma sperated list
         sequence_context: Extend statistical analysis to contigous adjacent base is available
         nthreads: Number of threads (two are used for reading and writing, all the others for processing in parallel).
         logLevel: Set the log level. Valid values: warning, info, debug
@@ -69,7 +70,9 @@ class SampComp (object):
         if nthreads < 3:
             raise NanocomporeError("Number of threads not valid")
 
-        if not comparison_method in ["kmean", "mann_whitney", "MW", "kolmogorov_smirnov", "KS","t_test", "TT", None]:
+        comparison_method = comparison_method.split(",")
+        allowed_comparison_methods = ["kmean", "mann_whitney", "MW", "kolmogorov_smirnov", "KS","t_test", "TT", None]
+        if not all([cm in allowed_comparison_methods for cm in comparison_method]):
             raise NanocomporeError("Invalid comparison method")
 
         if whitelist:
@@ -94,7 +97,7 @@ class SampComp (object):
         self.__fasta_fn = fasta_fn
         self.__whitelist = whitelist
         self.__padj_threshold = padj_threshold
-        self.__comparison_method = comparison_method
+        self.__comparison_methods = comparison_method
         self.__sequence_context = sequence_context
         self.__min_coverage = min_coverage
         self.__downsample_high_coverage = downsample_high_coverage
@@ -205,20 +208,25 @@ class SampComp (object):
 
                 # Perform stat if there are still data in dict after position level coverage filtering
                 if ref_pos_dict:
+                    for comp_met in self.__comparison_methods:
 
-                    # Conventional statistics
-                    if self.__comparison_method in ["mann_whitney", "MW", "kolmogorov_smirnov", "KS","t_test", "TT"]:
-                        ref_pos_dict = paired_test (
-                            ref_pos_dict=ref_pos_dict,
-                            method=self.__comparison_method,
-                            sequence_context=self.__sequence_context,
-                            min_coverage=self.__min_coverage)
+                        # Conventional statistics
+                        if comp_met in ["mann_whitney", "MW", "kolmogorov_smirnov", "KS","t_test", "TT"]:
+                            ref_pos_dict = paired_test (
+                                ref_pos_dict=ref_pos_dict,
+                                method=comp_met,
+                                sequence_context=self.__sequence_context,
+                                min_coverage=self.__min_coverage)
 
-                    # kmean stat
-                    elif self.__comparison_method == "kmean":
-                        pass
+                        # kmeans test
+                        elif comp_met == "kmean":
+                            ref_pos_dict = kmeans_test(
+                                ref_pos_dict=ref_pos_dict,
+                                method=comp_met,
+                                sequence_context=self.__sequence_context,
+                                min_coverage=self.__min_coverage)
 
-                    # Add the current read details to queue
+                        # Add the current read details to queue
                     out_q.put ((ref_id, ref_pos_dict))
 
         # Add a poison pill in queues and say goodbye!
