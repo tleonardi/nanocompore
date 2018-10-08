@@ -36,6 +36,11 @@ class SampCompDB (object):
         try:
             with shelve.open (db_fn, flag='r') as db:
                 self.ref_id_list = list (db.keys())
+                try: 
+                    self.metadata = db["__metadata"]
+                except KeyError:
+                    raise NanocomporeError("The result database does not contain metadata")
+                self.ref_id_list.remove('__metadata')
                 if not self.ref_id_list:
                     raise NanocomporeError("The result database is empty")
                 self._db_fn = db_fn
@@ -74,8 +79,9 @@ class SampCompDB (object):
     def to_bed (self, output_fn):
         pass
 
-    def to_some_other_kind_of_text_output (self, output_fn):
+    def show_results(self):
         pass
+
 
     def list_most_significant_positions (self, n=10):
         pass
@@ -157,7 +163,7 @@ class SampCompDB (object):
 
     def plot_pvalue (self, ref_id, start=None, end=None, threshold=0.01, figsize=(30,10), palette="Set2", plot_style="ggplot"):
         """
-        Plot pvalues per position (by default plot all fields starting by "pvalue")
+        <Plot pvalues per position (by default plot all fields starting by "pvalue")
         It is pointless to plot more than 50 positions at once as it becomes hard to distiguish
         ref_id: Valid reference id name in the database
         start: Start coordinate. Default=0

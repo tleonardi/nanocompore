@@ -150,7 +150,7 @@ class SampComp (object):
 
     def __process_references (self, in_q, out_q):
         # Consume ref_id until empty and perform statistical analysis
-
+        required_col_names = ["ref_pos", "ref_kmer", "median", "n_signals"]
         with open (self.__s1_fn) as s1_fp, open (self.__s2_fn) as s2_fp: # More efficient to open only once the files
             for ref_id in iter (in_q.get, None):
 
@@ -178,6 +178,8 @@ class SampComp (object):
                         # Extract col names from second line
                         col_names = line_list[1].split("\t")
                         line_tuple = namedtuple ("line_tuple", col_names)
+                        if not all([field in col_names for field in required_col_names]):
+                            raise NanocomporeError("Missing field in Eventalign_collapse file")
 
                         # Parse data files kmers per kmers
                         for line in line_list[2:]:
@@ -236,12 +238,16 @@ class SampComp (object):
         #################################################################################################################### If a pvalue correction as to be done it should be here
         #################################################################################################################### But it might require to buffer everything in memory instead...
         # Get results out of the out queue and write in shelve
-        with shelve.open (self.__output_db_fn, flag='n') as db:
-            # Iterate over the counter queue and process items until all poison pills are found
-            pbar = tqdm (total = len(self.__whitelist), unit=" Processed References", disable=self.__logLevel=="warning")
-            for _ in range (self.__nthreads):
-                for ref_id, ref_pos_dict in iter (out_q.get, None):
-                    # Write results in a shelve db
-                    db [ref_id] = ref_pos_dict
-                    pbar.update ()
-            pbar.close()
+        try: 
+            with shelve.open (self.__output_db_fn, flag='n') as db:
+                # Iterate over the counter queue and process items until all poison pills are found
+                pbar = tqdm (total = len(self.__whitelist), unit=" Processed References", disable=self.__logLevel=="warning")
+                for _ in range (self.__nthreads):
+                    for ref_id, ref_pos_dict in iter (out_q.get, None):
+                        # Write results in a shelve db
+                        db [ref_id] = ref_pos_dict
+                        pbar.update ()
+                pbar.close()
+                db["__metadata"] = {"comparison_method":self.__comparison_methods, "sequence_context": self.__sequence_context}
+        except IOError:
+            raise NanocomporeError("Error writing to output db")
