@@ -35,23 +35,11 @@ def paired_test (ref_pos_dict, method="mann_whitney", sequence_context=0, min_co
 
     # Perform pair comparison position per position if coverage is sufficient
     for pos, pos_dict in ref_pos_dict.items():
-
-        ############################################################## Dirty hack to correct for high coverage bias
-        # Number of batch tests dependent on coverage
-        n_batch = (max((len(pos_dict["S1_median"]), len(pos_dict["S2_median"])))*2)//min_coverage
-        if n_batch > 100:
-            n_batch = 100
-
         # Compute pvalues
         for var in ("median", "dwell"):
-
             s1_data = pos_dict["S1_"+var]
             s2_data = pos_dict["S2_"+var]
-            pval_array = np.empty (shape=n_batch, dtype=np.float64)
-            for i in range (n_batch):
-                pval_array[i] = stat_test (np.random.choice (s1_data, min_coverage), np.random.choice (s2_data, min_coverage))[1]
-            pval = np.median (pval_array)
-
+            pval = stat_test (s1_data, s2_data)[1]
             ref_pos_dict[pos]["pvalue_"+method+"_"+var] = pval
 
     # If a sequence context is required combine adjacent pvalues with fishers method when possible
