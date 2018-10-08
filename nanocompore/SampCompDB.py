@@ -11,6 +11,8 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as pl
 import seaborn as sns
+from bedparse import bedline
+from statsmodels.stats.multitest import multipletests
 
 # Local package
 from nanocompore.common import counter_to_str, access_file, NanocomporeError
@@ -37,9 +39,11 @@ class SampCompDB (object):
             with shelve.open (db_fn, flag='r') as db:
                 self.ref_id_list = list (db.keys())
                 try: 
-                    self.metadata = db["__metadata"]
+                    metadata = db['__metadata']
                 except KeyError:
                     raise NanocomporeError("The result database does not contain metadata")
+                self._comparison_method=metadata['comparison_method']
+                self._sequence_context=metadata['sequence_context']
                 self.ref_id_list.remove('__metadata')
                 if not self.ref_id_list:
                     raise NanocomporeError("The result database is empty")
@@ -79,8 +83,47 @@ class SampCompDB (object):
     def to_bed (self, output_fn):
         pass
 
-    def show_results(self):
-        pass
+    def results(self, bed_fn=None, adjust=True):
+        # Compose a lists with the name of the results
+        tests=[]
+        for method in self._comparison_method:
+            if method in ["mann_whitney", "MW"]:
+                tests.append("pvalue_mann_whitney_median")
+                tests.append("pvalue_mann_whitney_dwell")
+            elif method in ["kolmogorov_smirnov", "KS"]:
+                tests.append("pvalue_kolmogorov_smirnov_median")
+                tests.append("pvalue_kolmogorov_smirnov_dwell")
+            elif method in ["t_test", "TT"]:
+                tests.append("pvalue_t_test_median")
+                tests.append("pvalue_t_test_dwell")
+            elif method in ["kmean"]:
+                tests.append("pvalue_kmeans")
+        if self._sequence_context:
+            c=str(self._sequence_context)
+            tests+=[t+"_context="+c for t in tests]
+
+        df = pd.DataFrame([dict({a:b for a,b in v.items() if a in tests}, ref=ref_id, pos=k)  for ref_id in self.ref_id_list for k,v in self[ref_id].items() ]).fillna(1)
+
+        if bed_fn:
+            bed_annot={}
+            try:
+                with open(bed_fn) as tsvfile:
+                    for line in tsvfile:
+                        record_name=line.split('\t')[3]
+                        if( record_name in self.ref_id_list):
+                            bed_annot[record_name]=bedline(line.split('\t'))
+                if len(bed_annot) != len(self.ref_id_list):
+                    raise NanocomporeError("Some references are missing from the BED file provided")
+            except:
+                raise NanocomporeError("Can't open BED file")
+
+            df['genomicPos'] = df.apply(lambda row: bed_annot[row['ref']].tx2genome(coord=row['pos']),axis=1)
+            df=df[['ref', 'pos', 'genomicPos']+tests]
+        if adjust:
+            for col in tests:
+                df['adjusted_'+col] = multipletests(df[col], method="fdr_bh")[1]
+        return(df)
+    
 
 
     def list_most_significant_positions (self, n=10):
