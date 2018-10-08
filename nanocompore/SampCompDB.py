@@ -3,6 +3,7 @@
 #~~~~~~~~~~~~~~IMPORTS~~~~~~~~~~~~~~#
 # Std lib
 from collections import OrderedDict, namedtuple
+from math import log
 import shelve
 
 # Third party
@@ -80,13 +81,51 @@ class SampCompDB (object):
     #~~~~~~~~~~~~~~PUBLIC METHODS~~~~~~~~~~~~~~#
 
     ################################### TO DO ##################################
-    def to_bed (self, output_fn):
-        pass
+    def save_to_bed (self, output_fn, bedgraph=False, pvalue_field=None, pvalue_thr=0.01, sequence_context=0, convert=None, assembly=None):
+        """Saves the results object to BED6 format.
+            bedgraph: save file in bedgraph format instead of bed
+            pvalue_field: specifies what column to use as BED score (field 5, as -log10)
+            pvalue_thr: only report positions with pvalue<=thr
+            sequence_context: produce BED files for the given context
+            convert: one of 'ensembl_to_ucsc' or 'ucsc_to_ensembl". Convert chromosome named between Ensembl and Ucsc conventions
+            assembly: required if convert is used. One of "hg38" or "mm10"
+        """
+        if sequence_context != 0:
+            pvalue_field=pvalue_field+"_context="+str(sequence_context)
+        if pvalue_field not in self.results:
+            raise NanocomporeError(("The field '%s' is not in the results" % pvalue_field))
+        if "results" not in self.__dict__:
+            raise NanocomporeError("Run calculate_results() before trying to save to bed")
+        if convert not in [None, "ensembl_to_ucsc", "ucsc_to_ensembl"]:
+            raise NanocomporeError("Convert value not valid")
+        if convert is not None and assembly is None:
+            raise NanocomporeError("The assembly argument is required in order to do the conversion. Choose one of 'hg38' or 'mm10' ")
 
-    def results(self, bed_fn=None, adjust=True):
+        with open(output_fn, "w") as bed_file:
+            for record in self.results[['chr', 'genomicPos', 'ref','strand']+[pvalue_field]].values.tolist():
+                if not bedgraph and record[-1]<=pvalue_thr:
+                    line=bedline([record[0], record[1], record[1]+sequence_context+1, record[2], -log(record[-1], 10), record[3]])
+                    if convert is "ensembl_to_ucsc":
+                        line=line.translateChr(assembly=assembly, target="ucsc", patches=True)
+                    elif convert is "ucsc_to_ensembl":
+                        line=line.translateChr(assembly=assembly, target="ens", patches=True)
+                    bed_file.write("%s %s %s %s %s %s\n" % (line.chr, line.start, line.end, line.name, line.score, line.strand))
+                elif bedgraph:
+                    line=bedline([record[0], record[1], record[1]+sequence_context+1, record[2], -log(record[-1], 10), record[3]])
+                    if convert is "ensembl_to_ucsc":
+                        line=line.translateChr(assembly=assembly, target="ucsc", patches=True)
+                    elif convert is "ucsc_to_ensembl":
+                        line=line.translateChr(assembly=assembly, target="ens", patches=True)
+                    bed_file.write("%s %s %s %s\n" % (line.chr, line.start, line.end, line.score))
+
+
+
+    def calculate_results(self, bed_fn=None, adjust=True, methods=None):
         # Compose a lists with the name of the results
         tests=[]
-        for method in self._comparison_method:
+        if methods is None:
+            methods = self._comparison_method
+        for method in methods:
             if method in ["mann_whitney", "MW"]:
                 tests.append("pvalue_mann_whitney_median")
                 tests.append("pvalue_mann_whitney_dwell")
@@ -102,7 +141,10 @@ class SampCompDB (object):
             c=str(self._sequence_context)
             tests+=[t+"_context="+c for t in tests]
 
-        df = pd.DataFrame([dict({a:b for a,b in v.items() if a in tests}, ref=ref_id, pos=k)  for ref_id in self.ref_id_list for k,v in self[ref_id].items() ]).fillna(1)
+        # We open the DB rather that calling __getitem__ to avoid 
+        # opening and closing the file for every transcript
+        with shelve.open(self._db_fn, flag = "r") as db:
+            df = pd.DataFrame([dict({a:b for a,b in v.items() if a in tests}, ref=ref_id, pos=k)  for ref_id, rec in db.items() for k,v in rec.items() if ref_id!="__metadata" ]).fillna(1)
 
         if bed_fn:
             bed_annot={}
@@ -118,11 +160,14 @@ class SampCompDB (object):
                 raise NanocomporeError("Can't open BED file")
 
             df['genomicPos'] = df.apply(lambda row: bed_annot[row['ref']].tx2genome(coord=row['pos']),axis=1)
-            df=df[['ref', 'pos', 'genomicPos']+tests]
+            # This is very inefficient. We should get chr and strand only once per transcript, ideally when writing the BED file
+            df['chr'] = df.apply(lambda row: bed_annot[row['ref']].chr,axis=1)
+            df['strand'] = df.apply(lambda row: bed_annot[row['ref']].strand,axis=1)
+            df=df[['ref', 'pos', 'chr', 'strand', 'genomicPos']+tests]
         if adjust:
             for col in tests:
                 df['adjusted_'+col] = multipletests(df[col], method="fdr_bh")[1]
-        return(df)
+        self.results = df
     
 
 
