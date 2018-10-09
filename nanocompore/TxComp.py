@@ -56,6 +56,11 @@ def paired_test (ref_pos_dict, method="mann_whitney", sequence_context=0, min_co
                 ref_pos_dict[mid_pos][lab_median] = combine_pvalues (pval_median_list, method='fisher') [1]
                 ref_pos_dict[mid_pos][lab_dwell] = combine_pvalues (pval_dwell_list, method='fisher') [1]
 
+                if ref_pos_dict[mid_pos][lab_median] == 0:
+                    ref_pos_dict[mid_pos][lab_median] = np.finfo(np.float).min
+                if ref_pos_dict[mid_pos][lab_dwell] == 0:
+                    ref_pos_dict[mid_pos][lab_dwell] = np.finfo(np.float).min
+
             # In case at least one of the adjacent position is missing
             except KeyError:
                 pass
@@ -96,6 +101,8 @@ def kmeans_test(ref_pos_dict, method="kmeans", sequence_context=0, min_coverage=
                 for pos in range(mid_pos-sequence_context, mid_pos+sequence_context+1):
                     pval_list.append(ref_pos_dict[pos]["pvalue_kmeans"])
                 ref_pos_dict[mid_pos][lab] = combine_pvalues(pval_list, method='fisher')[1]
+                if ref_pos_dict[mid_pos][lab] == 0:
+                   ref_pos_dict[mid_pos][lab] = np.finfo(np.float).min
             except KeyError:
                 pass
 
