@@ -3,13 +3,13 @@
 #~~~~~~~~~~~~~~IMPORTS~~~~~~~~~~~~~~#
 # Std lib
 from collections import OrderedDict, namedtuple
-from math import log
 import shelve
+from math import log
 
 # Third party
 from pyfaidx import Fasta
-import numpy as np
 import pandas as pd
+import numpy as np
 import matplotlib.pyplot as pl
 import seaborn as sns
 from bedparse import bedline
@@ -249,13 +249,14 @@ class SampCompDB (object):
             pl.tight_layout()
             return (fig, axes)
 
-    def plot_pvalue (self, ref_id, start=None, end=None, threshold=0.01, figsize=(30,10), palette="Set2", plot_style="ggplot"):
+    def plot_pvalue (self, ref_id, start=None, end=None, adjusted_pvalues=True, threshold=0.01, figsize=(30,10), palette="Set2", plot_style="ggplot"):
         """
         <Plot pvalues per position (by default plot all fields starting by "pvalue")
         It is pointless to plot more than 50 positions at once as it becomes hard to distiguish
         ref_id: Valid reference id name in the database
         start: Start coordinate. Default=0
         end: End coordinate (included). Default=reference length
+        adjusted_pvalues: plot adjusted pvalues. Requires a results slot to be defined.
         figsize: length and heigh of the output plot. Default=(30,10)
         palette: Colormap. Default="Set2"
             see https://matplotlib.org/users/colormaps.html, https://matplotlib.org/examples/color/named_colors.html
@@ -282,16 +283,29 @@ class SampCompDB (object):
 
         # Parse line position per position
         d = OrderedDict ()
-        ref_pos_dict = self [ref_id]
+        if adjusted_pvalues:
+            try:
+                ref_pos_dict = self.results.query('ref==@ref_id').set_index('pos').to_dict('index')
+                pvalue_selector="adjusted_"
+            except NameError:
+                raise NanocomporeError("In order to plot adjusted pvalues you have to call the results() function first")
+        else:
+                ref_pos_dict = self[ref_id]
+                pvalue_selector="pvalue_"
+
         for pos in range (start, end+1):
             # Collect results for position
             res_dict = OrderedDict ()
-            #res_dict ["pos"] = pos
             if pos in ref_pos_dict:
                 for k,v in ref_pos_dict[pos].items():
-                    if k.startswith ("pvalue"): # Get every fields starting with "pvalue"
+                    if k.startswith (pvalue_selector): # Get every fields starting with "pvalue"
                         res_dict [k] = v
             d[pos] = res_dict
+
+        # Create x label including the original sequence and its position
+        x_lab = []
+        for pos, base in zip (range (start, end+1), ref_fasta[start:end+1]):
+            x_lab.append ("{}\n{}".format(pos, base))
 
         # Cast collected results to dataframe
         df = pd.DataFrame.from_dict(d, orient="index")
@@ -300,17 +314,19 @@ class SampCompDB (object):
 
         # filling missing values and log transform the data
         df.fillna(1, inplace=True)
-        df = -np.log(df)
+        df = -np.log10(df)
 
         # Define ploting style
         with pl.style.context (plot_style):
             fig, ax = pl.subplots(figsize=figsize)
             _ = sns.lineplot(data=df, palette=palette, ax=ax)
-            _ = ax.axhline (y=-np.log(threshold), color="grey", linestyle=":", label="pvalue={}".format(threshold))
+            _ = ax.axhline (y=-np.log10(threshold), color="grey", linestyle=":", label="pvalue={}".format(threshold))
             _ = ax.legend ()
             _ = ax.set_ylabel ("-log (pvalue)")
             _ = ax.set_xlabel ("Reference position")
             _ = ax.set_title (ref_id)
-
+            if end-start<30:
+                _ = ax.set_xticks(df.index)
+                _ = ax.set_xticklabels(x_lab)
             pl.tight_layout()
             return (fig, ax)
