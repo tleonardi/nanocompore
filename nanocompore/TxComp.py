@@ -13,7 +13,7 @@ from sklearn.cluster import KMeans
 import numpy as np
 
 # Local package
-from nanocompore.common import NanocomporeError
+from nanocompore.common import NanocomporeError, cross_corr_matrix, combine_pvalues_hou
 
 #~~~~~~~~~~~~~~NON PARAMETRIC STATS METHOD~~~~~~~~~~~~~~#
 def paired_test (ref_pos_dict, method="mann_whitney", sequence_context=0, min_coverage=20):
@@ -46,6 +46,18 @@ def paired_test (ref_pos_dict, method="mann_whitney", sequence_context=0, min_co
     if sequence_context:
         lab_median = "pvalue_{}_median_context={}".format(method, sequence_context)
         lab_dwell = "pvalue_{}_dwell_context={}".format(method, sequence_context)
+
+        # Generate weights as a symmetrical armonic series 
+        weights=[]
+        for i in range(-context, context+1):
+            weights.append(1/(abs(i)+1))
+        
+        pvalues_vector_median = np.array([i["pvalue_"+method+"_median"] for i in a[ref_id].values()])
+        cor_mat_median = cross_corr_matrix(pvalues_vector_median, sequence_context)
+        pvalues_vector_dwell = np.array([i["pvalue_"+method+"_dwell"] for i in a[ref_id].values()])
+        cor_mat_dwell = cross_corr_matrix(pvalues_vector_dwell, sequence_context)
+
+
         for mid_pos in ref_pos_dict.keys():
             pval_median_list = []
             pval_dwell_list = []
@@ -53,8 +65,8 @@ def paired_test (ref_pos_dict, method="mann_whitney", sequence_context=0, min_co
                 for pos in range (mid_pos-sequence_context, mid_pos+sequence_context+1):
                     pval_median_list.append (ref_pos_dict[pos]["pvalue_"+method+"_median"])
                     pval_dwell_list.append (ref_pos_dict[pos]["pvalue_"+method+"_dwell"])
-                ref_pos_dict[mid_pos][lab_median] = combine_pvalues (pval_median_list, method='fisher') [1]
-                ref_pos_dict[mid_pos][lab_dwell] = combine_pvalues (pval_dwell_list, method='fisher') [1]
+                ref_pos_dict[mid_pos][lab_median] = combine_pvalues_hou(pval_median_list, weights, cor_mat_median)
+                ref_pos_dict[mid_pos][lab_dwell] = combine_pvalues_hou(pval_dwell_list, weights, cor_mat_dwell)
 
                 if ref_pos_dict[mid_pos][lab_median] == 0:
                     ref_pos_dict[mid_pos][lab_median] = np.finfo(np.float).min
@@ -95,12 +107,21 @@ def kmeans_test(ref_pos_dict, method="kmeans", sequence_context=0, min_coverage=
 
     if sequence_context:
         lab = "pvalue_kmeans_context={}".format(sequence_context)
+
+        # Generate weights as a symmetrical armonic series 
+        weights=[]
+        for i in range(-context, context+1):
+            weights.append(1/(abs(i)+1))
+        
+        pvalues_vector = np.array([i["pvalue_kmeans"] for i in a[ref_id].values()])
+        cor_mat = cross_corr_matrix(pvalues_vector, sequence_context)
+
         for mid_pos in ref_pos_dict.keys():
             pval_list = []
             try:
                 for pos in range(mid_pos-sequence_context, mid_pos+sequence_context+1):
                     pval_list.append(ref_pos_dict[pos]["pvalue_kmeans"])
-                ref_pos_dict[mid_pos][lab] = combine_pvalues(pval_list, method='fisher')[1]
+                ref_pos_dict[mid_pos][lab] = combine_pvalues_hou(pval_list, weights, cor_mat)
                 if ref_pos_dict[mid_pos][lab] == 0:
                    ref_pos_dict[mid_pos][lab] = np.finfo(np.float).min
             except KeyError:
