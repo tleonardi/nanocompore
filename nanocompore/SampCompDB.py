@@ -316,7 +316,7 @@ class SampCompDB (object):
         df.fillna(1, inplace=True)
         df = -np.log10(df)
 
-        # Define ploting style
+        # Define plotting style
         with pl.style.context (plot_style):
             fig, ax = pl.subplots(figsize=figsize)
             _ = sns.lineplot(data=df, palette=palette, ax=ax)

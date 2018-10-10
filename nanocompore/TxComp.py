@@ -49,12 +49,12 @@ def paired_test (ref_pos_dict, method="mann_whitney", sequence_context=0, min_co
 
         # Generate weights as a symmetrical armonic series 
         weights=[]
-        for i in range(-context, context+1):
+        for i in range(-sequence_context, sequence_context+1):
             weights.append(1/(abs(i)+1))
         
-        pvalues_vector_median = np.array([i["pvalue_"+method+"_median"] for i in a[ref_id].values()])
+        pvalues_vector_median = np.array([i["pvalue_"+method+"_median"] for i in ref_pos_dict.values()])
         cor_mat_median = cross_corr_matrix(pvalues_vector_median, sequence_context)
-        pvalues_vector_dwell = np.array([i["pvalue_"+method+"_dwell"] for i in a[ref_id].values()])
+        pvalues_vector_dwell = np.array([i["pvalue_"+method+"_dwell"] for i in ref_pos_dict.values()])
         cor_mat_dwell = cross_corr_matrix(pvalues_vector_dwell, sequence_context)
 
 
@@ -110,10 +110,10 @@ def kmeans_test(ref_pos_dict, method="kmeans", sequence_context=0, min_coverage=
 
         # Generate weights as a symmetrical armonic series 
         weights=[]
-        for i in range(-context, context+1):
+        for i in range(-sequence_context, sequence_context+1):
             weights.append(1/(abs(i)+1))
         
-        pvalues_vector = np.array([i["pvalue_kmeans"] for i in a[ref_id].values()])
+        pvalues_vector = np.array([i["pvalue_kmeans"] for i in ref_pos_dict.values()])
         cor_mat = cross_corr_matrix(pvalues_vector, sequence_context)
 
         for mid_pos in ref_pos_dict.keys():

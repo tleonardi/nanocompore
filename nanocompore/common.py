@@ -5,6 +5,10 @@
 import os
 from tqdm import tqdm, tqdm_notebook
 
+import numpy as np
+from scipy.stats import chi2 as chi2
+
+
 #~~~~~~~~~~~~~~CUSTOM EXCEPTION CLASS~~~~~~~~~~~~~~#
 class NanocomporeError (Exception):
     """ Basic exception class for nanocompore module """
@@ -34,6 +38,22 @@ def counter_to_str (c):
         m += "\t{}: {:,}".format(i, j)
     return m
 
+def cross_corr_matrix(pvalues_vector, context=2):
+    """Calculate the cross correlation matrix of the 
+        pvalues for a given context.
+    """
+    matrix=[]
+    s=pvalues_vector.size
+    if all(p==1 for p in pvalues_vector):
+        return(np.ones((s,s)))
+
+    for i in range(-context,context+1):
+        row=[]
+        for j in range(-context,context+1):
+            row.append(np.corrcoef((np.roll(pvalues_vector,i)[context:s-context]), (np.roll(pvalues_vector,j)[context:s-context]))[0][1])
+        matrix.append(row)
+    return(np.array(matrix))
+
 def combine_pvalues_hou(pvalues, weights, cor_mat):
     """ Hou's method for the approximation for the distribution of the weighted
         combination of non-independent or independent probabilities.
@@ -47,6 +67,9 @@ def combine_pvalues_hou(pvalues, weights, cor_mat):
         print(combine_pvalues([0.1,0.02,0.1,0.02,0.3], method='fisher')[1])
         print(hou([0.1,0.02,0.1,0.02,0.3], [1,1,1,1,1], np.zeros((5,5))))
     """
+
+    if all(p==1 for p in pvalues):
+        return 1
     # Covariance estimation as in Kost and McDermott (eq:8)
     # https://doi.org/10.1016/S0167-7152(02)00310-3
     cov = lambda r: (3.263*r)+(0.710*r**2)+(0.027*r**3)
@@ -71,17 +94,4 @@ def combine_pvalues_hou(pvalues, weights, cor_mat):
 
     combined_p = 1-chi2.cdf(tau/c,f)
     return(combined_p)
-
-def cross_corr_matrix(pvalues_vector, context=2):
-    """Calculate the cross correlation matrix of the 
-        pvalues for a given context.
-    """
-    matrix=[]
-    s=pvalues_vector.size
-    for i in range(-context,context+1):
-        row=[]
-        for j in range(-context,context+1):
-            row.append(np.corrcoef((np.roll(pvalues_vector,i)[context:s-context]), (np.roll(pvalues_vector,j)[context:s-context]))[0][1])
-        matrix.append(row)
-    return(np.array(matrix))
 
