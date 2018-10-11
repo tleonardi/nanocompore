@@ -45,7 +45,7 @@ def cross_corr_matrix(pvalues_vector, context=2):
     matrix=[]
     s=pvalues_vector.size
     if all(p==1 for p in pvalues_vector):
-        return(np.ones((s,s)))
+        return(np.ones((context*2+1, context*2+1)))
 
     for i in range(-context,context+1):
         row=[]
