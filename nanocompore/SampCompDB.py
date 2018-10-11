@@ -319,7 +319,7 @@ class SampCompDB (object):
         # Define plotting style
         with pl.style.context (plot_style):
             fig, ax = pl.subplots(figsize=figsize)
-            _ = sns.lineplot(data=df, palette=palette, ax=ax)
+            _ = sns.lineplot(data=df, palette=palette, ax=ax, dashes=False)
             _ = ax.axhline (y=-np.log10(threshold), color="grey", linestyle=":", label="pvalue={}".format(threshold))
             _ = ax.legend ()
             _ = ax.set_ylabel ("-log (pvalue)")
