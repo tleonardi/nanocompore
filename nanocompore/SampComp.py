@@ -1,6 +1,13 @@
 # -*- coding: utf-8 -*-
 
 #~~~~~~~~~~~~~~IMPORTS~~~~~~~~~~~~~~#
+
+# Disable multithreading for MKL and openBlas
+import os
+os.environ["MKL_NUM_THREADS"] = "1" 
+os.environ["MKL_THREADING_LAYER"] = "sequential"
+os.environ["NUMEXPR_NUM_THREADS"] = "1" 
+os.environ["OMP_NUM_THREADS"] = "1" 
 # Std lib
 import logging
 from collections import OrderedDict, namedtuple
@@ -142,17 +149,21 @@ class SampComp (object):
     def __list_refid (self, in_q):
         # Add refid to inqueue to dispatch the data among the workers
         for ref_id in self.__whitelist.ref_id_list:
+            logger.debug("Adding %s to in_q"%ref_id)
             in_q.put (ref_id)
 
         # Add 1 poison pill for each worker thread
         for i in range (self.__nthreads):
+            logger.debug("Adding poison pill to  in_q")
             in_q.put (None)
 
     def __process_references (self, in_q, out_q):
         # Consume ref_id until empty and perform statistical analysis
         required_col_names = ["ref_pos", "ref_kmer", "median", "n_signals"]
+        logger.debug("Worker thread started")
         with open (self.__s1_fn) as s1_fp, open (self.__s2_fn) as s2_fp: # More efficient to open only once the files
             for ref_id in iter (in_q.get, None):
+                logger.debug("Worker thread processing new item from q: %s"%ref_id)
 
                 ref_dict = self.__whitelist[ref_id]
                 ref_pos_dict = OrderedDict ()
@@ -241,9 +252,10 @@ class SampComp (object):
         try: 
             with shelve.open (self.__output_db_fn, flag='n') as db:
                 # Iterate over the counter queue and process items until all poison pills are found
-                pbar = tqdm (total = len(self.__whitelist), unit=" Processed References", disable=self.__logLevel=="warning")
+                pbar = tqdm (total = len(self.__whitelist), unit=" Processed References", disable=self.__logLevel in ("warning", "debug"))
                 for _ in range (self.__nthreads):
                     for ref_id, ref_pos_dict in iter (out_q.get, None):
+                        logger.debug("Writer thread writing %s"%ref_id)
                         # Write results in a shelve db
                         db [ref_id] = ref_pos_dict
                         pbar.update ()
