@@ -4,10 +4,12 @@
 
 # Disable multithreading for MKL and openBlas
 import os
-os.environ["MKL_NUM_THREADS"] = "1" 
+os.environ["MKL_NUM_THREADS"] = "1"
 os.environ["MKL_THREADING_LAYER"] = "sequential"
-os.environ["NUMEXPR_NUM_THREADS"] = "1" 
-os.environ["OMP_NUM_THREADS"] = "1" 
+os.environ["NUMEXPR_NUM_THREADS"] = "1"
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ['OPENBLAS_NUM_THREADS'] = '1'
+
 # Std lib
 import logging
 from collections import OrderedDict, namedtuple
@@ -60,7 +62,8 @@ class SampComp (object):
         fasta_fn: Path to a fasta file corresponding to the reference used for read alignemnt
         whitelist: Whitelist object previously generated with nanocompore Whitelist. If not given, will be generated
         padj_threshold: Adjusted p-value threshold for reporting sites.
-        comparison_method: Statistical method to compare the 2 samples (kmean, mann_whitney, kolmogorov_smirnov, t_test). This can be a comma sperated list
+        comparison_method: Statistical method to compare the 2 samples (kmean, mann_whitney, kolmogorov_smirnov, t_test).
+            This can be a list or a comma separated string
         sequence_context: Extend statistical analysis to contigous adjacent base is available
         nthreads: Number of threads (two are used for reading and writing, all the others for processing in parallel).
         logLevel: Set the log level. Valid values: warning, info, debug
@@ -77,7 +80,8 @@ class SampComp (object):
         if nthreads < 3:
             raise NanocomporeError("Number of threads not valid")
 
-        comparison_method = comparison_method.split(",")
+        if type (comparison_method) == str:
+            comparison_method = comparison_method.split(",")
         allowed_comparison_methods = ["kmean", "mann_whitney", "MW", "kolmogorov_smirnov", "KS","t_test", "TT", None]
         if not all([cm in allowed_comparison_methods for cm in comparison_method]):
             raise NanocomporeError("Invalid comparison method")
@@ -170,7 +174,7 @@ class SampComp (object):
 
                 for interval_start, interval_end in ref_dict["interval_list"]:
                     for i in range (interval_start, interval_end+1):
-                        ref_pos_dict[i] = {"S1_median":[],"S2_median":[],"S1_dwell":[],"S2_dwell":[],"S1_count":0,"S2_count":0}
+                        ref_pos_dict[i] = {"S1_median":[],"S2_median":[],"S1_dwell":[],"S2_dwell":[],"S1_coverage":0,"S2_coverage":0}
 
                 # Parse S1 and S2 reads data and add to mean and dwell time per position
                 for lab, fp in (("S1", s1_fp), ("S2", s2_fp)):
@@ -207,16 +211,19 @@ class SampComp (object):
                                 # Append mean value and dwell time per position
                                 ref_pos_dict[ref_pos][lab+"_median"].append (float(lt.median))
                                 ref_pos_dict[ref_pos][lab+"_dwell"].append (int(lt.n_signals))
-                                ref_pos_dict[ref_pos][lab+"_count"] += 1
+                                ref_pos_dict[ref_pos][lab+"_coverage"] += 1
 
                 # Filter low coverage positions and castlists to numpy array for efficiency
                 ref_pos_dict_filtered = OrderedDict ()
                 for pos, pos_dict in ref_pos_dict.items():
-                    if pos_dict["S1_count"] >= self.__min_coverage and pos_dict["S2_count"] >= self.__min_coverage:
-                        pos_dict_filtered = OrderedDict ()
-                        for field in ["S1_median", "S2_median", "S1_dwell", "S2_dwell"]:
-                            pos_dict_filtered[field] = np.array (pos_dict[field])
-                        ref_pos_dict_filtered[pos] = pos_dict_filtered
+                    if pos_dict["S1_coverage"] >= self.__min_coverage and pos_dict["S2_coverage"] >= self.__min_coverage:
+                        ref_pos_dict_filtered[pos] = {
+                            "S1_median":np.array (pos_dict["S1_median"]),
+                            "S2_median":np.array (pos_dict["S2_median"]),
+                            "S1_dwell":np.array (pos_dict["S1_dwell"]),
+                            "S2_dwell":np.array (pos_dict["S2_dwell"]),
+                            "S1_coverage":pos_dict["S1_coverage"],
+                            "S2_coverage":pos_dict["S2_coverage"]}
                 ref_pos_dict = ref_pos_dict_filtered
 
                 # Perform stat if there are still data in dict after position level coverage filtering
@@ -246,10 +253,8 @@ class SampComp (object):
         out_q.put (None)
 
     def __write_output (self, out_q):
-        #################################################################################################################### If a pvalue correction as to be done it should be here
-        #################################################################################################################### But it might require to buffer everything in memory instead...
         # Get results out of the out queue and write in shelve
-        try: 
+        try:
             with shelve.open (self.__output_db_fn, flag='n') as db:
                 # Iterate over the counter queue and process items until all poison pills are found
                 pbar = tqdm (total = len(self.__whitelist), unit=" Processed References", disable=self.__logLevel in ("warning", "debug"))
