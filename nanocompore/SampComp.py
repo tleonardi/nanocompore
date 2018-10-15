@@ -1,6 +1,13 @@
 # -*- coding: utf-8 -*-
 
 #~~~~~~~~~~~~~~IMPORTS~~~~~~~~~~~~~~#
+
+# Disable multithreading for MKL and openBlas
+import os
+os.environ["MKL_NUM_THREADS"] = "1" 
+os.environ["MKL_THREADING_LAYER"] = "sequential"
+os.environ["NUMEXPR_NUM_THREADS"] = "1" 
+os.environ["OMP_NUM_THREADS"] = "1" 
 # Std lib
 import logging
 from collections import OrderedDict, namedtuple
@@ -15,6 +22,7 @@ import numpy as np
 from nanocompore.common import counter_to_str, access_file, NanocomporeError
 from nanocompore.Whitelist import Whitelist
 from nanocompore.TxComp import paired_test
+from nanocompore.TxComp import kmeans_test
 from nanocompore.SampCompDB import SampCompDB
 
 # Logger setup
@@ -52,7 +60,7 @@ class SampComp (object):
         fasta_fn: Path to a fasta file corresponding to the reference used for read alignemnt
         whitelist: Whitelist object previously generated with nanocompore Whitelist. If not given, will be generated
         padj_threshold: Adjusted p-value threshold for reporting sites.
-        comparison_method: Statistical method to compare the 2 samples (kmean, mann_whitney, kolmogorov_smirnov, t_test)
+        comparison_method: Statistical method to compare the 2 samples (kmean, mann_whitney, kolmogorov_smirnov, t_test). This can be a comma sperated list
         sequence_context: Extend statistical analysis to contigous adjacent base is available
         nthreads: Number of threads (two are used for reading and writing, all the others for processing in parallel).
         logLevel: Set the log level. Valid values: warning, info, debug
@@ -69,7 +77,9 @@ class SampComp (object):
         if nthreads < 3:
             raise NanocomporeError("Number of threads not valid")
 
-        if not comparison_method in ["kmean", "mann_whitney", "MW", "kolmogorov_smirnov", "KS","t_test", "TT", None]:
+        comparison_method = comparison_method.split(",")
+        allowed_comparison_methods = ["kmean", "mann_whitney", "MW", "kolmogorov_smirnov", "KS","t_test", "TT", None]
+        if not all([cm in allowed_comparison_methods for cm in comparison_method]):
             raise NanocomporeError("Invalid comparison method")
 
         if whitelist:
@@ -94,7 +104,7 @@ class SampComp (object):
         self.__fasta_fn = fasta_fn
         self.__whitelist = whitelist
         self.__padj_threshold = padj_threshold
-        self.__comparison_method = comparison_method
+        self.__comparison_methods = comparison_method
         self.__sequence_context = sequence_context
         self.__min_coverage = min_coverage
         self.__downsample_high_coverage = downsample_high_coverage
@@ -139,17 +149,21 @@ class SampComp (object):
     def __list_refid (self, in_q):
         # Add refid to inqueue to dispatch the data among the workers
         for ref_id in self.__whitelist.ref_id_list:
+            logger.debug("Adding %s to in_q"%ref_id)
             in_q.put (ref_id)
 
         # Add 1 poison pill for each worker thread
         for i in range (self.__nthreads):
+            logger.debug("Adding poison pill to  in_q")
             in_q.put (None)
 
     def __process_references (self, in_q, out_q):
-        # Consumme ref_id until empty and perform statiscical analysis
-
+        # Consume ref_id until empty and perform statistical analysis
+        required_col_names = ["ref_pos", "ref_kmer", "median", "n_signals"]
+        logger.debug("Worker thread started")
         with open (self.__s1_fn) as s1_fp, open (self.__s2_fn) as s2_fp: # More efficient to open only once the files
             for ref_id in iter (in_q.get, None):
+                logger.debug("Worker thread processing new item from q: %s"%ref_id)
 
                 ref_dict = self.__whitelist[ref_id]
                 ref_pos_dict = OrderedDict ()
@@ -175,6 +189,8 @@ class SampComp (object):
                         # Extract col names from second line
                         col_names = line_list[1].split("\t")
                         line_tuple = namedtuple ("line_tuple", col_names)
+                        if not all([field in col_names for field in required_col_names]):
+                            raise NanocomporeError("Missing field in Eventalign_collapse file")
 
                         # Parse data files kmers per kmers
                         for line in line_list[2:]:
@@ -205,20 +221,25 @@ class SampComp (object):
 
                 # Perform stat if there are still data in dict after position level coverage filtering
                 if ref_pos_dict:
+                    for comp_met in self.__comparison_methods:
 
-                    # Conventional statistics
-                    if self.__comparison_method in ["mann_whitney", "MW", "kolmogorov_smirnov", "KS","t_test", "TT"]:
-                        ref_pos_dict = paired_test (
-                            ref_pos_dict=ref_pos_dict,
-                            method=self.__comparison_method,
-                            sequence_context=self.__sequence_context,
-                            min_coverage=self.__min_coverage)
+                        # Conventional statistics
+                        if comp_met in ["mann_whitney", "MW", "kolmogorov_smirnov", "KS","t_test", "TT"]:
+                            ref_pos_dict = paired_test (
+                                ref_pos_dict=ref_pos_dict,
+                                method=comp_met,
+                                sequence_context=self.__sequence_context,
+                                min_coverage=self.__min_coverage)
 
-                    # kmean stat
-                    elif self.__comparison_method == "kmean":
-                        pass
+                        # kmeans test
+                        elif comp_met == "kmean":
+                            ref_pos_dict = kmeans_test(
+                                ref_pos_dict=ref_pos_dict,
+                                method=comp_met,
+                                sequence_context=self.__sequence_context,
+                                min_coverage=self.__min_coverage)
 
-                    # Add the current read details to queue
+                        # Add the current read details to queue
                     out_q.put ((ref_id, ref_pos_dict))
 
         # Add a poison pill in queues and say goodbye!
@@ -228,12 +249,17 @@ class SampComp (object):
         #################################################################################################################### If a pvalue correction as to be done it should be here
         #################################################################################################################### But it might require to buffer everything in memory instead...
         # Get results out of the out queue and write in shelve
-        with shelve.open (self.__output_db_fn, flag='n') as db:
-            # Iterate over the counter queue and process items until all poison pills are found
-            pbar = tqdm (total = len(self.__whitelist), unit=" Processed References", disable=self.__logLevel=="warning")
-            for _ in range (self.__nthreads):
-                for ref_id, ref_pos_dict in iter (out_q.get, None):
-                    # Write results in a shelve db
-                    db [ref_id] = ref_pos_dict
-                    pbar.update ()
-            pbar.close()
+        try: 
+            with shelve.open (self.__output_db_fn, flag='n') as db:
+                # Iterate over the counter queue and process items until all poison pills are found
+                pbar = tqdm (total = len(self.__whitelist), unit=" Processed References", disable=self.__logLevel in ("warning", "debug"))
+                for _ in range (self.__nthreads):
+                    for ref_id, ref_pos_dict in iter (out_q.get, None):
+                        logger.debug("Writer thread writing %s"%ref_id)
+                        # Write results in a shelve db
+                        db [ref_id] = ref_pos_dict
+                        pbar.update ()
+                pbar.close()
+                db["__metadata"] = {"comparison_method":self.__comparison_methods, "sequence_context": self.__sequence_context}
+        except IOError:
+            raise NanocomporeError("Error writing to output db")

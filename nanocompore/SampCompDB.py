@@ -4,13 +4,16 @@
 # Std lib
 from collections import OrderedDict, namedtuple
 import shelve
+from math import log
 
 # Third party
 from pyfaidx import Fasta
-import numpy as np
 import pandas as pd
+import numpy as np
 import matplotlib.pyplot as pl
 import seaborn as sns
+from bedparse import bedline
+from statsmodels.stats.multitest import multipletests
 
 # Local package
 from nanocompore.common import counter_to_str, access_file, NanocomporeError
@@ -36,6 +39,13 @@ class SampCompDB (object):
         try:
             with shelve.open (db_fn, flag='r') as db:
                 self.ref_id_list = list (db.keys())
+                try: 
+                    metadata = db['__metadata']
+                except KeyError:
+                    raise NanocomporeError("The result database does not contain metadata")
+                self._comparison_method=metadata['comparison_method']
+                self._sequence_context=metadata['sequence_context']
+                self.ref_id_list.remove('__metadata')
                 if not self.ref_id_list:
                     raise NanocomporeError("The result database is empty")
                 self._db_fn = db_fn
@@ -71,11 +81,95 @@ class SampCompDB (object):
     #~~~~~~~~~~~~~~PUBLIC METHODS~~~~~~~~~~~~~~#
 
     ################################### TO DO ##################################
-    def to_bed (self, output_fn):
-        pass
+    def save_to_bed (self, output_fn, bedgraph=False, pvalue_field=None, pvalue_thr=0.01, sequence_context=0, convert=None, assembly=None):
+        """Saves the results object to BED6 format.
+            bedgraph: save file in bedgraph format instead of bed
+            pvalue_field: specifies what column to use as BED score (field 5, as -log10)
+            pvalue_thr: only report positions with pvalue<=thr
+            sequence_context: produce BED files for the given context
+            convert: one of 'ensembl_to_ucsc' or 'ucsc_to_ensembl". Convert chromosome named between Ensembl and Ucsc conventions
+            assembly: required if convert is used. One of "hg38" or "mm10"
+        """
+        if sequence_context != 0:
+            pvalue_field=pvalue_field+"_context="+str(sequence_context)
+        if pvalue_field not in self.results:
+            raise NanocomporeError(("The field '%s' is not in the results" % pvalue_field))
+        if "results" not in self.__dict__:
+            raise NanocomporeError("Run calculate_results() before trying to save to bed")
+        if convert not in [None, "ensembl_to_ucsc", "ucsc_to_ensembl"]:
+            raise NanocomporeError("Convert value not valid")
+        if convert is not None and assembly is None:
+            raise NanocomporeError("The assembly argument is required in order to do the conversion. Choose one of 'hg38' or 'mm10' ")
 
-    def to_some_other_kind_of_text_output (self, output_fn):
-        pass
+        with open(output_fn, "w") as bed_file:
+            for record in self.results[['chr', 'genomicPos', 'ref','strand']+[pvalue_field]].values.tolist():
+                if not bedgraph and record[-1]<=pvalue_thr:
+                    line=bedline([record[0], record[1], record[1]+sequence_context+1, record[2], -log(record[-1], 10), record[3]])
+                    if convert is "ensembl_to_ucsc":
+                        line=line.translateChr(assembly=assembly, target="ucsc", patches=True)
+                    elif convert is "ucsc_to_ensembl":
+                        line=line.translateChr(assembly=assembly, target="ens", patches=True)
+                    bed_file.write("%s %s %s %s %s %s\n" % (line.chr, line.start, line.end, line.name, line.score, line.strand))
+                elif bedgraph:
+                    line=bedline([record[0], record[1], record[1]+sequence_context+1, record[2], -log(record[-1], 10), record[3]])
+                    if convert is "ensembl_to_ucsc":
+                        line=line.translateChr(assembly=assembly, target="ucsc", patches=True)
+                    elif convert is "ucsc_to_ensembl":
+                        line=line.translateChr(assembly=assembly, target="ens", patches=True)
+                    bed_file.write("%s %s %s %s\n" % (line.chr, line.start, line.end, line.score))
+
+
+
+    def calculate_results(self, bed_fn=None, adjust=True, methods=None):
+        # Compose a lists with the name of the results
+        tests=[]
+        if methods is None:
+            methods = self._comparison_method
+        for method in methods:
+            if method in ["mann_whitney", "MW"]:
+                tests.append("pvalue_mann_whitney_median")
+                tests.append("pvalue_mann_whitney_dwell")
+            elif method in ["kolmogorov_smirnov", "KS"]:
+                tests.append("pvalue_kolmogorov_smirnov_median")
+                tests.append("pvalue_kolmogorov_smirnov_dwell")
+            elif method in ["t_test", "TT"]:
+                tests.append("pvalue_t_test_median")
+                tests.append("pvalue_t_test_dwell")
+            elif method in ["kmean"]:
+                tests.append("pvalue_kmeans")
+        if self._sequence_context:
+            c=str(self._sequence_context)
+            tests+=[t+"_context="+c for t in tests]
+
+        # We open the DB rather that calling __getitem__ to avoid 
+        # opening and closing the file for every transcript
+        with shelve.open(self._db_fn, flag = "r") as db:
+            df = pd.DataFrame([dict({a:b for a,b in v.items() if a in tests}, ref=ref_id, pos=k)  for ref_id, rec in db.items() for k,v in rec.items() if ref_id!="__metadata" ]).fillna(1)
+
+        if bed_fn:
+            bed_annot={}
+            try:
+                with open(bed_fn) as tsvfile:
+                    for line in tsvfile:
+                        record_name=line.split('\t')[3]
+                        if( record_name in self.ref_id_list):
+                            bed_annot[record_name]=bedline(line.split('\t'))
+                if len(bed_annot) != len(self.ref_id_list):
+                    raise NanocomporeError("Some references are missing from the BED file provided")
+            except:
+                raise NanocomporeError("Can't open BED file")
+
+            df['genomicPos'] = df.apply(lambda row: bed_annot[row['ref']].tx2genome(coord=row['pos']),axis=1)
+            # This is very inefficient. We should get chr and strand only once per transcript, ideally when writing the BED file
+            df['chr'] = df.apply(lambda row: bed_annot[row['ref']].chr,axis=1)
+            df['strand'] = df.apply(lambda row: bed_annot[row['ref']].strand,axis=1)
+            df=df[['ref', 'pos', 'chr', 'strand', 'genomicPos']+tests]
+        if adjust:
+            for col in tests:
+                df['adjusted_'+col] = multipletests(df[col], method="fdr_bh")[1]
+        self.results = df
+    
+
 
     def list_most_significant_positions (self, n=10):
         pass
@@ -155,13 +249,14 @@ class SampCompDB (object):
             pl.tight_layout()
             return (fig, axes)
 
-    def plot_pvalue (self, ref_id, start=None, end=None, threshold=0.01, figsize=(30,10), palette="Set2", plot_style="ggplot"):
+    def plot_pvalue (self, ref_id, start=None, end=None, adjusted_pvalues=True, threshold=0.01, figsize=(30,10), palette="Set2", plot_style="ggplot"):
         """
-        Plot pvalues per position (by default plot all fields starting by "pvalue")
+        <Plot pvalues per position (by default plot all fields starting by "pvalue")
         It is pointless to plot more than 50 positions at once as it becomes hard to distiguish
         ref_id: Valid reference id name in the database
         start: Start coordinate. Default=0
         end: End coordinate (included). Default=reference length
+        adjusted_pvalues: plot adjusted pvalues. Requires a results slot to be defined.
         figsize: length and heigh of the output plot. Default=(30,10)
         palette: Colormap. Default="Set2"
             see https://matplotlib.org/users/colormaps.html, https://matplotlib.org/examples/color/named_colors.html
@@ -188,16 +283,29 @@ class SampCompDB (object):
 
         # Parse line position per position
         d = OrderedDict ()
-        ref_pos_dict = self [ref_id]
+        if adjusted_pvalues:
+            try:
+                ref_pos_dict = self.results.query('ref==@ref_id').set_index('pos').to_dict('index')
+                pvalue_selector="adjusted_"
+            except NameError:
+                raise NanocomporeError("In order to plot adjusted pvalues you have to call the results() function first")
+        else:
+                ref_pos_dict = self[ref_id]
+                pvalue_selector="pvalue_"
+
         for pos in range (start, end+1):
             # Collect results for position
             res_dict = OrderedDict ()
-            #res_dict ["pos"] = pos
             if pos in ref_pos_dict:
                 for k,v in ref_pos_dict[pos].items():
-                    if k.startswith ("pvalue"): # Get every fields starting with "pvalue"
+                    if k.startswith (pvalue_selector): # Get every fields starting with "pvalue"
                         res_dict [k] = v
             d[pos] = res_dict
+
+        # Create x label including the original sequence and its position
+        x_lab = []
+        for pos, base in zip (range (start, end+1), ref_fasta[start:end+1]):
+            x_lab.append ("{}\n{}".format(pos, base))
 
         # Cast collected results to dataframe
         df = pd.DataFrame.from_dict(d, orient="index")
@@ -206,17 +314,19 @@ class SampCompDB (object):
 
         # filling missing values and log transform the data
         df.fillna(1, inplace=True)
-        df = -np.log(df)
+        df = -np.log10(df)
 
-        # Define ploting style
+        # Define plotting style
         with pl.style.context (plot_style):
             fig, ax = pl.subplots(figsize=figsize)
-            _ = sns.lineplot(data=df, palette=palette, ax=ax)
-            _ = ax.axhline (y=-np.log(threshold), color="grey", linestyle=":", label="pvalue={}".format(threshold))
+            _ = sns.lineplot(data=df, palette=palette, ax=ax, dashes=False)
+            _ = ax.axhline (y=-np.log10(threshold), color="grey", linestyle=":", label="pvalue={}".format(threshold))
             _ = ax.legend ()
             _ = ax.set_ylabel ("-log (pvalue)")
             _ = ax.set_xlabel ("Reference position")
             _ = ax.set_title (ref_id)
-
+            if end-start<30:
+                _ = ax.set_xticks(df.index)
+                _ = ax.set_xticklabels(x_lab)
             pl.tight_layout()
             return (fig, ax)
