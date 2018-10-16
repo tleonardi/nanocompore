@@ -81,7 +81,7 @@ class SampCompDB (object):
     #~~~~~~~~~~~~~~PUBLIC METHODS~~~~~~~~~~~~~~#
 
     ################################### TO DO ##################################
-    def save_to_bed (self, output_fn, bedgraph=False, pvalue_field=None, pvalue_thr=0.01, sequence_context=0, convert=None, assembly=None):
+    def save_to_bed (self, output_fn, bedgraph=False, pvalue_field=None, pvalue_thr=0.01, sequence_context=0, convert=None, assembly=None, title=None):
         """Saves the results object to BED6 format.
             bedgraph: save file in bedgraph format instead of bed
             pvalue_field: specifies what column to use as BED score (field 5, as -log10)
@@ -102,6 +102,11 @@ class SampCompDB (object):
             raise NanocomporeError("The assembly argument is required in order to do the conversion. Choose one of 'hg38' or 'mm10' ")
 
         with open(output_fn, "w") as bed_file:
+            if title is not None:
+                if not bedgraph:
+                    bed_file.write('track type=bed name="%s" description="%s"\n'%(title,title))
+                else:
+                    bed_file.write('track type=bedGraph name="%s" description="%s"\n'%(title,title))
             for record in self.results[['chr', 'genomicPos', 'ref','strand']+[pvalue_field]].values.tolist():
                 if not bedgraph and record[-1]<=pvalue_thr:
                     line=bedline([record[0], record[1], record[1]+sequence_context+1, record[2], -log(record[-1], 10), record[3]])
@@ -109,14 +114,14 @@ class SampCompDB (object):
                         line=line.translateChr(assembly=assembly, target="ucsc", patches=True)
                     elif convert is "ucsc_to_ensembl":
                         line=line.translateChr(assembly=assembly, target="ens", patches=True)
-                    bed_file.write("%s %s %s %s %s %s\n" % (line.chr, line.start, line.end, line.name, line.score, line.strand))
+                    bed_file.write("%s\t%s\t%s\t%s\t%s\t%s\n" % (line.chr, line.start, line.end, line.name, line.score, line.strand))
                 elif bedgraph:
                     line=bedline([record[0], record[1], record[1]+sequence_context+1, record[2], -log(record[-1], 10), record[3]])
                     if convert is "ensembl_to_ucsc":
                         line=line.translateChr(assembly=assembly, target="ucsc", patches=True)
                     elif convert is "ucsc_to_ensembl":
                         line=line.translateChr(assembly=assembly, target="ens", patches=True)
-                    bed_file.write("%s %s %s %s\n" % (line.chr, line.start, line.end, line.score))
+                    bed_file.write("%s\t%s\t%s\t%s\n" % (line.chr, line.start, line.end, line.score))
 
 
 
