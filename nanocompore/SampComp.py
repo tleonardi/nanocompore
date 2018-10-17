@@ -25,6 +25,7 @@ from nanocompore.common import counter_to_str, access_file, NanocomporeError
 from nanocompore.Whitelist import Whitelist
 from nanocompore.TxComp import paired_test
 from nanocompore.TxComp import kmeans_test
+from nanocompore.TxComp import gmm_test
 from nanocompore.SampCompDB import SampCompDB
 
 # Logger setup
@@ -62,7 +63,7 @@ class SampComp (object):
         fasta_fn: Path to a fasta file corresponding to the reference used for read alignemnt
         whitelist: Whitelist object previously generated with nanocompore Whitelist. If not given, will be generated
         padj_threshold: Adjusted p-value threshold for reporting sites.
-        comparison_method: Statistical method to compare the 2 samples (kmean, mann_whitney, kolmogorov_smirnov, t_test).
+        comparison_method: Statistical method to compare the 2 samples (kmean, mann_whitney, kolmogorov_smirnov, t_test, gmm).
             This can be a list or a comma separated string
         sequence_context: Extend statistical analysis to contigous adjacent base is available
         nthreads: Number of threads (two are used for reading and writing, all the others for processing in parallel).
@@ -82,7 +83,7 @@ class SampComp (object):
 
         if type (comparison_method) == str:
             comparison_method = comparison_method.split(",")
-        allowed_comparison_methods = ["kmean", "mann_whitney", "MW", "kolmogorov_smirnov", "KS","t_test", "TT", None]
+        allowed_comparison_methods = ["kmean", "mann_whitney", "MW", "kolmogorov_smirnov", "KS","t_test", "TT", "GMM", None]
         if not all([cm in allowed_comparison_methods for cm in comparison_method]):
             raise NanocomporeError("Invalid comparison method")
 
@@ -253,6 +254,13 @@ class SampComp (object):
                                 sequence_context=self.__sequence_context,
                                 min_coverage=self.__min_coverage)
 
+                        # GMM test
+                        elif comp_met == "GMM":
+                            ref_pos_dict = gmm_test(
+                                ref_pos_dict=ref_pos_dict,
+                                method=comp_met,
+                                sequence_context=self.__sequence_context,
+                                min_coverage=self.__min_coverage)
                         # Add the current read details to queue
                     out_q.put ((ref_id, ref_pos_dict))
 

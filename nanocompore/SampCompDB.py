@@ -142,6 +142,8 @@ class SampCompDB (object):
                 tests.append("pvalue_t_test_dwell")
             elif method in ["kmean"]:
                 tests.append("pvalue_kmeans")
+            elif method in ["GMM"]:
+                tests.append("pvalue_gmm")
         if self._sequence_context:
             c=str(self._sequence_context)
             tests+=[t+"_context="+c for t in tests]
