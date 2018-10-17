@@ -325,8 +325,8 @@ class SampCompDB (object):
         # Create x label including the original sequence and its position
         x_ticks_labels = []
         means = []
-        for i in range (start, end+1):
-            kmer = ref_fasta[i:i+5].seq
+        for pos in range (start, end+1):
+            kmer = ref_fasta[pos:pos+5].seq
             x_ticks_labels.append ("{}\n{}".format(pos, kmer))
             if feature == "mean_intensity":
                 means.append (self._model_dict[kmer][0])
