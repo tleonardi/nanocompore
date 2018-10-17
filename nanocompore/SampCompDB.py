@@ -5,6 +5,7 @@
 from collections import OrderedDict, namedtuple
 import shelve
 from math import log
+import re
 
 # Third party
 from pyfaidx import Fasta
@@ -185,14 +186,13 @@ class SampCompDB (object):
 
     #~~~~~~~~~~~~~~PLOTING METHODS~~~~~~~~~~~~~~#
 
-    def plot_pvalue (self, ref_id, start=None, end=None, adjusted_pvalues=True, threshold=0.01, figsize=(30,10), palette="Set2", plot_style="ggplot"):
+    def plot_pvalue (self, ref_id, start=None, end=None, threshold=0.01, figsize=(30,10), palette="Set2", plot_style="ggplot", method=None):
         """
         Plot pvalues per position (by default plot all fields starting by "pvalue")
         It is pointless to plot more than 50 positions at once as it becomes hard to distiguish
         ref_id: Valid reference id name in the database
         start: Start coordinate. Default=0
         end: End coordinate (included). Default=reference length
-        adjusted_pvalues: plot adjusted pvalues. Requires a results slot to be defined.
         figsize: length and heigh of the output plot. Default=(30,10)
         palette: Colormap. Default="Set2"
             see https://matplotlib.org/users/colormaps.html, https://matplotlib.org/examples/color/named_colors.html
@@ -202,7 +202,7 @@ class SampCompDB (object):
         try:
             ref_fasta = self._fasta [ref_id]
         except KeyError:
-            raise NanocomporeError ("Reference id not present in result database")
+            raise NanocomporeError("Reference id not present in result database")
 
         # Define start, end if not given
         if not start:
@@ -211,30 +211,43 @@ class SampCompDB (object):
             end = len (ref_fasta)
         # Check start end
         if start > end:
-            raise NanocomporeError ("End coordinate has to be higher or equal to start")
+            raise NanocomporeError("End coordinate has to be higher or equal to start")
         if start < 0:
-            raise NanocomporeError ("Coordinates have to be higher that 0")
+            raise NanocomporeError("Coordinates have to be higher that 0")
         if end > len(ref_fasta):
-            raise NanocomporeError ("Coordinates have to be lower than the ref_id sequence length ({})".format(len(ref_fasta)))
+            raise NanocomporeError("Coordinates have to be lower than the ref_id sequence length ({})".format(len(ref_fasta)))
+
+        try:
+            ref_pos_dict = self.results.query('ref==@ref_id').set_index('pos').to_dict('index')
+        except NameError:
+            raise NanocomporeError("In order to plot adjusted pvalues you have to call the calculate_results() function first")
+
+        # Make a list with all methods available
+        methods=list(self.results)
+
+        # If method not provided, set it to a default regex
+        if method is None:
+            method="adjusted_pvalue*"
+        # Parse the method as regex if string
+        if isinstance(method, str):
+            r = re.compile(method)
+            method = list(filter(r.match, methods))
+        elif not isinstance(method, list):
+            raise NanocomporeError("Method must be either a string or a list")
+        
+        for m in method:
+            if m not in methods:
+                raise NanocomporeError("Method %s is not the results dataframe"%m)
 
         # Parse line position per position
         d = OrderedDict ()
-        if adjusted_pvalues:
-            try:
-                ref_pos_dict = self.results.query('ref==@ref_id').set_index('pos').to_dict('index')
-                pvalue_selector="adjusted_"
-            except NameError:
-                raise NanocomporeError("In order to plot adjusted pvalues you have to call the results() function first")
-        else:
-                ref_pos_dict = self[ref_id]
-                pvalue_selector="pvalue_"
 
         for pos in range (start, end+1):
             # Collect results for position
             res_dict = OrderedDict ()
             if pos in ref_pos_dict:
                 for k,v in ref_pos_dict[pos].items():
-                    if k.startswith (pvalue_selector): # Get every fields starting with "pvalue"
+                    if k in method:
                         res_dict [k] = v
             d[pos] = res_dict
 
