@@ -89,6 +89,12 @@ class SampComp (object):
         if whitelist:
             if not isinstance (whitelist, Whitelist):
                 raise NanocomporeError("Whitelist is not valid")
+            # Set private args from whitelist args
+            self.__min_coverage = whitelist._Whitelist__min_coverage
+            self.__downsample_high_coverage = whitelist._Whitelist__downsample_high_coverage
+            self.__max_NNNNN_freq = whitelist._Whitelist__max_NNNNN_freq
+            self.__max_mismatching_freq = whitelist._Whitelist__max_mismatching_freq
+            self.__max_missing_freq = whitelist._Whitelist__max_missing_freq
         else:
             whitelist = Whitelist (
                 s1_index_fn = s1_fn+".idx",
@@ -100,6 +106,12 @@ class SampComp (object):
                 max_mismatching_freq = max_mismatching_freq,
                 max_missing_freq = max_missing_freq,
                 logLevel = logLevel)
+                # Set private args
+            self.__min_coverage = min_coverage
+            self.__downsample_high_coverage = downsample_high_coverage
+            self.__max_NNNNN_freq = max_NNNNN_freq
+            self.__max_mismatching_freq = max_mismatching_freq
+            self.__max_missing_freq = max_missing_freq
 
         # Save private args
         self.__s1_fn = s1_fn
@@ -110,11 +122,6 @@ class SampComp (object):
         self.__padj_threshold = padj_threshold
         self.__comparison_methods = comparison_method
         self.__sequence_context = sequence_context
-        self.__min_coverage = min_coverage
-        self.__downsample_high_coverage = downsample_high_coverage
-        self.__max_NNNNN_freq = max_NNNNN_freq
-        self.__max_mismatching_freq = max_mismatching_freq
-        self.__max_missing_freq = max_missing_freq
         self.__nthreads = nthreads - 2
         self.__logLevel = logLevel
 
