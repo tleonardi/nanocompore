@@ -17,13 +17,14 @@ from statsmodels.stats.multitest import multipletests
 
 # Local package
 from nanocompore.common import counter_to_str, access_file, NanocomporeError
+from nanocompore import models
 
 #~~~~~~~~~~~~~~MAIN CLASS~~~~~~~~~~~~~~#
 class SampCompDB (object):
     """ Wrapper over the result shelve SampComp """
 
     #~~~~~~~~~~~~~~FUNDAMENTAL METHODS~~~~~~~~~~~~~~#
-    def __init__(self, db_fn, fasta_fn):
+    def __init__(self, db_fn, fasta_fn, run_type="RNA"):
         """
         Import a shelve db and a fasta reference file. Automatically returned by SampComp
         Can also be manually created from an existing shelve db output
@@ -54,6 +55,11 @@ class SampCompDB (object):
         except:
             raise NanocomporeError("The result database cannot be opened")
         self._db_fn = db_fn
+
+        if run_type == "RNA":
+            self._model_dict = models.RNA_model_dict
+        else:
+            raise NanocomporeError ("Only RNA is implemented at the moment")
 
         # Try to open Fasta file
         try:
@@ -266,67 +272,85 @@ class SampCompDB (object):
             pl.tight_layout()
             return (fig, ax)
 
-    def plot_signal (self, ref_id, start=None, end=None, figsize=(30,10), colors=["dodgerblue", "salmon"], plot_style="ggplot"):
+    def plot_signal (self, ref_id, start=None, end=None, feature="mean_intensity", figsize=(30,7), colors=["dodgerblue", "salmon"], plot_style="ggplot", bw=0.25):
         """
         Plot the dwell time and median intensity distribution position per positon in a split violin plot representation.
         It is pointless to plot more than 50 positions at once as it becomes hard to distiguish
         ref_id: Valid reference id name in the database
         start: Start coordinate (Must be higher or equal to 0)
         end: End coordinate (included) (must be lower or equal to the reference length)
+        feature: Choose between "mean_intensity" and "dwell_time"
         figsize: length and heigh of the output plot. Default=(30,10)
         palette: Colormap. Default="Set2"
             see https://matplotlib.org/users/colormaps.html, https://matplotlib.org/examples/color/named_colors.html
         plot_style: Matplotlib plotting style
             . See https://matplotlib.org/users/style_sheets.html
+        bw: Scale factor to use when computing the kernel bandwidth
         """
 
         # Get data
         ref_data, ref_fasta, start, end = self.__get_plot_data (ref_id, start, end)
 
         # Parse line position per position
-        lt = namedtuple ("lt", ["pos", "sample", "median", "dwell"])
         l = []
         valid_pos=0
-        for pos in np.arange (start, end+1):
-            if pos in ref_data:
-                valid_pos+=1
-                for median, dwell in zip (ref_data[pos]["S1_median"], ref_data[pos]["S1_dwell"]):
-                    l.append (lt (pos, "S1", median, dwell))
-                for median, dwell in zip (ref_data[pos]["S2_median"], ref_data[pos]["S2_dwell"]):
-                    l.append (lt (pos, "S2", median, dwell))
 
-            # If not coverage for position, just fill in with empty values
-            else:
-                for sample in ("S1", "S2"):
-                    l.append (lt (pos, sample, None, None))
+        if feature == "mean_intensity":
+            feature_field = "median"
+        elif feature == "dwell_time":
+            feature_field = "dwell"
+        else:
+            raise NanocomporeError ("Feature either 'mean_intensity' or 'dwell_time'")
+
+        # Extract data from database
+        for pos in np.arange (start, end+1):
+            for sample in ("S1", "S2"):
+
+                # Extract data if position in dict
+                if pos in ref_data:
+                    valid_pos+=1
+                    data_field = "{}_{}".format(sample, feature_field)
+                    for data in ref_data[pos][data_field]:
+                        l.append ((pos, sample, data))
+
+                # If not coverage for position, just fill in with empty values
+                else:
+                    l.append ((pos, sample, None))
 
         # Check that we found valid position and cast collected results to dataframe
         if not valid_pos:
             raise NanocomporeError ("No data available for the selected interval")
-        df = pd.DataFrame (l)
+        df = pd.DataFrame (l, columns=["pos", "sample", feature_field])
 
         # Create x label including the original sequence and its position
-        x_lab = []
-        for pos, base in zip (range (start, end+1), ref_fasta[start:end+1]):
-            x_lab.append ("{}\n{}".format(pos, base))
+        x_ticks_labels = []
+        means = []
+        for i in range (start, end+1):
+            kmer = ref_fasta[i:i+5].seq
+            x_ticks_labels.append ("{}\n{}".format(pos, kmer))
+            if feature == "mean_intensity":
+                means.append (self._model_dict[kmer][0])
 
         # Define ploting style
         with pl.style.context (plot_style):
             # Plot dwell and median
-            fig, axes = pl.subplots(2, 1, figsize=figsize)
-            _ = sns.violinplot (x="pos", y="median", hue="sample", data=df, split=True, ax=axes[0], inner="quartile", bw=0.75, linewidth=1, palette=colors)
-            _ = sns.violinplot (x="pos", y="dwell", hue="sample", data=df, split=True, ax=axes[1], inner="quartile", bw=0.75, linewidth=1, palette=colors)
+            fig, ax = pl.subplots(figsize=figsize)
+            _ = sns.violinplot (x="pos", y=feature_field, hue="sample", data=df, split=True, ax=ax, inner="quartile", bw=bw, linewidth=1, palette=colors)
+
+            if feature == "mean_intensity":
+                _ = ax.scatter (range(end-start+1), means, color="black", marker="x", linewidths=1, label="Model Mean")
+                _ = ax.set_ylabel ("Mean Intensity")
+            else:
+                _ = ax.set_ylabel ("Dwell Time")
 
             # Adjust display
-            _ = axes[0].set_title (ref_id)
-            _ = axes[0].get_xaxis().set_visible(False)
-            _ = axes[0].set_ylabel ("Median Intensity")
-            _ = axes[1].set_xticklabels (x_lab)
-            _ = axes[1].set_ylabel ("Dwell Time")
-            _ = axes[1].set_xlabel ("Reference position")
+            _ = ax.set_title ("Reference: {}".format(ref_id))
+            _ = ax.set_xticklabels (x_ticks_labels)
+            _ = ax.set_xlabel ("Reference position")
+            _ = ax.legend ()
 
             pl.tight_layout()
-            return (fig, axes)
+            return (fig, ax)
 
     def plot_coverage (self, ref_id, start=None, end=None, figsize=(30,5), colors=["dodgerblue", "salmon"], plot_style="ggplot"):
         """
