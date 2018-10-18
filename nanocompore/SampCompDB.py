@@ -198,6 +198,7 @@ class SampCompDB (object):
             see https://matplotlib.org/users/colormaps.html, https://matplotlib.org/examples/color/named_colors.html
         plot_style: Matplotlib plotting style. Default="ggplot"
             . See https://matplotlib.org/users/style_sheets.html
+        method: Limit the pvalue methods shown in the plot. Either a list of methods or a regular expression as a string.
         """
         try:
             ref_fasta = self._fasta [ref_id]
