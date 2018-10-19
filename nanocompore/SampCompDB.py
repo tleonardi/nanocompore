@@ -12,6 +12,7 @@ from pyfaidx import Fasta
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as pl
+import matplotlib.patches as mpatches
 import seaborn as sns
 from bedparse import bedline
 from statsmodels.stats.multitest import multipletests
@@ -390,6 +391,61 @@ class SampCompDB (object):
             pl.tight_layout()
             return (fig, ax)
 
+    def plot_position(self, ref_id, pos=None, figsize=(30,10), colors=["dodgerblue", "salmon"], plot_style="ggplot"):
+        """
+        Plot the dwell time and median intensity at the given position as a scatter plot.
+        ref_id: Valid reference id name in the database
+        pos: Position of interest
+        figsize: length and heigh of the output plot. Default=(30,10)
+        colors: List of colors
+            see https://matplotlib.org/users/colormaps.html, https://matplotlib.org/examples/color/named_colors.html
+        plot_style: Matplotlib plotting style
+            . See https://matplotlib.org/users/style_sheets.html
+        """
+
+        # Get data
+        ref_data, ref_fasta, start, end = self.__get_plot_data (ref_id, pos, pos)
+
+        if pos not in ref_data.keys():
+            raise NanocomporeError ("No data available for the selected position")
+
+        # Parse line position per position
+        lt = namedtuple ("lt", ["pos", "sample", "median", "dwell"])
+        l = []
+        for median, dwell in zip (ref_data[pos]["S1_median"], ref_data[pos]["S1_dwell"]):
+            l.append (lt (pos, "S1", median, dwell))
+        for median, dwell in zip (ref_data[pos]["S2_median"], ref_data[pos]["S2_dwell"]):
+            l.append (lt (pos, "S2", median, dwell))
+
+        # Check that we found valid position and cast collected results to dataframe
+        df = pd.DataFrame (l)
+
+        # Create x label including the original sequence and its position
+        base=ref_fasta[pos]
+        x_lab = "{}\n{}".format(pos, base)
+        df['dwell'] = np.log10(df['dwell'])
+        s1_median = df[df['sample']=="S1"]['median']
+        s1_dwell = df[df['sample']=="S1"]['dwell']
+        s2_median = df[df['sample']=="S2"]['median']
+        s2_dwell = df[df['sample']=="S2"]['dwell']
+        # Define ploting style
+        with pl.style.context(plot_style):
+            # Plot dwell and median
+            fig, ax = pl.subplots(figsize=figsize)
+            cmap1 = sns.light_palette(colors[0], as_cmap=True)
+            cmap2 = sns.light_palette(colors[1], as_cmap=True)
+            ax = sns.kdeplot(s1_median, s1_dwell, cmap=cmap1, label="S1", shade_lowest=False, legend=True)
+            ax = sns.kdeplot(s2_median, s2_dwell, cmap=cmap2, label="S2", shade_lowest=False, legend=True)
+            # Adjust display
+            _ = ax.set_title ("%s\n%s%s"%(ref_id,base,pos))
+            _ = ax.set_ylabel ("Dwell")
+            _ = ax.set_xlabel ("Median Intensity")
+            red_patch = mpatches.Patch(color=colors[0], label='S1')
+            blue_patch = mpatches.Patch(color=colors[1], label='S2')
+            pl.legend(handles=[red_patch, blue_patch])
+            pl.tight_layout()
+        return (fig, ax)
+    
     #~~~~~~~~~~~~~~PRIVATE  METHODS~~~~~~~~~~~~~~#
     def __get_plot_data (self, ref_id, start, end):
         """
