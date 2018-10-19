@@ -12,7 +12,7 @@ from tqdm import tqdm
 from pyfaidx import Fasta
 
 # Local package
-from nanocompore.common import counter_to_str, access_file, NanocomporeError
+from nanocompore.common import counter_to_str, access_file, NanocomporeError, file_header_contains, numeric_cast_list
 
 # Logger setup
 logging.basicConfig(level=logging.INFO, format='%(message)s')
@@ -24,21 +24,24 @@ class Whitelist (object):
 
     #~~~~~~~~~~~~~~MAGIC METHODS~~~~~~~~~~~~~~#
     def __init__ (self,
-        s1_index_fn,
-        s2_index_fn,
-        fasta_fn = None,
+        index_fn_dict,
+        fasta_fn,
         min_coverage = 10,
-        downsample_high_coverage = None,
-        max_NNNNN_freq = 0.2,
-        max_mismatching_freq = 0.2,
-        max_missing_freq = 0.2,
+        downsample_high_coverage = False,
+        max_invalid_kmers_freq = 0.2,
+        max_NNNNN_freq = 0.1,
+        max_mismatching_freq = 0.1,
+        max_missing_freq = 0.1,
+        select_ref_id = [],
+        exclude_ref_id = [],
         logLevel="info"):
         """
-        s1_index_fn: Path to sample 1 eventalign_collapse index file
-        s2_index_fn: Path to sample 2 eventalign_collapse index file
+        index_fn_dict:
         fasta_fn: Path to a fasta file corresponding to the reference used for read alignemnt
         min_coverage: minimal coverage required in both samples
         downsample_high_coverage: For reference with higher coverage, downsample by randomly selecting reads.
+        max_invalid_kmers_freq:
+            If None, then the max_NNNNN_freq, max_mismatching_freq, max_missing_freq agrs will be used instead
         max_NNNNN_freq: maximum frequency of NNNNN kmers in reads (1 to deactivate)
         max_mismatching_freq: maximum frequency of mismatching kmers in reads (1 to deactivate)
         max_missing_freq: maximum frequency of missing kmers in reads (1 to deactivate)
@@ -50,39 +53,47 @@ class Whitelist (object):
         logger.info ("Initialise Whitelist and checks options")
         self.__logLevel = logLevel
 
-        # Check files
-        for fn in (s1_index_fn, s2_index_fn, fasta_fn):
-            access_file (fn)
-        self.__fasta_fn = fasta_fn
-        self.__s1_index_fn = s1_index_fn
-        self.__s2_index_fn = s2_index_fn
+        # Check index files
+        for fn in index_fn_dict.values():
+            if not access_file (fn):
+                raise NanocomporeError("Cannot access nanopolish index file {}".format(fn))
+            if not file_header_contains (fn, field_names=("ref_id","ref_start","ref_end","read_id","kmers","NNNNN_kmers","mismatching_kmers","missing_kmers","byte_offset","byte_len")):
+                raise NanocomporeError("The index file {} does not contain the require header fields".format(fn))
+        self.__index_fn_dict = index_fn_dict
 
-        # Save other args
-        self.__min_coverage = min_coverage
-        self.__downsample_high_coverage = downsample_high_coverage
-        self.__max_NNNNN_freq = max_NNNNN_freq
-        self.__max_mismatching_freq = max_mismatching_freq
-        self.__max_missing_freq = max_missing_freq
-
+        # Check fasta file
+        if not access_file (fasta_fn):
+            raise NanocomporeError("Cannot access fasta file {}".format(fasta_fn))
         # Read fasta index to get reference length
-        logger.info ("Index Fasta file")
-        # Try to open Fasta file
         try:
-            self.__fasta = Fasta(self.__fasta_fn)
+            logger.info ("Index Fasta file")
+            self.__fasta = Fasta (fasta_fn)
         except:
             raise NanocomporeError("The fasta reference file cannot be read")
 
         # Create reference index for both files
         logger.info ("Read eventalign index files")
-        ref_reads = self._read_eventalign_index ()
+        ref_reads = self.__read_eventalign_index (
+            index_fn_dict = index_fn_dict,
+            max_invalid_kmers_freq = max_invalid_kmers_freq,
+            max_NNNNN_freq = max_NNNNN_freq,
+            max_mismatching_freq = max_mismatching_freq,
+            max_missing_freq = max_missing_freq,
+            select_ref_id = select_ref_id,
+            exclude_ref_id = exclude_ref_id)
 
         # First filtering pass at transcript level
         logger.info ("Filter out references with low coverage")
-        ref_reads = self._select_ref (ref_reads)
+        ref_reads = self.__select_ref (
+            ref_reads = ref_reads,
+            min_coverage=min_coverage)
 
         # Second filtering pass at base level
         logger.info ("Compute coverage per reference and select intervals with high enough coverage")
-        self.ref_interval_reads = self._select_intervals (ref_reads)
+        self.ref_interval_reads = self.__select_intervals (
+            ref_reads = ref_reads,
+            min_coverage = min_coverage,
+            downsample_high_coverage=downsample_high_coverage)
 
     def __repr__ (self):
         m = "Whitelist: Number of references: {}".format(len(self))
@@ -106,6 +117,14 @@ class Whitelist (object):
                     fp.write ("{}\t{}\t{}\n".format (ref_id, start, end))
 
     @property
+    def n_samples (self):
+        return len(self.__index_fn_dict)
+
+    @property
+    def sample_id_list (self):
+        return list (self.__index_fn_dict.keys())
+
+    @property
     def ref_id_list (self):
         return list (self.ref_interval_reads.keys())
 
@@ -118,88 +137,125 @@ class Whitelist (object):
         return d
 
     #~~~~~~~~~~~~~~PRIVATE METHODS~~~~~~~~~~~~~~#
-    def _read_eventalign_index (self):
+    def __read_eventalign_index (self,
+        index_fn_dict,
+        max_invalid_kmers_freq,
+        max_NNNNN_freq,
+        max_mismatching_freq,
+        max_missing_freq,
+        select_ref_id,
+        exclude_ref_id):
         """Read the 2 index files and sort by sample and ref_id in a multi level dict"""
 
         ref_reads = OrderedDict ()
 
-        for lab, fn in ("S1", self.__s1_index_fn), ("S2", self.__s2_index_fn):
+        for lab, fn in index_fn_dict.items():
             with open (fn) as fp:
 
-                # get field names from header
+                # Get field names from header
                 header = fp.readline().rstrip().split()
-                for field in ("ref_id","ref_start","ref_end","read_id", "kmers", "NNNNN_kmers", "mismatching_kmers", "missing_kmers", "byte_offset", "byte_len"):
-                    if not field in header:
-                        raise NanocomporeError ("Invalid eventalign_collapse index file: {}".format(fn))
-
                 line_tuple = namedtuple("line_tuple", header)
-                c = Counter ()
 
+                c = Counter ()
                 for line in fp:
-                    ls = line.rstrip().split()
-                    lt = line_tuple (ls[0], int(ls[1]), int(ls[2]), ls[3], int(ls[4]), int(ls[5]) , int(ls[6]) , int(ls[7]) , int(ls[8]), int(ls[9]))
-                    # filter out reads with high number of problematic kmers
-                    if lt.NNNNN_kmers/lt.kmers > self.__max_NNNNN_freq:
-                        c ["high NNNNN_kmers reads"] += 1
-                    elif lt.mismatching_kmers/lt.kmers > self.__max_mismatching_freq:
-                        c ["high mismatching_kmers reads"] += 1
-                    elif lt.missing_kmers/lt.kmers > self.__max_missing_freq:
-                        c ["high missing_kmers reads"] += 1
-                    # Save valid reads
+                    lt = line_tuple (*numeric_cast_list(line.rstrip().split()))
+
+                    # Filter out ref_id if a ref_id list was provided
+                    if select_ref_id and not lt.ref_id in select_ref_id:
+                        c ["Invalid ref_id"] += 1
+                        continue
+                    elif exclude_ref_id and lt.ref_id in exclude_ref_id:
+                        c ["Invalid ref_id"] += 1
+                        continue
+
+                    # Filter out reads with high number of invalid kmers
+                    if max_invalid_kmers_freq:
+                        if (lt.NNNNN_kmers + lt.mismatching_kmers + lt.missing_kmers) / lt.kmers > max_invalid_kmers_freq:
+                            c ["high invalid kmers reads"] += 1
+                            continue
                     else:
-                        if not lt.ref_id in ref_reads:
-                            ref_reads[lt.ref_id] = OrderedDict ()
-                        if not lab in ref_reads [lt.ref_id]:
-                            ref_reads[lt.ref_id][lab] = []
-                        ref_reads[lt.ref_id][lab].append (lt)
-                        c ["valid reads"] += 1
+                        if lt.NNNNN_kmers/lt.kmers > max_NNNNN_freq:
+                            c ["high NNNNN_kmers reads"] += 1
+                            continue
+                        elif lt.mismatching_kmers/lt.kmers > max_mismatching_freq:
+                            c ["high mismatching_kmers reads"] += 1
+                            continue
+                        elif lt.missing_kmers/lt.kmers > max_missing_freq:
+                            c ["high missing_kmers reads"] += 1
+                            continue
+
+                    # Save valid reads
+                    if not lt.ref_id in ref_reads:
+                        ref_reads[lt.ref_id] = OrderedDict ()
+                    if not lab in ref_reads [lt.ref_id]:
+                        ref_reads[lt.ref_id][lab] = []
+                    ref_reads[lt.ref_id][lab].append (lt)
+                    c ["valid reads"] += 1
 
                 logger.debug ("\tSample {} {}".format(lab, counter_to_str(c)))
 
         logger.info ("\tReferences found in index: {}".format(len(ref_reads)))
         return ref_reads
 
-    def _select_ref (self, ref_reads):
+    def __select_ref (self, ref_reads, min_coverage):
         """Select ref_id with a minimal coverage in both sample"""
 
-        selected_ref_reads = OrderedDict ()
+        valid_ref_reads = OrderedDict ()
         c = Counter()
-
         for ref_id, sample_reads in ref_reads.items ():
-            if len(sample_reads) == 2 and len (sample_reads["S1"]) >= self.__min_coverage and len (sample_reads["S2"]) >= self.__min_coverage:
-                selected_ref_reads [ref_id] = sample_reads
+            try:
+                # Verify that coverage is sufficient in all samples
+                assert len(sample_reads) == self.n_samples
+                for read_list in sample_reads.values():
+                    assert len(read_list) >= min_coverage
+
+                # Add to valid ref_id
+                valid_ref_reads [ref_id] = sample_reads
+
+                # Update Counter dict if debug mode
                 if self.__logLevel == "debug":
-                    c["ref_id"] += 1
+                    c["valid_ref_id"] += 1
                     c["positions"] += len(self.__fasta[ref_id])
-                    c["S1_reads"] += len (sample_reads["S1"])
-                    c["S2_reads"] += len (sample_reads["S2"])
+                    for sample_id, read_list in sample_reads.items():
+                        c[sample_id+"_reads"] += len (read_list)
+
+            except AssertionError:
+                c["invalid_ref_id"] += 1
 
         logger.debug (counter_to_str(c))
-        logger.info ("\tReferences remaining after reference coverage filtering: {}".format(len(selected_ref_reads)))
-        return selected_ref_reads
+        logger.info ("\tReferences remaining after reference coverage filtering: {}".format(len(valid_ref_reads)))
+        return valid_ref_reads
 
-    def _select_intervals (self, ref_reads):
+    def __select_intervals (self,
+         ref_reads,
+         min_coverage,
+         downsample_high_coverage):
         """Iterate over all transcripts find valid coverage intervals and extract overlapping reads"""
 
-        ref_interval_reads = OrderedDict ()
         c = Counter ()
-
         pbar = tqdm (total=len(ref_reads), unit=" References", disable=self.__logLevel == "warning")
+        s_idx = {id:idx for idx, id in enumerate(self.sample_id_list)}
+        ref_interval_reads = OrderedDict ()
+
         for ref_id, sample_reads in ref_reads.items():
             pbar.update()
 
             # Compute reference coverage in a single numpy array
-            cov_array = np.zeros ((2, len(self.__fasta[ref_id])))
-            for sample_index, (sample_id, read_list) in enumerate (sample_reads.items()):
+            cov_array = np.zeros (shape=(len(self.__fasta[ref_id]), self.n_samples))
+            for sample_id, read_list in sample_reads.items():
+                sample_idx = s_idx [sample_id]
                 for read in read_list:
-                    cov_array [sample_index][np.arange(read.ref_start, read.ref_end)] += 1
+                    cov_array [read.ref_start:read.ref_end+1, sample_idx] += 1
+
+            # Reduce to min coverage per position
+            cov_array = cov_array.min (axis=1)
 
             # Get coordinates of intervals with minimum coverage
             valid_cov = False
             valid_interval_list = []
-            for pos, (cov1, cov2) in enumerate (cov_array.T):
+            for pos, cov in enumerate (cov_array):
                 # If coverage insuficient
-                if cov1 < self.__min_coverage or cov2 < self.__min_coverage:
+                if cov < min_coverage:
                     if valid_cov:
                         valid_interval_list.append ((ref_start, ref_end))
                         if self.__logLevel == "debug":
@@ -213,6 +269,7 @@ class Whitelist (object):
                     else:
                         ref_start = ref_end = pos
                         valid_cov = True
+
             # Last valid interval exception
             if valid_cov:
                 valid_interval_list.append ((ref_start, ref_end))
@@ -229,17 +286,17 @@ class Whitelist (object):
                 ref_interval_reads [ref_id] ["interval_list"] = valid_interval_list
 
                 # Select reads overlappig at least one valid interval
-                for sample_id in ("S1", "S2"):
+                for sample_id in self.sample_id_list:
                     valid_reads = []
-                    for read in sample_reads[sample_id]:
+                    for read in sample_reads [sample_id]:
                         for interval_start, interval_end in valid_interval_list:
                             if read.ref_end >= interval_start and read.ref_start <= interval_end:
                                 valid_reads.append (read)
                                 break
 
                     # Down sample if coverage too high
-                    if self.__downsample_high_coverage and len(valid_reads) > self.__downsample_high_coverage:
-                        valid_reads = random.sample (valid_reads, self.__downsample_high_coverage)
+                    if downsample_high_coverage and len(valid_reads) > downsample_high_coverage:
+                        valid_reads = random.sample (valid_reads, downsample_high_coverage)
 
                     if self.__logLevel == "debug":
                         c["{}_reads".format(sample_id)] += len(valid_reads)
