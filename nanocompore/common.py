@@ -4,14 +4,19 @@
 # Standard library imports
 import os
 from tqdm import tqdm, tqdm_notebook
+from warnings import warn
 
 import numpy as np
-from scipy.stats import chi2 as chi2
+from scipy.stats import chi2 as chi2 ########## ???????
 
 
 #~~~~~~~~~~~~~~CUSTOM EXCEPTION CLASS~~~~~~~~~~~~~~#
 class NanocomporeError (Exception):
     """ Basic exception class for nanocompore module """
+    pass
+
+class NanocomporeWarning (Warning):
+    """ Basic Warning class for nanocompore module """
     pass
 
 #~~~~~~~~~~~~~~FUNCTIONS~~~~~~~~~~~~~~#
