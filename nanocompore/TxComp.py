@@ -10,6 +10,7 @@ from scipy.stats import mannwhitneyu, ks_2samp, ttest_ind, combine_pvalues, chi2
 from statsmodels.stats.multitest import multipletests
 from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import KMeans
+from sklearn.mixture import GaussianMixture
 import numpy as np
 
 # Local package
@@ -94,7 +95,6 @@ def kmeans_test(ref_pos_dict, method="kmeans", sequence_context=0, min_coverage=
         S1_counts = Counter(y_pred[[i=="S1" for i in Y]])
         S2_counts = Counter(y_pred[[i=="S2" for i in Y]])
         f_obs = np.array([[S1_counts[0],S1_counts[1]],[S2_counts[0],S2_counts[1]]], dtype="int64")
-        f_obs
         if any([k<min_coverage for i in f_obs for k in i ]):
             pval=1
         else:
@@ -131,3 +131,50 @@ def kmeans_test(ref_pos_dict, method="kmeans", sequence_context=0, min_coverage=
 
 
 
+def gmm_test(ref_pos_dict, method="gmm", sequence_context=0, min_coverage=5):
+    if type(sequence_context) is not int:
+        raise NanocomporeError("sequence_context is not of type int")
+    for pos, pos_dict in ref_pos_dict.items():
+        median=np.concatenate((pos_dict['S1_median'], pos_dict['S2_median']))
+        dwell=np.concatenate((pos_dict['S1_dwell'], pos_dict['S2_dwell']))
+        if len(pos_dict['S1_median']) != len(pos_dict['S1_dwell']) or len(pos_dict['S2_median']) != len(pos_dict['S2_dwell']):
+            raise NanocomporeError ("Median and dwell time arrays have mismatiching lengths")
+        Y = ["S1" for _ in pos_dict['S1_median']] + ["S2" for _ in pos_dict['S2_median']]
+        X = StandardScaler().fit_transform([(m, d) for m,d in zip(median, dwell)])
+        y_pred = GaussianMixture(n_components=2, covariance_type="full", random_state=146).fit_predict(X)
+        S1_counts = Counter(y_pred[[i=="S1" for i in Y]])
+        S2_counts = Counter(y_pred[[i=="S2" for i in Y]])
+        f_obs = np.array([[S1_counts[0],S1_counts[1]],[S2_counts[0],S2_counts[1]]], dtype="int64")
+        if any([k<min_coverage for i in f_obs for k in i ]):
+            pval=1
+        else:
+            try:
+                chi = chi2_contingency(f_obs)
+                pval = chi[1]
+            except:
+                pval=1  
+        ref_pos_dict[pos]["pvalue_gmm"] = pval
+
+    if sequence_context:
+        lab = "pvalue_gmm_context={}".format(sequence_context)
+
+        # Generate weights as a symmetrical armonic series 
+        weights=[]
+        for i in range(-sequence_context, sequence_context+1):
+            weights.append(1/(abs(i)+1))
+        
+        pvalues_vector = np.array([i["pvalue_gmm"] for i in ref_pos_dict.values()])
+        cor_mat = cross_corr_matrix(pvalues_vector, sequence_context)
+
+        for mid_pos in ref_pos_dict.keys():
+            pval_list = []
+            try:
+                for pos in range(mid_pos-sequence_context, mid_pos+sequence_context+1):
+                    pval_list.append(ref_pos_dict[pos]["pvalue_gmm"])
+                ref_pos_dict[mid_pos][lab] = combine_pvalues_hou(pval_list, weights, cor_mat)
+                if ref_pos_dict[mid_pos][lab] == 0:
+                   ref_pos_dict[mid_pos][lab] = np.finfo(np.float).min
+            except KeyError:
+                pass
+
+    return ref_pos_dict
