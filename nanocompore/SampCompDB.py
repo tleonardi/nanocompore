@@ -294,6 +294,7 @@ class SampCompDB (object):
 
         # Parse line position per position
         l = []
+        valid=0
         x_ticks_list = []
         model_means_list = []
 
@@ -303,6 +304,7 @@ class SampCompDB (object):
         # Extract data from database if position in db
         for pos in np.arange (start, end+1):
             if pos in ref_data:
+                valid+=1
                 for k1, v1 in ref_data[pos].items():
                     # Collect kmer seq
                     if k1 == "ref_kmer":
@@ -324,6 +326,8 @@ class SampCompDB (object):
                 model_means_list.append(None)
 
         # Check that we found valid position and cast collected results to dataframe
+        if not valid:
+            raise NanocomporeError ("No data available for selected coordinates")
         df = pd.DataFrame (l, columns=["pos", "lab", feature])
 
         # Define ploting style
@@ -351,8 +355,8 @@ class SampCompDB (object):
 
             # Adjust display
             _ = ax.set_xlim (-1, end-start+1)
-            _ = ax.set_title ("Reference: {}".format(ref_id))
             _ = ax.set_xticklabels (x_ticks_list)
+            _ = ax.set_title ("Reference:{}  Start:{}  End:{}".format(ref_id, start, end))
             _ = ax.set_xlabel ("Reference position")
 
             _ = ax.legend ()
@@ -378,9 +382,11 @@ class SampCompDB (object):
 
         # Parse line position per position
         l=[]
+        valid=0
         # Extract data from database if position in db
         for pos in np.arange (start, end+1):
             if pos in ref_data:
+                valid+=1
                 for k1, v1 in ref_data[pos].items():
                     if k1 != "ref_kmer":
                         for k2, v2 in v1.items():
@@ -389,6 +395,8 @@ class SampCompDB (object):
                 l.append ((pos, None, None))
 
         # Check that we found valid position and cast collected results to dataframe
+        if not valid:
+            raise NanocomporeError ("No data available for selected coordinates")
         df = pd.DataFrame (l, columns=["pos", "Sample", "cov"])
 
         # Define plotting style
@@ -400,13 +408,14 @@ class SampCompDB (object):
                 hue="Sample",
                 data=df,
                 ax=ax,
-                palette=palette)
+                palette=palette,
+                drawstyle="steps")
 
             _ = ax.set_ylim (0, None)
+            _ = ax.set_xlim (start, end)
+            _ = ax.set_title ("Reference:{}  Start:{}  End:{}".format(ref_id, start, end))
             _ = ax.set_ylabel ("Coverage")
             _ = ax.set_xlabel ("Reference position")
-            _ = ax.set_xlim (start, end)
-            _ = ax.set_title (ref_id)
             pl.tight_layout()
             return (fig, ax)
 
