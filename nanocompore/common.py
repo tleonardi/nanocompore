@@ -7,7 +7,7 @@ from tqdm import tqdm, tqdm_notebook
 from warnings import warn
 
 import numpy as np
-from scipy.stats import chi2 as chi2 ########## ???????
+from scipy.stats import chi2
 
 
 #~~~~~~~~~~~~~~CUSTOM EXCEPTION CLASS~~~~~~~~~~~~~~#
@@ -46,7 +46,7 @@ def file_header_contains (fn, field_names, sep="\t"):
 
 def numeric_cast_list (l):
     """
-    Cast values to integer or float from a list
+    Cast str values to integer or float from a list
     """
     l2 = []
     for i in l:
