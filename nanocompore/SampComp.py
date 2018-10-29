@@ -15,13 +15,14 @@ import logging
 from collections import OrderedDict, namedtuple
 import shelve
 import multiprocessing as mp
+from warnings import warn
 
 # Third party
 from tqdm import tqdm
 import numpy as np
 
 # Local package
-from nanocompore.common import counter_to_str, access_file, NanocomporeError
+from nanocompore.common import counter_to_str, access_file, NanocomporeError, NanocomporeWarning, numeric_cast_list
 from nanocompore.Whitelist import Whitelist
 from nanocompore.TxComp import paired_test
 from nanocompore.TxComp import kmeans_test
@@ -40,32 +41,35 @@ class SampComp (object):
     #~~~~~~~~~~~~~~FUNDAMENTAL METHODS~~~~~~~~~~~~~~#
 
     def __init__(self,
-        s1_fn,
-        s2_fn,
+        eventalign_fn_dict,
         output_db_fn,
         fasta_fn,
         whitelist=None,
-        padj_threshold = 0.1,
         comparison_method = None,
         sequence_context = 0,
         min_coverage = 10,
         downsample_high_coverage = None,
-        max_NNNNN_freq = 0.2,
-        max_mismatching_freq = 0.2,
-        max_missing_freq = 0.2,
+        max_invalid_kmers_freq = 0.1,
+        select_ref_id = [],
+        exclude_ref_id = [],
         nthreads = 4,
         logLevel = "info"):
 
         """
-        s1_fn: Path to sample 1 eventalign_collapse data file
-        s2_fn: Path to sample 2 eventalign_collapse data file
+        eventalign_fn_dict: Multilevel dictionnary indicating the condition_label, sample_label and file name of the eventalign_collapse output
+            example d = {"S1": {"R1":"path1.tsv", "R2":"path2.tsv"}, "S2": {"R1":"path3.tsv", "R2":"path4.tsv"}}
+            2 conditions are expected, and at least 2 sample replicates are highly recomended per condition
         output_db_fn: Path where to write the result database
         fasta_fn: Path to a fasta file corresponding to the reference used for read alignemnt
-        whitelist: Whitelist object previously generated with nanocompore Whitelist. If not given, will be generated
-        padj_threshold: Adjusted p-value threshold for reporting sites.
+        whitelist: Whitelist object previously generated with nanocompore Whitelist. If not given, will be automatically generated
         comparison_method: Statistical method to compare the 2 samples (kmean, mann_whitney, kolmogorov_smirnov, t_test, gmm).
             This can be a list or a comma separated string
-        sequence_context: Extend statistical analysis to contigous adjacent base is available
+        sequence_context: Extend statistical analysis to contigous adjacent base if available
+        min_cov: minimal coverage required in all sample
+        downsample_high_coverage: For reference with higher coverage, downsample by randomly selecting reads.
+        max_invalid_kmers_freq: maximum frequency of NNNNN, mismatching and missing kmers in reads
+        select_ref_id: if given, only reference ids in the list will be selected for the analysis
+        exclude_ref_id: if given, refid in the list will be excluded from the analysis
         nthreads: Number of threads (two are used for reading and writing, all the others for processing in parallel).
         logLevel: Set the log level. Valid values: warning, info, debug
         """
@@ -73,14 +77,24 @@ class SampComp (object):
         logger.setLevel (logLevel_dict.get (logLevel, logging.WARNING))
         logger.info ("Initialise SampComp and checks options")
 
+        # Check that the number of condition is 2 and raise a warning if there are less than 2 replicates per conditions
+        if len(eventalign_fn_dict) != 2:
+            raise NanocomporeError("2 conditions are expected. Found {}".format(len(eventalign_fn_dict)))
+        for cond_lab, sample_dict in eventalign_fn_dict.items():
+            if len(sample_dict) == 1:
+                warn (NanocomporeWarning ("Only 1 replicate found for condition {}. This is not recomended".format(cond_lab)))
+
         # Check args
-        for fn in (s1_fn, s2_fn, fasta_fn):
-            if not access_file (fn):
-                raise NanocomporeError("Cannot access file {}".format(fn))
+        for sample_dict in eventalign_fn_dict.values():
+            for fn in sample_dict.values():
+                if not access_file (fn):
+                    raise NanocomporeError("Cannot access eventalign_collapse file {}".format(idx_fn))
 
         if nthreads < 3:
             raise NanocomporeError("Number of threads not valid")
 
+        if not comparison_method:
+            comparison_method = [None]
         if type (comparison_method) == str:
             comparison_method = comparison_method.split(",")
         allowed_comparison_methods = ["kmean", "mann_whitney", "MW", "kolmogorov_smirnov", "KS","t_test", "TT", "GMM", None]
@@ -93,38 +107,39 @@ class SampComp (object):
             # Set private args from whitelist args
             self.__min_coverage = whitelist._Whitelist__min_coverage
             self.__downsample_high_coverage = whitelist._Whitelist__downsample_high_coverage
-            self.__max_NNNNN_freq = whitelist._Whitelist__max_NNNNN_freq
-            self.__max_mismatching_freq = whitelist._Whitelist__max_mismatching_freq
-            self.__max_missing_freq = whitelist._Whitelist__max_missing_freq
+            self.__max_invalid_kmers_freq = whitelist._Whitelist__max_invalid_kmers_freq
+
         else:
             whitelist = Whitelist (
-                s1_index_fn = s1_fn+".idx",
-                s2_index_fn = s2_fn+".idx",
+                eventalign_fn_dict = eventalign_fn_dict,
                 fasta_fn = fasta_fn,
                 min_coverage = min_coverage,
                 downsample_high_coverage = downsample_high_coverage,
-                max_NNNNN_freq = max_NNNNN_freq,
-                max_mismatching_freq = max_mismatching_freq,
-                max_missing_freq = max_missing_freq,
+                max_invalid_kmers_freq = max_invalid_kmers_freq,
+                select_ref_id = select_ref_id,
+                exclude_ref_id = exclude_ref_id,
                 logLevel = logLevel)
                 # Set private args
             self.__min_coverage = min_coverage
             self.__downsample_high_coverage = downsample_high_coverage
-            self.__max_NNNNN_freq = max_NNNNN_freq
-            self.__max_mismatching_freq = max_mismatching_freq
-            self.__max_missing_freq = max_missing_freq
+            self.__max_invalid_kmers_freq = max_invalid_kmers_freq
 
         # Save private args
-        self.__s1_fn = s1_fn
-        self.__s2_fn = s2_fn
+        self.__eventalign_fn_dict = eventalign_fn_dict
         self.__output_db_fn = output_db_fn
         self.__fasta_fn = fasta_fn
         self.__whitelist = whitelist
-        self.__padj_threshold = padj_threshold
         self.__comparison_methods = comparison_method
         self.__sequence_context = sequence_context
         self.__nthreads = nthreads - 2
         self.__logLevel = logLevel
+
+        # Get number of samples
+        n = 0
+        for sample_dict in self.__eventalign_fn_dict.values():
+            for sample_lab in sample_dict.keys():
+                n+=1
+        self.__n_samples = n
 
     def __call__ (self):
         """Run analysis"""
@@ -160,78 +175,99 @@ class SampComp (object):
     #~~~~~~~~~~~~~~PRIVATE MULTIPROCESSING METHOD~~~~~~~~~~~~~~#
     def __list_refid (self, in_q):
         # Add refid to inqueue to dispatch the data among the workers
-        for ref_id in self.__whitelist.ref_id_list:
+        for ref_id, ref_dict in self.__whitelist:
             logger.debug("Adding %s to in_q"%ref_id)
-            in_q.put (ref_id)
+            in_q.put ((ref_id, ref_dict))
 
         # Add 1 poison pill for each worker thread
         for i in range (self.__nthreads):
-            logger.debug("Adding poison pill to  in_q")
+            logger.debug("Adding poison pill to in_q")
             in_q.put (None)
 
     def __process_references (self, in_q, out_q):
-        # Consume ref_id until empty and perform statistical analysis
-        required_col_names = ["ref_pos", "ref_kmer", "median", "n_signals"]
+        """
+        Consume ref_id, agregate intensity and dwell time at position level and
+        perform statistical analyses to find significantly different regions
+        """
         logger.debug("Worker thread started")
-        with open (self.__s1_fn) as s1_fp, open (self.__s2_fn) as s2_fp: # More efficient to open only once the files
-            for ref_id in iter (in_q.get, None):
-                logger.debug("Worker thread processing new item from q: %s"%ref_id)
 
-                ref_dict = self.__whitelist[ref_id]
-                ref_pos_dict = OrderedDict ()
+        try:
+            # Open all files for reading. More efficient to open only once the files
+            # file pointer are stored in a dictionnary matching the ref_dict arborescence
+            fp_dict = OrderedDict()
+            for cond_lab, sample_dict in self.__eventalign_fn_dict.items():
+                fp_dict[cond_lab] = OrderedDict()
+                for sample_lab, fn in sample_dict.items():
+                    fp_dict[cond_lab][sample_lab] = open(fn, "r")
 
+            # Process refid in input queue
+            for ref_id, ref_dict in iter (in_q.get, None):
+                logger.debug("Worker thread processing new item from in_q: %s"%ref_id)
+
+                # List valid positions for ref_id identified by whitelist
+                valid_pos_list = []
                 for interval_start, interval_end in ref_dict["interval_list"]:
-                    for i in range (interval_start, interval_end+1):
-                        ref_pos_dict[i] = {"S1_median":[],"S2_median":[],"S1_dwell":[],"S2_dwell":[],"S1_coverage":0,"S2_coverage":0}
+                    for pos in range (interval_start, interval_end+1):
+                        valid_pos_list.append(pos)
 
-                # Parse S1 and S2 reads data and add to mean and dwell time per position
-                for lab, fp in (("S1", s1_fp), ("S2", s2_fp)):
-                    for read in ref_dict[lab]:
+                # Parse read data for each sample and fill in a position level multilevel
+                # dict with median, coverage and dwell time values
+                ref_pos_dict = OrderedDict ()
+                for cond_lab, sample_dict in ref_dict.items():
+                    # Skip interval list entry
+                    if cond_lab == "interval_list":
+                        continue
+                    for sample_lab, read_list in sample_dict.items():
+                        fp = fp_dict[cond_lab][sample_lab]
+                        for read in read_list:
 
-                        # Move to read, save read data chunk and reset file pointer
-                        fp.seek (read.byte_offset)
-                        line_list = fp.read (read.byte_len).split("\n")
-                        fp.seek (0)
+                            # Move to read, save read data chunk and reset file pointer
+                            fp.seek (read["byte_offset"])
+                            line_list = fp.read (read["byte_len"]).split("\n")
+                            fp.seek (0)
 
-                        # Check read_id ref_id concordance between index and data file (#6f885af6-5844-476e-9e51-133dc5617dfd	YHR055C)
-                        header = line_list[0][1:].split("\t")
-                        if not header[0] == read.read_id or not header[1] == read.ref_id:
-                            raise NanocomporeError ("Index and data files are not matching")
+                            # Check read_id ref_id concordance between index and data file
+                            header = numeric_cast_list(line_list[0][1:].split("\t"))
+                            if not header[0] == read["read_id"] or not header[1] == read["ref_id"]:
+                                raise NanocomporeError ("Index and data files are not matching")
 
-                        # Extract col names from second line
-                        col_names = line_list[1].split("\t")
-                        line_tuple = namedtuple ("line_tuple", col_names)
-                        if not all([field in col_names for field in required_col_names]):
-                            raise NanocomporeError("Missing field in Eventalign_collapse file")
+                            # Extract col names from second line
+                            col_names = line_list[1].split("\t")
+                            # Parse data files kmers per kmers
+                            for line in line_list[2:]:
+                                # Transform line to dict and cast str numbers to actual numbers
+                                kmer = dict (zip (col_names, numeric_cast_list (line.split("\t"))))
 
-                        # Parse data files kmers per kmers
-                        for line in line_list[2:]:
-                            lt = line_tuple (*line.split("\t"))
+                                # Check if ref position is in the whitelist valid intervals and add kmer data if so
+                                pos = kmer["ref_pos"]
+                                if pos in valid_pos_list:
+                                    if not pos in ref_pos_dict:
+                                        ref_pos_dict[pos] = OrderedDict()
+                                        ref_pos_dict[pos]["ref_kmer"] = kmer["ref_kmer"]
+                                    if not cond_lab in ref_pos_dict[pos]:
+                                        ref_pos_dict[pos][cond_lab] = OrderedDict()
+                                    if not sample_lab in ref_pos_dict[pos][cond_lab]:
+                                        ref_pos_dict[pos][cond_lab][sample_lab] = {"intensity":[], "dwell":[], "coverage":0}
 
-                            # Check if positions are in the ones found in the whitelist intervals
-                            ref_pos = int(lt.ref_pos)
-                            if ref_pos in ref_pos_dict:
-                                if not "kmer" in ref_pos_dict[ref_pos]:
-                                    ref_pos_dict[ref_pos]["kmer"] = lt.ref_kmer
-                                else:
-                                    assert ref_pos_dict[ref_pos]["kmer"] == lt.ref_kmer, "WTF?"
+                                    # Append median intensity and dwell time value per position
+                                    ref_pos_dict[pos][cond_lab][sample_lab]["intensity"].append (kmer["median"])
+                                    ref_pos_dict[pos][cond_lab][sample_lab]["dwell"].append (kmer["n_signals"])
+                                    ref_pos_dict[pos][cond_lab][sample_lab]["coverage"]+=1
 
-                                # Append mean value and dwell time per position
-                                ref_pos_dict[ref_pos][lab+"_median"].append (float(lt.median))
-                                ref_pos_dict[ref_pos][lab+"_dwell"].append (int(lt.n_signals))
-                                ref_pos_dict[ref_pos][lab+"_coverage"] += 1
-
-                # Filter low coverage positions and castlists to numpy array for efficiency
+                # Filter low coverage positions
                 ref_pos_dict_filtered = OrderedDict ()
-                for pos, pos_dict in ref_pos_dict.items():
-                    if pos_dict["S1_coverage"] >= self.__min_coverage and pos_dict["S2_coverage"] >= self.__min_coverage:
-                        ref_pos_dict_filtered[pos] = {
-                            "S1_median":np.array (pos_dict["S1_median"]),
-                            "S2_median":np.array (pos_dict["S2_median"]),
-                            "S1_dwell":np.array (pos_dict["S1_dwell"]),
-                            "S2_dwell":np.array (pos_dict["S2_dwell"]),
-                            "S1_coverage":pos_dict["S1_coverage"],
-                            "S2_coverage":pos_dict["S2_coverage"]}
+                for pos, cond_dict in ref_pos_dict.items():
+                    n=0
+                    for cond_lab, sample_dict in cond_dict.items():
+                        # Skip kmer_seq entry
+                        if cond_lab == "ref_kmer":
+                            continue
+                        for sample_lab, v in sample_dict.items():
+                            if v["coverage"] >= self.__min_coverage:
+                                n+=1
+                    if n == self.__n_samples:
+                        ref_pos_dict_filtered[pos] = cond_dict
+                # Replace full dict by the filtered one
                 ref_pos_dict = ref_pos_dict_filtered
 
                 # Perform stat if there are still data in dict after position level coverage filtering
@@ -261,11 +297,22 @@ class SampComp (object):
                                 method=comp_met,
                                 sequence_context=self.__sequence_context,
                                 min_coverage=self.__min_coverage)
-                        # Add the current read details to queue
+                    
+                    # Add the current read details to queue
                     out_q.put ((ref_id, ref_pos_dict))
 
-        # Add a poison pill in queues and say goodbye!
-        out_q.put (None)
+        except Exception as E:
+            pass
+
+        finally:
+            # Add a poison pill in queue
+            logger.debug("Adding poison pill to out_q")
+            out_q.put (None)
+            # close all files
+            fp_dict = OrderedDict()
+            for sample_dict in fp_dict.values():
+                for fp in sample_dict.values():
+                    fp.close()
 
     def __write_output (self, out_q):
         # Get results out of the out queue and write in shelve

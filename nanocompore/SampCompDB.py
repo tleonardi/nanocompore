@@ -289,14 +289,15 @@ class SampCompDB (object):
             pl.tight_layout()
             return (fig, ax)
 
-    def plot_signal (self, ref_id, start=None, end=None, feature="mean_intensity", figsize=(30,7), colors=["dodgerblue", "salmon"], plot_style="ggplot", bw=0.25):
+    def plot_signal (self, ref_id, start=None, end=None, split_samples=False, feature="intensity", figsize=(30,7), palette="Set2", plot_style="ggplot", bw=0.25):
         """
         Plot the dwell time and median intensity distribution position per positon in a split violin plot representation.
         It is pointless to plot more than 50 positions at once as it becomes hard to distiguish
         ref_id: Valid reference id name in the database
         start: Start coordinate (Must be higher or equal to 0)
         end: End coordinate (included) (must be lower or equal to the reference length)
-        feature: Choose between "mean_intensity" and "dwell_time"
+        split_samples: If samples for a same condition are represented separatly. If false they are merged per condition
+        feature: Choose between "intensity" and "dwell"
         figsize: length and heigh of the output plot. Default=(30,10)
         palette: Colormap. Default="Set2"
             see https://matplotlib.org/users/colormaps.html, https://matplotlib.org/examples/color/named_colors.html
@@ -310,66 +311,77 @@ class SampCompDB (object):
 
         # Parse line position per position
         l = []
-        valid_pos=0
+        valid=0
+        x_ticks_list = []
+        model_means_list = []
 
-        if feature == "mean_intensity":
-            feature_field = "median"
-        elif feature == "dwell_time":
-            feature_field = "dwell"
-        else:
-            raise NanocomporeError ("Feature either 'mean_intensity' or 'dwell_time'")
+        if not feature in ["intensity", "dwell"]:
+            raise NanocomporeError ("Feature either 'intensity' or 'dwell'")
 
-        # Extract data from database
+        # Extract data from database if position in db
         for pos in np.arange (start, end+1):
-            for sample in ("S1", "S2"):
+            if pos in ref_data:
+                valid+=1
+                for k1, v1 in ref_data[pos].items():
+                    # Collect kmer seq
+                    if k1 == "ref_kmer":
+                        x_ticks_list.append("{}\n{}".format(pos, v1))
+                        if feature == "intensity":
+                            model_means_list.append (self._model_dict[v1][0])
 
-                # Extract data if position in dict
-                if pos in ref_data:
-                    valid_pos+=1
-                    data_field = "{}_{}".format(sample, feature_field)
-                    for data in ref_data[pos][data_field]:
-                        l.append ((pos, sample, data))
-
-                # If not coverage for position, just fill in with empty values
-                else:
-                    l.append ((pos, sample, None))
+                    # Collect dwell or median data
+                    else:
+                        for k2, v2 in v1.items():
+                            for v3 in v2[feature]:
+                                if split_samples:
+                                    l.append ((pos, "{}_{}".format(k1, k2), v3))
+                                else:
+                                    l.append ((pos, k1, v3))
+            else:
+                l.append ((pos, None, None))
+                x_ticks_list.append(str(pos))
+                model_means_list.append(None)
 
         # Check that we found valid position and cast collected results to dataframe
-        if not valid_pos:
-            raise NanocomporeError ("No data available for the selected interval")
-        df = pd.DataFrame (l, columns=["pos", "sample", feature_field])
-
-        # Create x label including the original sequence and its position
-        x_ticks_labels = []
-        means = []
-        for pos in range (start, end+1):
-            kmer = ref_fasta[pos:pos+5].seq
-            x_ticks_labels.append ("{}\n{}".format(pos, kmer))
-            if feature == "mean_intensity":
-                means.append (self._model_dict[kmer][0])
+        if not valid:
+            raise NanocomporeError ("No data available for selected coordinates")
+        df = pd.DataFrame (l, columns=["pos", "lab", feature])
 
         # Define ploting style
         with pl.style.context (plot_style):
             # Plot dwell and median
-            fig, ax = pl.subplots(figsize=figsize)
-            _ = sns.violinplot (x="pos", y=feature_field, hue="sample", data=df, split=True, ax=ax, inner="quartile", bw=bw, linewidth=1, palette=colors)
+            fig, ax = pl.subplots (figsize=figsize)
+            _ = sns.violinplot (
+                x="pos",
+                y=feature,
+                hue="lab",
+                data=df,
+                split=not split_samples,
+                ax=ax,
+                inner="quartile",
+                bw=bw,
+                linewidth=1,
+                palette=palette,
+                scale="area")
 
-            if feature == "mean_intensity":
-                _ = ax.scatter (range(end-start+1), means, color="black", marker="x", linewidths=1, label="Model Mean")
+            if feature == "intensity":
+                _ = ax.plot (model_means_list, color="black", marker="x", label="Model Mean", linestyle="")
                 _ = ax.set_ylabel ("Mean Intensity")
-            else:
+            elif feature == "dwell":
                 _ = ax.set_ylabel ("Dwell Time")
 
             # Adjust display
-            _ = ax.set_title ("Reference: {}".format(ref_id))
-            _ = ax.set_xticklabels (x_ticks_labels)
+            _ = ax.set_xlim (-1, end-start+1)
+            _ = ax.set_xticklabels (x_ticks_list)
+            _ = ax.set_title ("Reference:{}  Start:{}  End:{}".format(ref_id, start, end))
             _ = ax.set_xlabel ("Reference position")
+
             _ = ax.legend ()
 
             pl.tight_layout()
             return (fig, ax)
 
-    def plot_coverage (self, ref_id, start=None, end=None, figsize=(30,5), colors=["dodgerblue", "salmon"], plot_style="ggplot"):
+    def plot_coverage (self, ref_id, start=None, end=None, figsize=(30,5),  palette="Set2", plot_style="ggplot"):
         """
         Plot pvalues per position (by default plot all fields starting by "pvalue")
         It is pointless to plot more than 50 positions at once as it becomes hard to distiguish
@@ -385,33 +397,42 @@ class SampCompDB (object):
         # Get data
         ref_data, ref_fasta, start, end = self.__get_plot_data (ref_id, start, end)
 
-
         # Parse line position per position
-        lt = namedtuple ("lt", ["pos", "S1", "S2"])
-        l = []
-        valid_pos = 0
+        l=[]
+        valid=0
+        # Extract data from database if position in db
         for pos in np.arange (start, end+1):
             if pos in ref_data:
-                l.append (lt (pos, ref_data[pos]["S1_coverage"], ref_data[pos]["S2_coverage"]))
-                valid_pos+=1
+                valid+=1
+                for k1, v1 in ref_data[pos].items():
+                    if k1 != "ref_kmer":
+                        for k2, v2 in v1.items():
+                            l.append ((pos, "{}_{}".format(k1, k2), v2["coverage"]))
             else:
-                l.append (lt (pos, None, None))
+                l.append ((pos, None, None))
 
         # Check that we found valid position and cast collected results to dataframe
-        if not valid_pos:
-            raise NanocomporeError ("No data available for the selected interval")
-        df = pd.DataFrame (l)
+        if not valid:
+            raise NanocomporeError ("No data available for selected coordinates")
+        df = pd.DataFrame (l, columns=["pos", "Sample", "cov"])
 
         # Define plotting style
         with pl.style.context (plot_style):
-            fig, ax = pl.subplots(figsize=figsize)
-            _ = ax.plot (df["pos"], df["S1"], label="S1", color=colors[0])
-            _ = ax.plot (df["pos"], df["S2"], label="S2", color=colors[1])
+            fig, ax = pl.subplots (figsize=figsize)
+            _ = sns.lineplot (
+                x="pos",
+                y="cov",
+                hue="Sample",
+                data=df,
+                ax=ax,
+                palette=palette,
+                drawstyle="steps")
+
+            _ = ax.set_ylim (0, None)
+            _ = ax.set_xlim (start, end)
+            _ = ax.set_title ("Reference:{}  Start:{}  End:{}".format(ref_id, start, end))
             _ = ax.set_ylabel ("Coverage")
             _ = ax.set_xlabel ("Reference position")
-            _ = ax.set_xlim (start, end)
-            _ = ax.set_title (ref_id)
-            _ = ax.legend ()
             pl.tight_layout()
             return (fig, ax)
 

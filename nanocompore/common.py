@@ -4,14 +4,19 @@
 # Standard library imports
 import os
 from tqdm import tqdm, tqdm_notebook
+from warnings import warn
 
 import numpy as np
-from scipy.stats import chi2 as chi2
+from scipy.stats import chi2
 
 
 #~~~~~~~~~~~~~~CUSTOM EXCEPTION CLASS~~~~~~~~~~~~~~#
 class NanocomporeError (Exception):
     """ Basic exception class for nanocompore module """
+    pass
+
+class NanocomporeWarning (Warning):
+    """ Basic Warning class for nanocompore module """
     pass
 
 #~~~~~~~~~~~~~~FUNCTIONS~~~~~~~~~~~~~~#
@@ -31,6 +36,31 @@ def access_file (fn, **kwargs):
     """
     return os.path.isfile (fn) and os.access (fn, os.R_OK)
 
+def file_header_contains (fn, field_names, sep="\t"):
+    with open (fn, "r") as fp:
+        header = fp.readline().rstrip().split (sep)
+    for f in field_names:
+        if not f in header:
+            return False
+    return True
+
+def numeric_cast_list (l):
+    """
+    Cast str values to integer or float from a list
+    """
+    l2 = []
+    for i in l:
+        if type(i)== str:
+            try:
+                i = int(i)
+            except ValueError:
+                try:
+                    i = float(i)
+                except ValueError:
+                    pass
+        l2.append(i)
+    return l2
+
 def counter_to_str (c):
     """Transform a counter dict to a tabulated str"""
     m = ""
@@ -39,7 +69,7 @@ def counter_to_str (c):
     return m
 
 def cross_corr_matrix(pvalues_vector, context=2):
-    """Calculate the cross correlation matrix of the 
+    """Calculate the cross correlation matrix of the
         pvalues for a given context.
     """
     matrix=[]
