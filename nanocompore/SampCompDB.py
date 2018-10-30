@@ -4,6 +4,7 @@
 # Std lib
 from collections import OrderedDict, namedtuple
 import shelve
+from dbm import error as dbm_error
 from math import log
 import re
 
@@ -42,7 +43,7 @@ class SampCompDB (object):
         try:
             with shelve.open (db_fn, flag='r') as db:
 
-                # Try to get metedata from db
+                # Try to get metadata from db
                 try:
                     metadata = db['__metadata']
                     self._comparison_method=metadata['comparison_method']
@@ -54,7 +55,7 @@ class SampCompDB (object):
                 self.ref_id_list = [k for k in db.keys() if k!='__metadata']
                 if not self.ref_id_list:
                     raise NanocomporeError("The result database is empty")
-        except:
+        except dbm_error:
             raise NanocomporeError("The result database cannot be opened")
         self._db_fn = db_fn
 
