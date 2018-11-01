@@ -24,9 +24,7 @@ import numpy as np
 # Local package
 from nanocompore.common import counter_to_str, access_file, NanocomporeError, NanocomporeWarning, numeric_cast_list
 from nanocompore.Whitelist import Whitelist
-from nanocompore.TxComp import paired_test
-from nanocompore.TxComp import kmeans_test
-from nanocompore.TxComp import gmm_test
+from nanocompore.TxComp import txCompare
 from nanocompore.SampCompDB import SampCompDB
 
 # Logger setup
@@ -244,65 +242,21 @@ class SampComp (object):
                                     if not pos in ref_pos_dict:
                                         ref_pos_dict[pos] = OrderedDict()
                                         ref_pos_dict[pos]["ref_kmer"] = kmer["ref_kmer"]
-                                    if not cond_lab in ref_pos_dict[pos]:
-                                        ref_pos_dict[pos][cond_lab] = OrderedDict()
-                                    if not sample_lab in ref_pos_dict[pos][cond_lab]:
-                                        ref_pos_dict[pos][cond_lab][sample_lab] = {"intensity":[], "dwell":[], "coverage":0}
+                                        ref_pos_dict[pos]["data"] = OrderedDict()
+                                    if not cond_lab in ref_pos_dict[pos]["data"]:
+                                        ref_pos_dict[pos]["data"][cond_lab] = OrderedDict()
+                                    if not sample_lab in ref_pos_dict[pos]["data"][cond_lab]:
+                                        ref_pos_dict[pos]["data"][cond_lab][sample_lab] = {"intensity":[], "dwell":[], "coverage":0}
 
                                     # Append median intensity and dwell time value per position
-                                    ref_pos_dict[pos][cond_lab][sample_lab]["intensity"].append (kmer["median"])
-                                    ref_pos_dict[pos][cond_lab][sample_lab]["dwell"].append (kmer["n_signals"])
-                                    ref_pos_dict[pos][cond_lab][sample_lab]["coverage"]+=1
+                                    ref_pos_dict[pos]["data"][cond_lab][sample_lab]["intensity"].append(kmer["median"])
+                                    ref_pos_dict[pos]["data"][cond_lab][sample_lab]["dwell"].append(kmer["n_signals"])
+                                    ref_pos_dict[pos]["data"][cond_lab][sample_lab]["coverage"] += 1
 
-                # Filter low coverage positions
-                ref_pos_dict_filtered = OrderedDict ()
-                for pos, cond_dict in ref_pos_dict.items():
-                    n=0
-                    for cond_lab, sample_dict in cond_dict.items():
-                        # Skip kmer_seq entry
-                        if cond_lab == "ref_kmer":
-                            continue
-                        for sample_lab, v in sample_dict.items():
-                            if v["coverage"] >= self.__min_coverage:
-                                n+=1
-                    if n == self.__n_samples:
-                        ref_pos_dict_filtered[pos] = cond_dict
-                # Replace full dict by the filtered one
-                ref_pos_dict = ref_pos_dict_filtered
-
-                # Perform stat if there are still data in dict after position level coverage filtering
-                if ref_pos_dict:
-                    for comp_met in self.__comparison_methods:
-
-                        # Conventional statistics
-                        if comp_met in ["mann_whitney", "MW", "kolmogorov_smirnov", "KS","t_test", "TT"]:
-                            ref_pos_dict = paired_test (
-                                ref_pos_dict=ref_pos_dict,
-                                method=comp_met,
-                                sequence_context=self.__sequence_context,
-                                min_coverage=self.__min_coverage)
-
-                        # kmeans test
-                        elif comp_met == "kmean":
-                            ref_pos_dict = kmeans_test(
-                                ref_pos_dict=ref_pos_dict,
-                                method=comp_met,
-                                sequence_context=self.__sequence_context,
-                                min_coverage=self.__min_coverage)
-
-                        # GMM test
-                        elif comp_met == "GMM":
-                            ref_pos_dict = gmm_test(
-                                ref_pos_dict=ref_pos_dict,
-                                method=comp_met,
-                                sequence_context=self.__sequence_context,
-                                min_coverage=self.__min_coverage)
-                    
-                    # Add the current read details to queue
-                    out_q.put ((ref_id, ref_pos_dict))
-
-        except Exception as E:
-            pass
+                ref_pos_dict=txCompare(data=ref_pos_dict, methods=self.__comparison_methods, sequence_context=self.__sequence_context, min_coverage=self.__min_coverage, logger=logger, ref=ref_id)
+                # Add the current read details to queue
+                logger.debug("Adding %s to out_q"%(ref_id))
+                out_q.put ((ref_id, ref_pos_dict))
 
         finally:
             # Add a poison pill in queue
