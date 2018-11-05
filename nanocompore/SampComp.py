@@ -60,7 +60,7 @@ class SampComp (object):
         output_db_fn: Path where to write the result database
         fasta_fn: Path to a fasta file corresponding to the reference used for read alignemnt
         whitelist: Whitelist object previously generated with nanocompore Whitelist. If not given, will be automatically generated
-        comparison_method: Statistical method to compare the 2 samples (kmean, mann_whitney, kolmogorov_smirnov, t_test, gmm).
+        comparison_method: Statistical method to compare the 2 samples (mann_whitney, kolmogorov_smirnov, t_test, gmm).
             This can be a list or a comma separated string
         sequence_context: Extend statistical analysis to contigous adjacent base if available
         min_cov: minimal coverage required in all sample
@@ -91,11 +91,19 @@ class SampComp (object):
         if nthreads < 3:
             raise NanocomporeError("Number of threads not valid")
 
+        # Parse comparison methods
         if not comparison_method:
             comparison_method = [None]
         if type (comparison_method) == str:
-            comparison_method = comparison_method.split(",")
-        allowed_comparison_methods = ["kmean", "mann_whitney", "MW", "kolmogorov_smirnov", "KS","t_test", "TT", "GMM", None]
+            comparison_method = comparison_method.upper().split(",")
+        for i in range(len(comparison_method)):
+            if comparison_method[i] == "mann_whitney".upper():
+                comparison_method[i]="MW"
+            elif comparison_method[i] == "kolmogorov_smirnov".upper():
+                comparison_method[i]="KS"
+            elif comparison_method[i] == "t_test".upper():
+                comparison_method[i]="TT"
+        allowed_comparison_methods = ["MW", "KS", "TT", "GMM", None]
         if not all([cm in allowed_comparison_methods for cm in comparison_method]):
             raise NanocomporeError("Invalid comparison method")
 
