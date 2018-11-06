@@ -62,21 +62,34 @@ def txCompare(data, methods=None, sequence_context=0, min_coverage=0, logger=Non
             weights.append(1/(abs(i)+1))
 
         for test in tests:
-            pvalues_vector = np.array([i['txComp'][test] if test in i['txComp'] else 1 for i in data.values() if 'txComp' in i ])
-            cor_mat = cross_corr_matrix(pvalues_vector, sequence_context)
+            pvalues_vector = [i['txComp'][test] if test in i['txComp'] else 1 for i in data.values() if 'txComp' in i ]
+            # For the purpose of estimating the pvalue correlations, consider NaNs as 1
+            pvalues_vector_no_nan = np.array([p if not np.isnan(p) else 1 for p in pvalues_vector])
+            cor_mat = cross_corr_matrix(pvalues_vector_no_nan, sequence_context)
 
             for mid_pos in data.keys():
                 label = test+"_context_"+str(sequence_context)
                 pval_list = []
-                try:
-                    for pos in range(mid_pos-sequence_context, mid_pos+sequence_context+1):
-                        pval_list.append(data[pos]['txComp'][test])
-                    data[mid_pos]['txComp'][label] = combine_pvalues_hou(pval_list, weights, cor_mat)
-                    if data[mid_pos]['txComp'][label] == 0:
-                        data[mid_pos]['txComp'][label] = np.finfo(np.float).min
-                # In case at least one of the adjacent position is missing
-                except KeyError:
-                    data[mid_pos]['txComp'][label]=1
+                # If the current position is low coverage just return NaN
+                if data[mid_pos]['txComp']['lowCov'] == 'yes':
+                    combined_p_value=np.nan
+                else:
+                    #try:
+                        for pos in range(mid_pos-sequence_context, mid_pos+sequence_context+1):
+                            # If any the neughbouring positions is missing or any 
+                            # of the pvalues in the context is lowCov or NaN, cosider it 1
+                            if pos not in data or data[pos]['txComp']['lowCov'] == 'yes' or np.isnan(data[pos]['txComp'][test]):
+                                pval_list.append(1)
+                            else:
+                                pval_list.append(data[pos]['txComp'][test])
+                        combined_p_value = combine_pvalues_hou(pval_list, weights, cor_mat)
+                    #except KeyError:
+                    #    # If one of the adjacent positions is missing, return NaN
+                    #    # so that we don't consider it when correcting pvalues
+                    #    combined_p_value = 0.42
+                if combined_p_value == 0:
+                    combined_p_value = np.finfo(np.float).min
+                data[mid_pos]['txComp'][label] = combined_p_value
     return data
 
 def nonparametric_test(data, method=None):

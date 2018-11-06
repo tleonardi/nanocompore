@@ -154,7 +154,7 @@ class SampCompDB (object):
         # We open the DB rather that calling __getitem__ to avoid
         # opening and closing the file for every transcript
         with shelve.open(self._db_fn, flag = "r") as db:
-            df = pd.DataFrame([dict({x:y for a,b in v.items() if a == "txComp" for x,y in b.items()  if x in tests}, ref=ref_id, pos=k)  for ref_id, rec in db.items() for k,v in rec.items() if ref_id!="__metadata" ]).fillna(1)
+            df = pd.DataFrame([dict({x:y for a,b in v.items() if a == "txComp" for x,y in b.items()  if x in tests}, ref=ref_id, pos=k)  for ref_id, rec in db.items() for k,v in rec.items() if ref_id!="__metadata" ])
 
         if bed_fn:
             bed_annot={}
@@ -178,7 +178,7 @@ class SampCompDB (object):
         if adjust:
             for col in tests:
                 if "pvalue" in col:
-                    df['adjusted_'+col] = multipletests(df[col], method="fdr_bh")[1]
+                    df['adjusted_'+col] = self.__multipletests_filter_nan(df[col], method="fdr_bh")
         self.results = df
 
     def list_most_significant_positions (self, n=10):
@@ -252,7 +252,10 @@ class SampCompDB (object):
             if pos in ref_pos_dict:
                 for k,v in ref_pos_dict[pos].items():
                     if k in method:
-                        res_dict[k] = v
+                        if not np.isnan(v):
+                            res_dict[k] = v
+                        else:
+                            res_dict[k] = 1
             d[pos] = res_dict
 
         # Create x label including the original sequence and its position
@@ -507,3 +510,22 @@ class SampCompDB (object):
             raise NanocomporeError ("Coordinates have to be lower than the ref_id sequence length ({})".format(len(ref_fasta)))
 
         return (ref_data, ref_fasta, start, end)
+
+    @staticmethod
+    def __multipletests_filter_nan(pvalues, method="fdr_bh"):
+        """ 
+        Performs p-value correction for multiple hypothesis testing
+        using the method specified. The pvalues list can contain 
+        np.nan values, which are ignored during p-value correction.
+         
+        test: input=[0.1, 0.01, np.nan, 0.01, 0.5, 0.4, 0.01, 0.001, np.nan, np.nan, 0.01, np.nan]
+        out: array([0.13333333, 0.016     ,        nan, 0.016     , 0.5       ,
+        0.45714286, 0.016     , 0.008     ,        nan,        nan,
+        0.016     ,        nan])
+        """
+        pvalues_no_naan = [p for p in pvalues if not np.isnan(p)]
+        corrected_p_values = multipletests(pvalues_no_naan, method=method)[1]
+        for i, p in enumerate(pvalues):
+            if np.isnan(p):
+                corrected_p_values=np.insert(corrected_p_values, i, np.nan, axis=0)
+        return(corrected_p_values)
