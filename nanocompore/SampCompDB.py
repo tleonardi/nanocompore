@@ -275,7 +275,7 @@ class SampCompDB (object):
             pl.tight_layout()
             return(fig, ax)
 
-    def plot_signal (self, ref_id, start=None, end=None, split_samples=False, feature="intensity", figsize=(30,7), palette="Set2", plot_style="ggplot", bw=0.25):
+    def plot_signal (self, ref_id, start=None, end=None, split_samples=False, feature="intensity", figsize=(30,10), palette="Set2", plot_style="ggplot", bw=0.25):
         """
         Plot the dwell time and median intensity distribution position per positon in a split violin plot representation.
         It is pointless to plot more than 50 positions at once as it becomes hard to distiguish
@@ -283,7 +283,6 @@ class SampCompDB (object):
         start: Start coordinate (Must be higher or equal to 0)
         end: End coordinate (included) (must be lower or equal to the reference length)
         split_samples: If samples for a same condition are represented separatly. If false they are merged per condition
-        feature: Choose between "intensity" and "dwell"
         figsize: length and heigh of the output plot. Default=(30,10)
         palette: Colormap. Default="Set2"
             see https://matplotlib.org/users/colormaps.html, https://matplotlib.org/examples/color/named_colors.html
@@ -297,13 +296,11 @@ class SampCompDB (object):
         start, end = self.__get_positions (ref_id, start, end)
 
         # Parse line position per position
-        l = []
+        l_intensity = []
+        l_dwell = []
         valid=0
         x_ticks_list = []
         model_means_list = []
-
-        if not feature in ["intensity", "dwell"]:
-            raise NanocomporeError ("Feature either 'intensity' or 'dwell'")
 
         # Extract data from database if position in db
         for pos in np.arange (start, end+1):
@@ -311,58 +308,53 @@ class SampCompDB (object):
                 valid+=1
                 ref_kmer=ref_data[pos]['ref_kmer']
                 x_ticks_list.append("{}\n{}".format(pos, ref_kmer))
-                if feature == "intensity":
-                    model_means_list.append(self._model_dict[ref_kmer][0])
+                model_means_list.append(self._model_dict[ref_kmer][0])
+
                 for k1, v1 in ref_data[pos]['data'].items():
                     # Collect dwell or median data
                     for k2, v2 in v1.items():
-                        for v3 in v2[feature]:
-                            if split_samples:
-                                l.append ((pos, "{}_{}".format(k1, k2), v3))
-                            else:
-                                l.append ((pos, k1, v3))
+                        lab = "{}_{}".format(k1, k2) if split_samples else k1
+
+                        for value in v2["intensity"]:
+                            l_intensity.append ((pos, lab, value))
+                        for value in v2["dwell"]:
+                            l_dwell.append ((pos, lab, np.log10(value)))
+
             else:
-                l.append ((pos, None, None))
+                l_intensity.append ((pos, None, None))
+                l_dwell.append ((pos, None, None))
                 x_ticks_list.append(str(pos))
                 model_means_list.append(None)
 
         # Check that we found valid position and cast collected results to dataframe
         if not valid:
             raise NanocomporeError ("No data available for selected coordinates")
-        df = pd.DataFrame (l, columns=["pos", "lab", feature])
+        df_intensity = pd.DataFrame (l_intensity, columns=["pos", "lab", "value"])
+        df_dwell = pd.DataFrame (l_dwell, columns=["pos", "lab", "value"])
 
         # Define ploting style
         with pl.style.context (plot_style):
-            # Plot dwell and median
-            fig, ax = pl.subplots (figsize=figsize)
-            _ = sns.violinplot (
-                x="pos",
-                y=feature,
-                hue="lab",
-                data=df,
-                split=not split_samples,
-                ax=ax,
-                inner="quartile",
-                bw=bw,
-                linewidth=1,
-                palette=palette,
-                scale="area")
+            fig, (ax1, ax2) = pl.subplots(2,1, figsize=figsize, sharex=True)
 
-            if feature == "intensity":
-                _ = ax.plot (model_means_list, color="black", marker="x", label="Model Mean", linestyle="")
-                _ = ax.set_ylabel ("Mean Intensity")
-            elif feature == "dwell":
-                _ = ax.set_ylabel ("Dwell Time")
+            # Plot median intensity violin + model mean
+            _ = sns.violinplot (x="pos", y="value", hue="lab", data=df_intensity, ax=ax1, split=not split_samples, inner="quartile", bw=bw, linewidth=1, scale="area", palette=palette)
+            _ = ax1.plot (model_means_list, color="black", marker="x", label="Model Mean", linestyle="")
+            _ = ax1.set_ylabel ("Mean Intensity")
+            _ = ax1.set_xlabel ("")
+            _ = ax1.legend ()
+
+            _ = sns.violinplot ( x="pos", y="value", hue="lab", data=df_dwell, ax=ax2, split=not split_samples, inner="quartile", bw=bw, linewidth=1, scale="area", palette=palette)
+            _ = ax2.set_ylabel ("Dwell Time")
+            _ = ax2.set_xlabel ("Reference position")
+            _ = ax2.set_xlim (-1, end-start+1)
+            _ = ax2.set_xticklabels (x_ticks_list)
+            _ = ax2.legend ()
 
             # Adjust display
-            _ = ax.set_xlim (-1, end-start+1)
-            _ = ax.set_xticklabels (x_ticks_list)
-            _ = ax.set_title ("Reference:{}  Start:{}  End:{}".format(ref_id, start, end))
-            _ = ax.set_xlabel ("Reference position")
-            _ = ax.legend ()
+            _ = fig.suptitle("Reference:{}  Start:{}  End:{}".format(ref_id, start, end), y=1.01)
 
             pl.tight_layout()
-            return (fig, ax)
+            return (fig, (ax1, ax2))
 
     def plot_coverage (self, ref_id, start=None, end=None, figsize=(30,5), palette="Set2", plot_style="ggplot"):
         """
