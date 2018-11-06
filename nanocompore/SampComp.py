@@ -296,6 +296,9 @@ class SampComp (object):
                         db [ref_id] = ref_pos_dict
                         pbar.update ()
                 pbar.close()
-                db["__metadata"] = {"comparison_method":self.__comparison_methods, "sequence_context": self.__sequence_context}
+                db["__metadata"] = {
+                    "comparison_method": self.__comparison_methods,
+                    "sequence_context": self.__sequence_context,
+                    "min_coverage": self.__min_coverage}
         except IOError:
             raise NanocomporeError("Error writing to output db")

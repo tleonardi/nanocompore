@@ -41,8 +41,9 @@ class SampCompDB (object):
                 # Try to get metadata from db
                 try:
                     metadata = db['__metadata']
-                    self._comparison_method=metadata['comparison_method']
-                    self._sequence_context=metadata['sequence_context']
+                    self._comparison_method = metadata['comparison_method']
+                    self._sequence_context = metadata['sequence_context']
+                    self.min_coverage = metadata['min_coverage']
                 except KeyError:
                     raise NanocomporeError("The result database does not contain metadata")
                 # Try to load read_ids
@@ -261,7 +262,7 @@ class SampCompDB (object):
             fig, ax = pl.subplots(figsize=figsize)
             _ = sns.lineplot(data=df, palette=palette, ax=ax, dashes=False)
             _ = ax.axhline(y=-np.log10(threshold), color="grey", linestyle=":", label="pvalue={}".format(threshold))
-            _ = ax.legend()
+            _ = ax.legend ()
             _ = ax.set_ylabel("-log (pvalue)")
             _ = ax.set_xlabel("Reference position")
             _ = ax.set_title(ref_id)
@@ -356,7 +357,6 @@ class SampCompDB (object):
             _ = ax.set_xticklabels (x_ticks_list)
             _ = ax.set_title ("Reference:{}  Start:{}  End:{}".format(ref_id, start, end))
             _ = ax.set_xlabel ("Reference position")
-
             _ = ax.legend ()
 
             pl.tight_layout()
@@ -408,12 +408,14 @@ class SampCompDB (object):
                 ax=ax,
                 palette=palette,
                 drawstyle="steps")
-
+            _ = ax.axhline  (y=self.min_coverage, linestyle=":", color="grey", label="minimal coverage")
             _ = ax.set_ylim (0, None)
             _ = ax.set_xlim (start, end)
             _ = ax.set_title ("Reference:{}  Start:{}  End:{}".format(ref_id, start, end))
             _ = ax.set_ylabel ("Coverage")
             _ = ax.set_xlabel ("Reference position")
+            _ = ax.legend()
+
             pl.tight_layout()
             return (fig, ax)
 
