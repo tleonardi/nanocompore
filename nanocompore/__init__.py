@@ -34,7 +34,6 @@ setup_dict = {
         "matplotlib>=2.2.2",
         "seaborn>=0.9.0",
         "pandas>=0.23.3",
-        "pycl>=0.1.1",
         "statsmodels>=0.9.0",
         "bedparse"],
     "packages": [__name__],
