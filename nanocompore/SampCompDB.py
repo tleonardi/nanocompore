@@ -57,7 +57,7 @@ class SampCompDB (object):
 
         # Test is Fasta can be opened
         try:
-            with Fasta (fasta_fn) as fasta:
+            with Fasta (fasta_fn):
                 self._fasta_fn = fasta_fn
         except IOError:
             raise NanocomporeError("The fasta file cannot be opened")
