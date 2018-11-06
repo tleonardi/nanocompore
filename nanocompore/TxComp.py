@@ -42,8 +42,8 @@ def txCompare(data, methods=None, sequence_context=0, min_coverage=0, logger=Non
         for met in methods:
             if met in ["MW", "KS", "TT"] :
                 pvalues = nonparametric_test(data[pos]['data'], method=met)
-                res[met+"intensity_pvalue"]=pvalues[0]
-                res[met+"dwell_pvalue"]=pvalues[1]
+                res[met+"_intensity_pvalue"]=pvalues[0]
+                res[met+"_dwell_pvalue"]=pvalues[1]
                 tests.add(met+"_intensity_pvalue")
                 tests.add(met+"_dwell_pvalue")
             elif met == "GMM":
