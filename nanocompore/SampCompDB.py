@@ -141,15 +141,16 @@ class SampCompDB (object):
             methods = self._comparison_method
         for m in methods:
             if m in ["MW", "KS", "TT"]:
-                tests.append(m+"intensity_pvalue")
-                tests.append(m+"dwell_pvalue")
+                tests.append("{}_intensity_pvalue".format(m))
+                tests.append("{}_dwell_pvalue".format(m))
                 if self._sequence_context:
-                    tests.append(m+"intensity_pvalue_context_"+str(self._sequence_context))
-                    tests.append(m+"dwell_pvalue_context_"+str(self._sequence_context))
+                    tests.append("{}_intensity_pvalue_context_{}".format(m, self._sequence_context))
+                    tests.append("{}_intensity_pvalue_context_{}".format(m, self._sequence_context))
+                    tests.append(m+"_dwell_pvalue_context_"+str(self._sequence_context))
             elif m =="GMM":
                 tests.append("GMM_pvalue")
                 if self._sequence_context:
-                    tests.append("GMM_pvalue_context_"+str(self._sequence_context))
+                    tests.append("GMM_pvalue_context_{}".format(self._sequence_context))
         tests.append("lowCov")
         # We open the DB rather that calling __getitem__ to avoid
         # opening and closing the file for every transcript
@@ -363,7 +364,7 @@ class SampCompDB (object):
             pl.tight_layout()
             return (fig, ax)
 
-    def plot_coverage (self, ref_id, start=None, end=None, figsize=(30,5),  palette="Set2", plot_style="ggplot"):
+    def plot_coverage (self, ref_id, start=None, end=None, figsize=(30,5), palette="Set2", plot_style="ggplot"):
         """
         Plot pvalues per position (by default plot all fields starting by "pvalue")
         It is pointless to plot more than 50 positions at once as it becomes hard to distiguish
@@ -371,8 +372,8 @@ class SampCompDB (object):
         start: Start coordinate. Default=0
         end: End coordinate (included). Default=reference length
         figsize: length and heigh of the output plot. Default=(30,10)
-        colors: list of 2 colors
-            see https://matplotlib.org/examples/color/named_colors.html
+        palette: Colormap. Default="Set2"
+            see https://matplotlib.org/users/colormaps.html, https://matplotlib.org/examples/color/named_colors.html
         plot_style: Matplotlib plotting style. Default="ggplot"
             . See https://matplotlib.org/users/style_sheets.html
         """
@@ -409,7 +410,7 @@ class SampCompDB (object):
                 ax=ax,
                 palette=palette,
                 drawstyle="steps")
-            _ = ax.axhline  (y=self.min_coverage, linestyle=":", color="grey", label="minimal coverage")
+            _ = ax.axhline  (y=self._min_coverage, linestyle=":", color="grey", label="minimal coverage")
             _ = ax.set_ylim (0, None)
             _ = ax.set_xlim (start, end)
             _ = ax.set_title ("Reference:{}  Start:{}  End:{}".format(ref_id, start, end))
@@ -420,15 +421,15 @@ class SampCompDB (object):
             pl.tight_layout()
             return (fig, ax)
 
-    def plot_position(self, ref_id, pos=None, figsize=(30,10), colors=["dodgerblue", "salmon"], plot_type=["kde", "scatter"], plot_style="ggplot"):
+    def plot_position (self, ref_id, pos=None, split_samples=False, figsize=(30,10), palette="Set2",  plot_style="ggplot"):
         """
         Plot the dwell time and median intensity at the given position as a scatter plot.
         ref_id: Valid reference id name in the database
         pos: Position of interest
+        split_samples: If samples for a same condition are represented separatly. If false they are merged per condition
         figsize: length and heigh of the output plot. Default=(30,10)
-        colors: List of colors
+        palette: Colormap. Default="Set2"
             see https://matplotlib.org/users/colormaps.html, https://matplotlib.org/examples/color/named_colors.html
-        plot_type: type of plot = kde, scatter or a list of both
         plot_style: Matplotlib plotting style
             . See https://matplotlib.org/users/style_sheets.html
         """
@@ -553,8 +554,8 @@ class SampCompDB (object):
         0.45714286, 0.016     , 0.008     ,        nan,        nan,
         0.016     ,        nan])
         """
-        pvalues_no_naan = [p for p in pvalues if not np.isnan(p)]
-        corrected_p_values = multipletests(pvalues_no_naan, method=method)[1]
+        pvalues_no_nan = [p for p in pvalues if not np.isnan(p)]
+        corrected_p_values = multipletests(pvalues_no_nan, method=method)[1]
         for i, p in enumerate(pvalues):
             if np.isnan(p):
                 corrected_p_values=np.insert(corrected_p_values, i, np.nan, axis=0)
