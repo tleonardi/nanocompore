@@ -8,15 +8,12 @@ import warnings
 
 # Third party
 from scipy.stats import mannwhitneyu, ks_2samp, ttest_ind, chi2
-from statsmodels.stats.multitest import multipletests
 import statsmodels.discrete.discrete_model as sm
 from statsmodels.tools.sm_exceptions import ConvergenceWarning
 from sklearn.preprocessing import StandardScaler
-from sklearn.cluster import KMeans
 from sklearn.mixture import GaussianMixture
 import numpy as np
 import pandas as pd
-from numpy.linalg import LinAlgError
 
 # Local package
 from nanocompore.common import NanocomporeError
@@ -25,38 +22,37 @@ def txCompare(data, methods=None, sequence_context=0, min_coverage=0, logger=Non
 
     tests = set()
     for pos in data.keys():
-        condition_labels = tuple(data[pos]['data'].keys())
-        if len(condition_labels) != 2:
+        res = dict()
+
+        if len(data[pos]['data']) != 2:
             logger.debug("Skipping position %s of ref %s because not present in all conditions" % (pos, ref))
-            res['lowCov']="yes"
+            res['lowCov']=True
             data[pos]['txComp'] = res
             continue
         # Filter out positions with low coverage
-        res = dict()
         if not all( [ rep['coverage'] > min_coverage for cond in data[pos]['data'].values() for rep in cond.values() ] ):
-            res['lowCov']="yes"
+            res['lowCov']=True
             data[pos]['txComp'] = res
             continue
+
         else:
-            res['lowCov']="no"
+            res['lowCov']=False
         for met in methods:
             if met in ["MW", "KS", "TT"] :
                 pvalues = nonparametric_test(data[pos]['data'], method=met)
-                res[met+"_intensity_pvalue"]=pvalues[0]
-                res[met+"_dwell_pvalue"]=pvalues[1]
-                tests.add(met+"_intensity_pvalue")
-                tests.add(met+"_dwell_pvalue")
+                res["{}_intensity_pvalue".format(met)]=pvalues[0]
+                res["{}_dwell_pvalue".format(met)]=pvalues[1]
+                tests.add("{}_intensity_pvalue".format(met))
+                tests.add("{}_dwell_pvalue".format(met))
             elif met == "GMM":
                 gmm_results = gmm_test(data[pos]['data'], verbose=True)
                 res["GMM_pvalue"] = gmm_results[0]
                 res["GMM_model"] = gmm_results
                 tests.add("GMM_pvalue")
-            else:
-                raise NanocomporeError("The method %s is not implemented" % met)
         data[pos]['txComp'] = res
 
     if sequence_context > 0:
-        # Generate weights as a symmetrical armonic series
+        # Generate weights as a symmetrical harmonic series
         weights=[]
         for i in range(-sequence_context, sequence_context+1):
             weights.append(1/(abs(i)+1))
@@ -68,17 +64,17 @@ def txCompare(data, methods=None, sequence_context=0, min_coverage=0, logger=Non
             cor_mat = cross_corr_matrix(pvalues_vector_no_nan, sequence_context)
 
             for mid_pos in data.keys():
-                label = test+"_context_"+str(sequence_context)
+                label = "{}_context_{}".format(test, sequence_context)
                 pval_list = []
                 # If the current position is low coverage just return NaN
-                if data[mid_pos]['txComp']['lowCov'] == 'yes':
+                if data[mid_pos]['txComp']['lowCov']:
                     combined_p_value=np.nan
                 else:
                     #try:
                         for pos in range(mid_pos-sequence_context, mid_pos+sequence_context+1):
                             # If any the neughbouring positions is missing or any
-                            # of the pvalues in the context is lowCov or NaN, cosider it 1
-                            if pos not in data or data[pos]['txComp']['lowCov'] == 'yes' or np.isnan(data[pos]['txComp'][test]):
+                            # of the pvalues in the context is lowCov or NaN, consider it 1
+                            if pos not in data or data[pos]['txComp']['lowCov'] or np.isnan(data[pos]['txComp'][test]):
                                 pval_list.append(1)
                             else:
                                 pval_list.append(data[pos]['txComp'][test])
