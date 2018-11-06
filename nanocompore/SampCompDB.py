@@ -440,38 +440,60 @@ class SampCompDB (object):
         if pos not in ref_data:
             raise NanocomporeError("No data available for the selected position")
 
-
-        if type(plot_type) == str:
-            plot_type = [plot_type]
-
         # Extract data from database if position in db
         ref_kmer = ref_data[pos]['ref_kmer']
         data = ref_data[pos]['data']
-        condition_labels = tuple(data.keys())
-        s1_intensity = np.concatenate([v['intensity'] for v in data[condition_labels[0]].values()])
-        s2_intensity = np.concatenate([v['intensity'] for v in data[condition_labels[1]].values()])
-        s1_dwell = np.log10(np.concatenate([v['dwell'] for v in data[condition_labels[0]].values()]))
-        s2_dwell = np.log10(np.concatenate([v['dwell'] for v in data[condition_labels[1]].values()]))
+
+        # Disretize palette
+        if split_samples:
+            colors = sns.mpl_palette(palette, self._n_samples)
+        else:
+            colors = sns.mpl_palette(palette, 2)
+
+        # Collect and transform data in dict
+        plot_data_dict = OrderedDict ()
+        i = 0
+        for cond_label, cond_data in data.items():
+            if split_samples:
+                for rep_lab, rep_data in cond_data.items():
+                    plot_data_dict["{}_{}".format(cond_label, rep_lab)] = {
+                        "intensity":rep_data["intensity"],
+                        "dwell":rep_data["dwell"],
+                        "color":colors[i]}
+                    i+=1
+            else:
+                intensity_list = []
+                dwell_list = []
+                for rep_lab, rep_data in cond_data.items():
+                    intensity_list.append(rep_data["intensity"])
+                    dwell_list.append(rep_data["dwell"])
+                plot_data_dict[cond_label] = {
+                    "intensity":np.log10(np.concatenate(intensity_list)),
+                    "dwell":np.log10(np.concatenate(dwell_list)),
+                    "color":colors[i]}
+                i+=1
 
         with pl.style.context(plot_style):
             # Plot dwell and median
             fig, ax = pl.subplots(figsize=figsize)
 
-            if "kde" in plot_type:
-                cmap1 = sns.light_palette(colors[0], as_cmap=True)
-                _ = sns.kdeplot(s1_intensity, s1_dwell, cmap=cmap1, ax=ax, label=condition_labels[0])
-                cmap2 = sns.light_palette(colors[1], as_cmap=True)
-                _ = sns.kdeplot(s2_intensity, s2_dwell, cmap=cmap2, ax=ax, label=condition_labels[1])
+            for label, d in plot_data_dict.items():
 
-            if "scatter" in plot_type:
-                cmap1 = sns.light_palette(colors[0], as_cmap=True)
-                _ = ax.scatter (x=s1_intensity, y=s1_dwell, color=colors[0], label=condition_labels[0])
-                cmap2 = sns.light_palette(colors[1], as_cmap=True)
-                _ = ax.scatter (x=s2_intensity, y=s2_dwell, color=colors[1], label=condition_labels[1])
+                _ = sns.kdeplot(
+                    d["intensity"],
+                    d["dwell"],
+                    cmap=sns.light_palette(d["color"], as_cmap=True),
+                    ax=ax)
+
+                _ = ax.scatter (
+                    x=d["intensity"],
+                    y=d["dwell"],
+                    color=d["color"],
+                    label=label)
 
             # Adjust display
             _ = ax.set_title ("%s\n%s (%s)"%(ref_id,pos, ref_kmer))
-            _ = ax.set_ylabel ("Dwell")
+            _ = ax.set_ylabel ("log10 (Dwell Time)")
             _ = ax.set_xlabel ("Median Intensity")
             _ = ax.legend()
             pl.tight_layout()
