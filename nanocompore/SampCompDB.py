@@ -34,15 +34,10 @@ class SampCompDB (object):
         db_fn: Path where to write the result database
         fasta_fn: Path to a fasta file corresponding to the reference used for read alignemnt
         """
-        # Check file
-        for fn in (db_fn, fasta_fn):
-            if not access_file (fn):
-                raise NanocomporeError("Cannot access file {}".format(fn))
 
         # Try to get ref_id list and metadata from shelve db
         try:
             with shelve.open (db_fn, flag='r') as db:
-
                 # Try to get metadata from db
                 try:
                     metadata = db['__metadata']
@@ -50,16 +45,24 @@ class SampCompDB (object):
                     self._sequence_context=metadata['sequence_context']
                 except KeyError:
                     raise NanocomporeError("The result database does not contain metadata")
-
                 # Try to load read_ids
                 self.ref_id_list = [k for k in db.keys() if k!='__metadata']
                 if not self.ref_id_list:
                     raise NanocomporeError("The result database is empty")
+                # finally save db path
+                self._db_fn = db_fn
+
         except dbm_error:
             raise NanocomporeError("The result database cannot be opened")
-        self._db_fn = db_fn
-        self._fasta_fn = fasta_fn
 
+        # Test is Fasta can be opened
+        try:
+            with Fasta (fasta_fn) as fasta:
+                self._fasta_fn = fasta_fn
+        except IOError:
+            raise NanocomporeError("The fasta file cannot be opened")
+
+        # Define model depending on run_type
         if run_type == "RNA":
             self._model_dict = models.RNA_model_dict
         else:
