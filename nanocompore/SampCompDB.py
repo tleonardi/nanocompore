@@ -4,6 +4,7 @@
 # Std lib
 from collections import OrderedDict, namedtuple
 import shelve
+from dbm import error as dbm_error
 from math import log
 import re
 
@@ -42,7 +43,7 @@ class SampCompDB (object):
         try:
             with shelve.open (db_fn, flag='r') as db:
 
-                # Try to get metedata from db
+                # Try to get metadata from db
                 try:
                     metadata = db['__metadata']
                     self._comparison_method=metadata['comparison_method']
@@ -54,7 +55,7 @@ class SampCompDB (object):
                 self.ref_id_list = [k for k in db.keys() if k!='__metadata']
                 if not self.ref_id_list:
                     raise NanocomporeError("The result database is empty")
-        except:
+        except dbm_error:
             raise NanocomporeError("The result database cannot be opened")
         self._db_fn = db_fn
 
@@ -138,28 +139,22 @@ class SampCompDB (object):
         tests=[]
         if methods is None:
             methods = self._comparison_method
-        for method in methods:
-            if method in ["mann_whitney", "MW"]:
-                tests.append("pvalue_mann_whitney_median")
-                tests.append("pvalue_mann_whitney_dwell")
-            elif method in ["kolmogorov_smirnov", "KS"]:
-                tests.append("pvalue_kolmogorov_smirnov_median")
-                tests.append("pvalue_kolmogorov_smirnov_dwell")
-            elif method in ["t_test", "TT"]:
-                tests.append("pvalue_t_test_median")
-                tests.append("pvalue_t_test_dwell")
-            elif method in ["kmean"]:
-                tests.append("pvalue_kmeans")
-            elif method in ["GMM"]:
-                tests.append("pvalue_gmm")
-        if self._sequence_context:
-            c=str(self._sequence_context)
-            tests+=[t+"_context="+c for t in tests]
-
+        for m in methods:
+            if m in ["MW", "KS", "TT"]:
+                tests.append(m+"intensity_pvalue")
+                tests.append(m+"dwell_pvalue")
+                if self._sequence_context:
+                    tests.append(m+"intensity_pvalue_context_"+str(self._sequence_context))
+                    tests.append(m+"dwell_pvalue_context_"+str(self._sequence_context))
+            elif m =="GMM":
+                tests.append("GMM_pvalue")
+                if self._sequence_context:
+                    tests.append("GMM_pvalue_context_"+str(self._sequence_context))
+        tests.append("lowCov")
         # We open the DB rather that calling __getitem__ to avoid
         # opening and closing the file for every transcript
         with shelve.open(self._db_fn, flag = "r") as db:
-            df = pd.DataFrame([dict({a:b for a,b in v.items() if a in tests}, ref=ref_id, pos=k)  for ref_id, rec in db.items() for k,v in rec.items() if ref_id!="__metadata" ]).fillna(1)
+            df = pd.DataFrame([dict({x:y for a,b in v.items() if a == "txComp" for x,y in b.items()  if x in tests}, ref=ref_id, pos=k)  for ref_id, rec in db.items() for k,v in rec.items() if ref_id!="__metadata" ]).fillna(1)
 
         if bed_fn:
             bed_annot={}
@@ -182,7 +177,8 @@ class SampCompDB (object):
 
         if adjust:
             for col in tests:
-                df['adjusted_'+col] = multipletests(df[col], method="fdr_bh")[1]
+                if "pvalue" in col:
+                    df['adjusted_'+col] = multipletests(df[col], method="fdr_bh")[1]
         self.results = df
 
     def list_most_significant_positions (self, n=10):
@@ -235,7 +231,7 @@ class SampCompDB (object):
 
         # If method not provided, set it to a default regex
         if method is None:
-            method="adjusted_pvalue*"
+            method="adjusted_*"
         # Parse the method as regex if string
         if isinstance(method, str):
             r = re.compile(method)
@@ -245,49 +241,49 @@ class SampCompDB (object):
         
         for m in method:
             if m not in methods:
-                raise NanocomporeError("Method %s is not the results dataframe"%m)
+                raise NanocomporeError("Method %s is not in the results dataframe"%m)
 
         # Parse line position per position
-        d = OrderedDict ()
+        d = OrderedDict()
 
-        for pos in range (start, end+1):
+        for pos in range(start, end+1):
             # Collect results for position
             res_dict = OrderedDict ()
             if pos in ref_pos_dict:
                 for k,v in ref_pos_dict[pos].items():
                     if k in method:
-                        res_dict [k] = v
+                        res_dict[k] = v
             d[pos] = res_dict
 
         # Create x label including the original sequence and its position
         x_lab = []
-        for pos, base in zip (range (start, end+1), ref_fasta[start:end+1]):
-            x_lab.append ("{}\n{}".format(pos, base))
+        for pos, base in zip(range (start, end+1), ref_fasta[start:end+1]):
+            x_lab.append("{}\n{}".format(pos, base))
 
         # Cast collected results to dataframe
         df = pd.DataFrame.from_dict(d, orient="index")
         if df.empty:
-            raise NanocomporeError ("No data available for the selected interval")
+            raise NanocomporeError("No data available for the selected interval")
 
         # filling missing values and log transform the data
         df.fillna(1, inplace=True)
         df = -np.log10(df)
 
         # Define plotting style
-        with pl.style.context (plot_style):
+        with pl.style.context(plot_style):
             fig, ax = pl.subplots(figsize=figsize)
             _ = sns.lineplot(data=df, palette=palette, ax=ax, dashes=False)
-            _ = ax.axhline (y=-np.log10(threshold), color="grey", linestyle=":", label="pvalue={}".format(threshold))
-            _ = ax.legend ()
-            _ = ax.set_ylabel ("-log (pvalue)")
-            _ = ax.set_xlabel ("Reference position")
-            _ = ax.set_title (ref_id)
-            _ = ax.set_xlim (start, end)
+            _ = ax.axhline(y=-np.log10(threshold), color="grey", linestyle=":", label="pvalue={}".format(threshold))
+            _ = ax.legend()
+            _ = ax.set_ylabel("-log (pvalue)")
+            _ = ax.set_xlabel("Reference position")
+            _ = ax.set_title(ref_id)
+            _ = ax.set_xlim(start, end)
             if end-start<30:
                 _ = ax.set_xticks(df.index)
                 _ = ax.set_xticklabels(x_lab)
             pl.tight_layout()
-            return (fig, ax)
+            return(fig, ax)
 
     def plot_signal (self, ref_id, start=None, end=None, split_samples=False, feature="intensity", figsize=(30,7), palette="Set2", plot_style="ggplot", bw=0.25):
         """
@@ -322,21 +318,18 @@ class SampCompDB (object):
         for pos in np.arange (start, end+1):
             if pos in ref_data:
                 valid+=1
-                for k1, v1 in ref_data[pos].items():
-                    # Collect kmer seq
-                    if k1 == "ref_kmer":
-                        x_ticks_list.append("{}\n{}".format(pos, v1))
-                        if feature == "intensity":
-                            model_means_list.append (self._model_dict[v1][0])
-
+                ref_kmer=ref_data[pos]['ref_kmer']
+                x_ticks_list.append("{}\n{}".format(pos, ref_kmer))
+                if feature == "intensity":
+                    model_means_list.append(self._model_dict[ref_kmer][0])
+                for k1, v1 in ref_data[pos]['data'].items():
                     # Collect dwell or median data
-                    else:
-                        for k2, v2 in v1.items():
-                            for v3 in v2[feature]:
-                                if split_samples:
-                                    l.append ((pos, "{}_{}".format(k1, k2), v3))
-                                else:
-                                    l.append ((pos, k1, v3))
+                    for k2, v2 in v1.items():
+                        for v3 in v2[feature]:
+                            if split_samples:
+                                l.append ((pos, "{}_{}".format(k1, k2), v3))
+                            else:
+                                l.append ((pos, k1, v3))
             else:
                 l.append ((pos, None, None))
                 x_ticks_list.append(str(pos))
@@ -404,10 +397,9 @@ class SampCompDB (object):
         for pos in np.arange (start, end+1):
             if pos in ref_data:
                 valid+=1
-                for k1, v1 in ref_data[pos].items():
-                    if k1 != "ref_kmer":
-                        for k2, v2 in v1.items():
-                            l.append ((pos, "{}_{}".format(k1, k2), v2["coverage"]))
+                for k1, v1 in ref_data[pos]['data'].items():
+                    for k2, v2 in v1.items():
+                        l.append ((pos, "{}_{}".format(k1, k2), v2["coverage"]))
             else:
                 l.append ((pos, None, None))
 
@@ -451,42 +443,37 @@ class SampCompDB (object):
         # Get data
         ref_data, ref_fasta, start, end = self.__get_plot_data (ref_id, pos, pos)
 
-        if pos not in ref_data.keys():
-            raise NanocomporeError ("No data available for the selected position")
+        if pos not in ref_data:
+            raise NanocomporeError("No data available for the selected position")
 
-        # Parse line position per position
-        lt = namedtuple ("lt", ["pos", "sample", "median", "dwell"])
-        l = []
-        for median, dwell in zip (ref_data[pos]["S1_median"], ref_data[pos]["S1_dwell"]):
-            l.append (lt (pos, "S1", median, dwell))
-        for median, dwell in zip (ref_data[pos]["S2_median"], ref_data[pos]["S2_dwell"]):
-            l.append (lt (pos, "S2", median, dwell))
+        if not isinstance(pos, int):
+            raise NanocomporeError("pos must be a single position")
 
-        # Check that we found valid position and cast collected results to dataframe
-        df = pd.DataFrame (l)
+        # Get data
+        ref_data, ref_fasta, start, end = self.__get_plot_data(ref_id, start, end)
 
-        # Create x label including the original sequence and its position
-        base=ref_fasta[pos]
-        x_lab = "{}\n{}".format(pos, base)
-        df['dwell'] = np.log10(df['dwell'])
-        s1_median = df[df['sample']=="S1"]['median']
-        s1_dwell = df[df['sample']=="S1"]['dwell']
-        s2_median = df[df['sample']=="S2"]['median']
-        s2_dwell = df[df['sample']=="S2"]['dwell']
-        # Define ploting style
+        # Extract data from database if position in db
+        ref_kmer=ref_data[pos]['ref_kmer']
+        data=ref_data[pos]['data']
+        condition_labels = tuple(data.keys())
+        s1_intensity = np.concatenate([v['intensity'] for v in data[condition_labels[0]].values()])
+        s2_intensity = np.concatenate([v['intensity'] for v in data[condition_labels[1]].values()])
+        s1_dwell = np.log10(np.concatenate([v['dwell'] for v in data[condition_labels[0]].values()]))
+        s2_dwell = np.log10(np.concatenate([v['dwell'] for v in data[condition_labels[1]].values()]))
+  
         with pl.style.context(plot_style):
             # Plot dwell and median
             fig, ax = pl.subplots(figsize=figsize)
             cmap1 = sns.light_palette(colors[0], as_cmap=True)
             cmap2 = sns.light_palette(colors[1], as_cmap=True)
-            ax = sns.kdeplot(s1_median, s1_dwell, cmap=cmap1, label="S1", shade_lowest=False, legend=True)
-            ax = sns.kdeplot(s2_median, s2_dwell, cmap=cmap2, label="S2", shade_lowest=False, legend=True)
+            ax = sns.kdeplot(s1_intensity, s1_dwell, cmap=cmap1, label=condition_labels[0], shade_lowest=False, legend=True)
+            ax = sns.kdeplot(s2_intensity, s2_dwell, cmap=cmap2, label=condition_labels[1], shade_lowest=False, legend=True)
             # Adjust display
-            _ = ax.set_title ("%s\n%s%s"%(ref_id,base,pos))
+            _ = ax.set_title ("%s\n%s (%s)"%(ref_id,pos, ref_kmer))
             _ = ax.set_ylabel ("Dwell")
             _ = ax.set_xlabel ("Median Intensity")
-            red_patch = mpatches.Patch(color=colors[0], label='S1')
-            blue_patch = mpatches.Patch(color=colors[1], label='S2')
+            red_patch = mpatches.Patch(color=colors[0], label=condition_labels[0])
+            blue_patch = mpatches.Patch(color=colors[1], label=condition_labels[1])
             pl.legend(handles=[red_patch, blue_patch])
             pl.tight_layout()
         return (fig, ax)
