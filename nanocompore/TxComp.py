@@ -23,6 +23,7 @@ from nanocompore.common import NanocomporeError
 
 def txCompare(data, methods=None, sequence_context=0, min_coverage=0, logger=None, ref=None):
 
+    tests = set()
     for pos in data.keys():
         condition_labels = tuple(data[pos]['data'].keys())
         if len(condition_labels) != 2:
@@ -38,25 +39,24 @@ def txCompare(data, methods=None, sequence_context=0, min_coverage=0, logger=Non
             continue
         else:
             res['lowCov']="no"
-        tests=[]
         for met in methods:
             if met in ["MW", "KS", "TT"] :
                 pvalues = nonparametric_test(data[pos]['data'], method=met)
                 res[met+"intensity_pvalue"]=pvalues[0]
                 res[met+"dwell_pvalue"]=pvalues[1]
-                tests.append(met+"intensity_pvalue")
-                tests.append(met+"dwell_pvalue")
+                tests.add(met+"intensity_pvalue")
+                tests.add(met+"dwell_pvalue")
             elif met == "GMM":
                 gmm_results = gmm_test(data[pos]['data'], verbose=True)
                 res["GMM_pvalue"] = gmm_results[0]
                 res["GMM_model"] = gmm_results
-                tests.append("GMM_pvalue")
+                tests.add("GMM_pvalue")
             else:
                 raise NanocomporeError("The method %s is not implemented" % met)
         data[pos]['txComp'] = res
 
-    if sequence_context != 0:
-        # Generate weights as a symmetrical armonic series 
+    if sequence_context > 0:
+        # Generate weights as a symmetrical armonic series
         weights=[]
         for i in range(-sequence_context, sequence_context+1):
             weights.append(1/(abs(i)+1))
@@ -76,7 +76,7 @@ def txCompare(data, methods=None, sequence_context=0, min_coverage=0, logger=Non
                 else:
                     #try:
                         for pos in range(mid_pos-sequence_context, mid_pos+sequence_context+1):
-                            # If any the neughbouring positions is missing or any 
+                            # If any the neughbouring positions is missing or any
                             # of the pvalues in the context is lowCov or NaN, cosider it 1
                             if pos not in data or data[pos]['txComp']['lowCov'] == 'yes' or np.isnan(data[pos]['txComp'][test]):
                                 pval_list.append(1)
@@ -119,7 +119,7 @@ def gmm_test(data, log_dwell=True, verbose=False):
     condition_labels = tuple(data.keys())
     if len(condition_labels) != 2:
         raise NanocomporeError("gmm_test only supports two conditions")
-    
+
     global_intensity = np.concatenate(([v['intensity'] for v in data[condition_labels[0]].values()]+[v['intensity'] for v in data[condition_labels[1]].values()]), axis=None)
     global_dwell = np.concatenate(([v['dwell'] for v in data[condition_labels[0]].values()]+[v['dwell'] for v in data[condition_labels[1]].values()]), axis=None)
 
@@ -208,4 +208,3 @@ def combine_pvalues_hou(pvalues, weights, cor_mat):
     # chi2.sf is the same as 1-chi2.cdf but is more accurate
     combined_p = chi2.sf(tau/c,f)
     return(combined_p)
-
