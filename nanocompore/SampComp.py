@@ -296,9 +296,25 @@ class SampComp (object):
                         db [ref_id] = ref_pos_dict
                         pbar.update ()
                 pbar.close()
+
                 db["__metadata"] = {
                     "comparison_method": self.__comparison_methods,
                     "sequence_context": self.__sequence_context,
-                    "min_coverage": self.__min_coverage}
+                    "min_coverage": self.__min_coverage,
+                    "n_samples": self.__n_samples}
         except IOError:
             raise NanocomporeError("Error writing to output db")
+
+    #~~~~~~~~~~~~~~PRIVATE HELPER METHODS~~~~~~~~~~~~~~#
+    def __eventalign_fn_open (self):
+        fp_dict = OrderedDict()
+        for cond_lab, sample_dict in self.__eventalign_fn_dict.items():
+            fp_dict[cond_lab] = OrderedDict()
+            for sample_lab, fn in sample_dict.items():
+                fp_dict[cond_lab][sample_lab] = open(fn, "r")
+        return fp_dict
+
+    def __eventalign_fn_close (self, fp_dict):
+        for sample_dict in fp_dict.values():
+            for fp in sample_dict.values():
+                fp.close()

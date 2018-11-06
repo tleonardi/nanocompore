@@ -43,7 +43,8 @@ class SampCompDB (object):
                     metadata = db['__metadata']
                     self._comparison_method = metadata['comparison_method']
                     self._sequence_context = metadata['sequence_context']
-                    self.min_coverage = metadata['min_coverage']
+                    self._min_coverage = metadata['min_coverage']
+                    self._n_samples = metadata['n_samples']
                 except KeyError:
                     raise NanocomporeError("The result database does not contain metadata")
                 # Try to load read_ids
