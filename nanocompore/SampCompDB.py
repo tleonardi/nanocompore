@@ -58,17 +58,12 @@ class SampCompDB (object):
         except dbm_error:
             raise NanocomporeError("The result database cannot be opened")
         self._db_fn = db_fn
+        self._fasta_fn = fasta_fn
 
         if run_type == "RNA":
             self._model_dict = models.RNA_model_dict
         else:
             raise NanocomporeError ("Only RNA is implemented at the moment")
-
-        # Try to open Fasta file
-        try:
-            self._fasta = Fasta(fasta_fn)
-        except:
-            raise NanocomporeError("The fasta reference file cannot be opened")
 
     def __repr__ (self):
         """readable description of the object"""
@@ -203,23 +198,9 @@ class SampCompDB (object):
             . See https://matplotlib.org/users/style_sheets.html
         method: Limit the pvalue methods shown in the plot. Either a list of methods or a regular expression as a string.
         """
-        try:
-            ref_fasta = self._fasta [ref_id]
-        except KeyError:
-            raise NanocomporeError("Reference id not present in result database")
-
-        # Define start, end if not given
-        if not start:
-            start = 0
-        if not end:
-            end = len (ref_fasta)
-        # Check start end
-        if start > end:
-            raise NanocomporeError("End coordinate has to be higher or equal to start")
-        if start < 0:
-            raise NanocomporeError("Coordinates have to be higher that 0")
-        if end > len(ref_fasta):
-            raise NanocomporeError("Coordinates have to be lower than the ref_id sequence length ({})".format(len(ref_fasta)))
+        # Extract fasta and positions
+        ref_fasta = self.__get_ref_fasta (ref_id)
+        start, end = self.__get_positions (start, end, len(ref_fasta))
 
         try:
             ref_pos_dict = self.results.query('ref==@ref_id').set_index('pos').to_dict('index')
@@ -238,7 +219,7 @@ class SampCompDB (object):
             method = list(filter(r.match, methods))
         elif not isinstance(method, list):
             raise NanocomporeError("Method must be either a string or a list")
-        
+
         for m in method:
             if m not in methods:
                 raise NanocomporeError("Method %s is not in the results dataframe"%m)
@@ -305,8 +286,10 @@ class SampCompDB (object):
         bw: Scale factor to use when computing the kernel bandwidth
         """
 
-        # Get data
-        ref_data, ref_fasta, start, end = self.__get_plot_data (ref_id, start, end)
+        # Extract data for ref_id
+        ref_data = self.__get_ref_data (ref_id)
+        ref_fasta = self.__get_ref_fasta (ref_id)
+        start, end = self.__get_positions (start, end, len(ref_fasta))
 
         # Parse line position per position
         l = []
@@ -390,8 +373,10 @@ class SampCompDB (object):
         plot_style: Matplotlib plotting style. Default="ggplot"
             . See https://matplotlib.org/users/style_sheets.html
         """
-        # Get data
-        ref_data, ref_fasta, start, end = self.__get_plot_data (ref_id, start, end)
+        # Extract data for ref_id
+        ref_data = self.__get_ref_data (ref_id)
+        ref_fasta = self.__get_ref_fasta (ref_id)
+        start, end = self.__get_positions (start, end, len(ref_fasta))
 
         # Parse line position per position
         l=[]
@@ -443,17 +428,15 @@ class SampCompDB (object):
             . See https://matplotlib.org/users/style_sheets.html
         """
 
-        # Get data
-        ref_data, ref_fasta, start, end = self.__get_plot_data (ref_id, pos, pos)
+        # Extract data for ref_id
+        ref_data = self.__get_ref_data (ref_id)
+        ref_fasta = self.__get_ref_fasta (ref_id)
 
-        if pos not in ref_data:
-            raise NanocomporeError("No data available for the selected position")
-
+        # Check that position is valid
         if not isinstance(pos, int):
             raise NanocomporeError("pos must be a single position")
-
-        # Get data
-        ref_data, ref_fasta, start, end = self.__get_plot_data(ref_id, start, end)
+        if pos not in ref_data:
+            raise NanocomporeError("No data available for the selected position")
 
         # Extract data from database if position in db
         ref_kmer=ref_data[pos]['ref_kmer']
@@ -463,14 +446,14 @@ class SampCompDB (object):
         s2_intensity = np.concatenate([v['intensity'] for v in data[condition_labels[1]].values()])
         s1_dwell = np.log10(np.concatenate([v['dwell'] for v in data[condition_labels[0]].values()]))
         s2_dwell = np.log10(np.concatenate([v['dwell'] for v in data[condition_labels[1]].values()]))
-  
+
         with pl.style.context(plot_style):
             # Plot dwell and median
             fig, ax = pl.subplots(figsize=figsize)
             cmap1 = sns.light_palette(colors[0], as_cmap=True)
             cmap2 = sns.light_palette(colors[1], as_cmap=True)
-            ax = sns.kdeplot(s1_intensity, s1_dwell, cmap=cmap1, label=condition_labels[0], shade_lowest=False, legend=True)
-            ax = sns.kdeplot(s2_intensity, s2_dwell, cmap=cmap2, label=condition_labels[1], shade_lowest=False, legend=True)
+            _ = sns.kdeplot(s1_intensity, s1_dwell, cmap=cmap1, ax=ax, label=condition_labels[0], shade_lowest=False, legend=True)
+            _ = sns.kdeplot(s2_intensity, s2_dwell, cmap=cmap2, ax=ax, label=condition_labels[1], shade_lowest=False, legend=True)
             # Adjust display
             _ = ax.set_title ("%s\n%s (%s)"%(ref_id,pos, ref_kmer))
             _ = ax.set_ylabel ("Dwell")
@@ -479,45 +462,57 @@ class SampCompDB (object):
             blue_patch = mpatches.Patch(color=colors[1], label=condition_labels[1])
             pl.legend(handles=[red_patch, blue_patch])
             pl.tight_layout()
-        return (fig, ax)
-    
+
+            return (fig, ax)
+
     #~~~~~~~~~~~~~~PRIVATE  METHODS~~~~~~~~~~~~~~#
-    def __get_plot_data (self, ref_id, start, end):
-        """
-        Private function to verify and extract info for the ploting functions
-        """
 
         # Extract data for ref_id
+        ref_data = self.__get_ref_data (ref_id)
+        ref_fasta = self.__get_ref_fasta (ref_id)
+        start, end = self.__get_positions (start, end, ref_fasta)
+
+
+    def __get_ref_data (self, ref_id):
+        """ Extract data corresponding to ref with error handling """
+        # Get data record
         try:
-            ref_data = self[ref_id]
+            return self[ref_id]
         except KeyError:
-            raise NanocomporeError ("Reference id not present in result database")
-        # Get corresponding fasta record
+            raise NanocomporeError("Reference id not present in result database")
+
+    def __get_ref_fasta (self, ref_id):
+        """ Extract fasta record corresponding to ref with error handling """
+        # Get fasta record
         try:
-            ref_fasta = self._fasta [ref_id]
+            with Fasta(self._fasta_fn) as fasta:
+                return fasta [ref_id]
         except KeyError:
-            raise NanocomporeError ("Reference id not present in fasta reference database")
-        # Get start and end
+            raise NanocomporeError("Reference id not present in result database")
+
+
+    def __get_positions (self, start=None, end=None, max_len=0):
+        """ Verify start and end and if not available try to infer them"""
         if not start:
             start = 0
         if not end:
-            end = len (ref_fasta)
+            end = max_len
         if start > end:
             raise NanocomporeError ("End coordinate has to be higher or equal to start")
         if start < 0:
             raise NanocomporeError ("Coordinates have to be higher that 0")
-        if end > len(ref_fasta):
-            raise NanocomporeError ("Coordinates have to be lower than the ref_id sequence length ({})".format(len(ref_fasta)))
+        if end > max_len:
+            raise NanocomporeError ("Coordinates have to be lower than the ref_id sequence length ({})".format(max_len))
 
-        return (ref_data, ref_fasta, start, end)
+        return (start, end)
 
     @staticmethod
     def __multipletests_filter_nan(pvalues, method="fdr_bh"):
-        """ 
+        """
         Performs p-value correction for multiple hypothesis testing
-        using the method specified. The pvalues list can contain 
+        using the method specified. The pvalues list can contain
         np.nan values, which are ignored during p-value correction.
-         
+
         test: input=[0.1, 0.01, np.nan, 0.01, 0.5, 0.4, 0.01, 0.001, np.nan, np.nan, 0.01, np.nan]
         out: array([0.13333333, 0.016     ,        nan, 0.016     , 0.5       ,
         0.45714286, 0.016     , 0.008     ,        nan,        nan,
