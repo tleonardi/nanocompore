@@ -202,8 +202,8 @@ class SampCompDB (object):
         method: Limit the pvalue methods shown in the plot. Either a list of methods or a regular expression as a string.
         """
         # Extract fasta and positions
-        ref_fasta = self.__get_ref_fasta (ref_id)
-        start, end = self.__get_positions (start, end, len(ref_fasta))
+        start, end = self.__get_positions (ref_id, start, end)
+        ref_seq = self.__get_fasta_seq (ref_id, start, end)
 
         try:
             ref_pos_dict = self.results.query('ref==@ref_id').set_index('pos').to_dict('index')
@@ -244,7 +244,7 @@ class SampCompDB (object):
 
         # Create x label including the original sequence and its position
         x_lab = []
-        for pos, base in zip(range (start, end+1), ref_fasta[start:end+1]):
+        for pos, base in zip(range (start, end+1), ref_seq):
             x_lab.append("{}\n{}".format(pos, base))
 
         # Cast collected results to dataframe
@@ -291,8 +291,7 @@ class SampCompDB (object):
 
         # Extract data for ref_id
         ref_data = self.__get_ref_data (ref_id)
-        ref_fasta = self.__get_ref_fasta (ref_id)
-        start, end = self.__get_positions (start, end, len(ref_fasta))
+        start, end = self.__get_positions (ref_id, start, end)
 
         # Parse line position per position
         l = []
@@ -378,8 +377,7 @@ class SampCompDB (object):
         """
         # Extract data for ref_id
         ref_data = self.__get_ref_data (ref_id)
-        ref_fasta = self.__get_ref_fasta (ref_id)
-        start, end = self.__get_positions (start, end, len(ref_fasta))
+        start, end = self.__get_positions (ref_id, start, end)
 
         # Parse line position per position
         l=[]
@@ -433,7 +431,6 @@ class SampCompDB (object):
 
         # Extract data for ref_id
         ref_data = self.__get_ref_data (ref_id)
-        ref_fasta = self.__get_ref_fasta (ref_id)
 
         # Check that position is valid
         if not isinstance(pos, int):
@@ -470,12 +467,6 @@ class SampCompDB (object):
 
     #~~~~~~~~~~~~~~PRIVATE  METHODS~~~~~~~~~~~~~~#
 
-        # Extract data for ref_id
-        ref_data = self.__get_ref_data (ref_id)
-        ref_fasta = self.__get_ref_fasta (ref_id)
-        start, end = self.__get_positions (start, end, ref_fasta)
-
-
     def __get_ref_data (self, ref_id):
         """ Extract data corresponding to ref with error handling """
         # Get data record
@@ -484,18 +475,23 @@ class SampCompDB (object):
         except KeyError:
             raise NanocomporeError("Reference id not present in result database")
 
-    def __get_ref_fasta (self, ref_id):
+    def __get_fasta_seq (self, ref_id, start, end):
         """ Extract fasta record corresponding to ref with error handling """
-        # Get fasta record
         try:
             with Fasta(self._fasta_fn) as fasta:
-                return fasta [ref_id]
+                fasta = (fasta [ref_id])
+                return str (fasta[start:end])
         except KeyError:
-            raise NanocomporeError("Reference id not present in result database")
+            raise NanocomporeError("Reference id not present in fasta file")
 
-
-    def __get_positions (self, start=None, end=None, max_len=0):
+    def __get_positions (self, ref_id, start=None, end=None):
         """ Verify start and end and if not available try to infer them"""
+        try:
+            with Fasta(self._fasta_fn) as fasta:
+                max_len = len(fasta [ref_id])
+        except KeyError:
+            raise NanocomporeError("Reference id not present in fasta file")
+
         if not start:
             start = 0
         if not end:
