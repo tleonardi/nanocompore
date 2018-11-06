@@ -92,20 +92,19 @@ class SampComp (object):
             raise NanocomporeError("Number of threads not valid")
 
         # Parse comparison methods
-        if not comparison_method:
-            comparison_method = [None]
-        if type (comparison_method) == str:
-            comparison_method = comparison_method.upper().split(",")
-        for i in range(len(comparison_method)):
-            if comparison_method[i] == "mann_whitney".upper():
-                comparison_method[i]="MW"
-            elif comparison_method[i] == "kolmogorov_smirnov".upper():
-                comparison_method[i]="KS"
-            elif comparison_method[i] == "t_test".upper():
-                comparison_method[i]="TT"
-        allowed_comparison_methods = ["MW", "KS", "TT", "GMM", None]
-        if not all([cm in allowed_comparison_methods for cm in comparison_method]):
-            raise NanocomporeError("Invalid comparison method")
+        if comparison_method:
+            if type (comparison_method) == str:
+                comparison_method = comparison_method.upper().split(",")
+            for i in range(len(comparison_method)):
+                if comparison_method[i] == "mann_whitney".upper():
+                    comparison_method[i]="MW"
+                elif comparison_method[i] == "kolmogorov_smirnov".upper():
+                    comparison_method[i]="KS"
+                elif comparison_method[i] == "t_test".upper():
+                    comparison_method[i]="TT"
+            allowed_comparison_methods = ["MW", "KS", "TT", "GMM"]
+            if not all([cm in allowed_comparison_methods for cm in comparison_method]):
+                raise NanocomporeError("Invalid comparison method")
 
         if whitelist:
             if not isinstance (whitelist, Whitelist):
@@ -261,7 +260,15 @@ class SampComp (object):
                                     ref_pos_dict[pos]["data"][cond_lab][sample_lab]["dwell"].append(kmer["n_signals"])
                                     ref_pos_dict[pos]["data"][cond_lab][sample_lab]["coverage"] += 1
 
-                ref_pos_dict=txCompare(data=ref_pos_dict, methods=self.__comparison_methods, sequence_context=self.__sequence_context, min_coverage=self.__min_coverage, logger=logger, ref=ref_id)
+                if self.__comparison_methods:
+                    ref_pos_dict=txCompare(
+                        data=ref_pos_dict,
+                        methods=self.__comparison_methods,
+                        sequence_context=self.__sequence_context,
+                        min_coverage=self.__min_coverage,
+                        logger=logger,
+                        ref=ref_id)
+
                 # Add the current read details to queue
                 logger.debug("Adding %s to out_q"%(ref_id))
                 out_q.put ((ref_id, ref_pos_dict))
