@@ -344,7 +344,7 @@ class SampCompDB (object):
             _ = ax1.legend ()
 
             _ = sns.violinplot ( x="pos", y="value", hue="lab", data=df_dwell, ax=ax2, split=not split_samples, inner="quartile", bw=bw, linewidth=1, scale="area", palette=palette)
-            _ = ax2.set_ylabel ("Dwell Time")
+            _ = ax2.set_ylabel ("log10 (Dwell Time)")
             _ = ax2.set_xlabel ("Reference position")
             _ = ax2.set_xlim (-1, end-start+1)
             _ = ax2.set_xticklabels (x_ticks_list)
