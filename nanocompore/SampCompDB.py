@@ -419,7 +419,7 @@ class SampCompDB (object):
             pl.tight_layout()
             return (fig, ax)
 
-    def plot_position(self, ref_id, pos=None, figsize=(30,10), colors=["dodgerblue", "salmon"], plot_style="ggplot"):
+    def plot_position(self, ref_id, pos=None, figsize=(30,10), colors=["dodgerblue", "salmon"], plot_type=["kde", "scatter"], plot_style="ggplot"):
         """
         Plot the dwell time and median intensity at the given position as a scatter plot.
         ref_id: Valid reference id name in the database
@@ -427,10 +427,10 @@ class SampCompDB (object):
         figsize: length and heigh of the output plot. Default=(30,10)
         colors: List of colors
             see https://matplotlib.org/users/colormaps.html, https://matplotlib.org/examples/color/named_colors.html
+        plot_type: type of plot = kde, scatter or a list of both
         plot_style: Matplotlib plotting style
             . See https://matplotlib.org/users/style_sheets.html
         """
-
         # Extract data for ref_id
         ref_data = self.__get_ref_data (ref_id)
 
@@ -440,9 +440,13 @@ class SampCompDB (object):
         if pos not in ref_data:
             raise NanocomporeError("No data available for the selected position")
 
+
+        if type(plot_type) == str:
+            plot_type = [plot_type]
+
         # Extract data from database if position in db
-        ref_kmer=ref_data[pos]['ref_kmer']
-        data=ref_data[pos]['data']
+        ref_kmer = ref_data[pos]['ref_kmer']
+        data = ref_data[pos]['data']
         condition_labels = tuple(data.keys())
         s1_intensity = np.concatenate([v['intensity'] for v in data[condition_labels[0]].values()])
         s2_intensity = np.concatenate([v['intensity'] for v in data[condition_labels[1]].values()])
@@ -452,17 +456,24 @@ class SampCompDB (object):
         with pl.style.context(plot_style):
             # Plot dwell and median
             fig, ax = pl.subplots(figsize=figsize)
-            cmap1 = sns.light_palette(colors[0], as_cmap=True)
-            cmap2 = sns.light_palette(colors[1], as_cmap=True)
-            _ = sns.kdeplot(s1_intensity, s1_dwell, cmap=cmap1, ax=ax, label=condition_labels[0], shade_lowest=False, legend=True)
-            _ = sns.kdeplot(s2_intensity, s2_dwell, cmap=cmap2, ax=ax, label=condition_labels[1], shade_lowest=False, legend=True)
+
+            if "kde" in plot_type:
+                cmap1 = sns.light_palette(colors[0], as_cmap=True)
+                _ = sns.kdeplot(s1_intensity, s1_dwell, cmap=cmap1, ax=ax, label=condition_labels[0])
+                cmap2 = sns.light_palette(colors[1], as_cmap=True)
+                _ = sns.kdeplot(s2_intensity, s2_dwell, cmap=cmap2, ax=ax, label=condition_labels[1])
+
+            if "scatter" in plot_type:
+                cmap1 = sns.light_palette(colors[0], as_cmap=True)
+                _ = ax.scatter (x=s1_intensity, y=s1_dwell, color=colors[0], label=condition_labels[0])
+                cmap2 = sns.light_palette(colors[1], as_cmap=True)
+                _ = ax.scatter (x=s2_intensity, y=s2_dwell, color=colors[1], label=condition_labels[1])
+
             # Adjust display
             _ = ax.set_title ("%s\n%s (%s)"%(ref_id,pos, ref_kmer))
             _ = ax.set_ylabel ("Dwell")
             _ = ax.set_xlabel ("Median Intensity")
-            red_patch = mpatches.Patch(color=colors[0], label=condition_labels[0])
-            blue_patch = mpatches.Patch(color=colors[1], label=condition_labels[1])
-            pl.legend(handles=[red_patch, blue_patch])
+            _ = ax.legend()
             pl.tight_layout()
 
             return (fig, ax)
