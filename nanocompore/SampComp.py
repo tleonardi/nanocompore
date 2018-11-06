@@ -197,13 +197,8 @@ class SampComp (object):
         logger.debug("Worker thread started")
 
         try:
-            # Open all files for reading. More efficient to open only once the files
-            # file pointer are stored in a dictionnary matching the ref_dict arborescence
-            fp_dict = OrderedDict()
-            for cond_lab, sample_dict in self.__eventalign_fn_dict.items():
-                fp_dict[cond_lab] = OrderedDict()
-                for sample_lab, fn in sample_dict.items():
-                    fp_dict[cond_lab][sample_lab] = open(fn, "r")
+            # Open all files for reading. File pointer are stored in a dict matching the ref_dict entries
+            fp_dict = self.__eventalign_fn_open()
 
             # Process refid in input queue
             for ref_id, ref_dict in iter (in_q.get, None):
@@ -278,10 +273,7 @@ class SampComp (object):
             logger.debug("Adding poison pill to out_q")
             out_q.put (None)
             # close all files
-            fp_dict = OrderedDict()
-            for sample_dict in fp_dict.values():
-                for fp in sample_dict.values():
-                    fp.close()
+            self.__eventalign_fn_close (fp_dict)
 
     def __write_output (self, out_q):
         # Get results out of the out queue and write in shelve
