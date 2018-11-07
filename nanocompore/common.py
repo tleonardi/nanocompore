@@ -3,12 +3,7 @@
 #~~~~~~~~~~~~~~IMPORTS~~~~~~~~~~~~~~#
 # Standard library imports
 import os
-from tqdm import tqdm, tqdm_notebook
 from warnings import warn
-
-import numpy as np
-from scipy.stats import chi2
-
 
 #~~~~~~~~~~~~~~CUSTOM EXCEPTION CLASS~~~~~~~~~~~~~~#
 class NanocomporeError (Exception):
