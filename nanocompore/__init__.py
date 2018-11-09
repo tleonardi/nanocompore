@@ -35,7 +35,7 @@ setup_dict = {
         "seaborn>=0.9.0",
         "pandas>=0.23.3",
         "statsmodels>=0.9.0",
-        "scikit-learn>=0.20"
-        "bedparse"],
+        "scikit-learn>=0.20",
+        "bedparse==0.1.1b1"],
     "packages": [__name__],
     "entry_points":{'console_scripts': ['nanocompore=nanocompore.nanocompore_main:main']}}

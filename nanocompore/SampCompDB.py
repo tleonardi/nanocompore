@@ -145,8 +145,7 @@ class SampCompDB (object):
                 tests.append("{}_dwell_pvalue".format(m))
                 if self._sequence_context:
                     tests.append("{}_intensity_pvalue_context_{}".format(m, self._sequence_context))
-                    tests.append("{}_intensity_pvalue_context_{}".format(m, self._sequence_context))
-                    tests.append(m+"_dwell_pvalue_context_"+str(self._sequence_context))
+                    tests.append("{}_dwell_pvalue_context_{}".format(m, self._sequence_context))
             elif m =="GMM":
                 tests.append("GMM_pvalue")
                 if self._sequence_context:
