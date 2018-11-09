@@ -452,7 +452,7 @@ class SampCompDB (object):
                 for rep_lab, rep_data in cond_data.items():
                     plot_data_dict["{}_{}".format(cond_label, rep_lab)] = {
                         "intensity":rep_data["intensity"],
-                        "dwell":rep_data["dwell"],
+                        "dwell":np.log10(rep_data["dwell"]),
                         "color":colors[i]}
                     i+=1
             else:
@@ -462,7 +462,7 @@ class SampCompDB (object):
                     intensity_list.append(rep_data["intensity"])
                     dwell_list.append(rep_data["dwell"])
                 plot_data_dict[cond_label] = {
-                    "intensity":np.log10(np.concatenate(intensity_list)),
+                    "intensity":np.concatenate(intensity_list),
                     "dwell":np.log10(np.concatenate(dwell_list)),
                     "color":colors[i]}
                 i+=1
