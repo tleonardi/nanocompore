@@ -17,6 +17,9 @@ import matplotlib.patches as mpatches
 import seaborn as sns
 from bedparse import bedline
 from statsmodels.stats.multitest import multipletests
+from sklearn.mixture.gaussian_mixture import GaussianMixture
+from sklearn.preprocessing import scale as scale
+
 
 # Local package
 from nanocompore.common import counter_to_str, access_file, NanocomporeError
@@ -204,8 +207,7 @@ class SampCompDB (object):
         method: Limit the pvalue methods shown in the plot. Either a list of methods or a regular expression as a string.
         """
         # Extract fasta and positions
-        start, end = self.__get_positions (ref_id, start, end)
-        ref_seq = self.__get_fasta_seq (ref_id, start, end)
+        start, end = self.__get_positions(ref_id, start, end)
 
         try:
             ref_pos_dict = self.results.query('ref==@ref_id').set_index('pos').to_dict('index')
@@ -246,8 +248,8 @@ class SampCompDB (object):
 
         # Create x label including the original sequence and its position
         x_lab = []
-        for pos, base in zip(range (start, end+1), ref_seq):
-            x_lab.append("{}\n{}".format(pos, base))
+        for pos in range(start, end+1):
+            x_lab.append("{}\n{}".format(pos, self[ref_id][pos]['ref_kmer']))
 
         # Cast collected results to dataframe
         df = pd.DataFrame.from_dict(d, orient="index")
@@ -412,7 +414,7 @@ class SampCompDB (object):
             pl.tight_layout()
             return (fig, ax)
 
-    def plot_position (self, ref_id, pos=None, split_samples=False, figsize=(30,10), palette="Set2",  plot_style="ggplot"):
+    def plot_position (self, ref_id, pos=None, split_samples=False, figsize=(30,10), palette="Set2",  plot_style="ggplot", alpha=0.3, pointSize=20, scatter=True, kde=True, model=False):
         """
         Plot the dwell time and median intensity at the given position as a scatter plot.
         ref_id: Valid reference id name in the database
@@ -450,8 +452,8 @@ class SampCompDB (object):
             if split_samples:
                 for rep_lab, rep_data in cond_data.items():
                     plot_data_dict["{}_{}".format(cond_label, rep_lab)] = {
-                        "intensity":rep_data["intensity"],
-                        "dwell":rep_data["dwell"],
+                        "intensity":scale(rep_data["intensity"]),
+                        "dwell":scale(np.log10(rep_data["dwell"])),
                         "color":colors[i]}
                     i+=1
             else:
@@ -461,29 +463,47 @@ class SampCompDB (object):
                     intensity_list.append(rep_data["intensity"])
                     dwell_list.append(rep_data["dwell"])
                 plot_data_dict[cond_label] = {
-                    "intensity":np.log10(np.concatenate(intensity_list)),
-                    "dwell":np.log10(np.concatenate(dwell_list)),
+                    "intensity":scale(np.concatenate(intensity_list)),
+                    "dwell":scale(np.log10(np.concatenate(dwell_list))),
                     "color":colors[i]}
                 i+=1
 
+        if model:
+            model = self[ref_id][pos]['txComp']['GMM_model'][4]
+            if isinstance(model, GaussianMixture):
+                condition_labels = tuple(data.keys())
+                global_intensity = scale(np.concatenate(([v['intensity'] for v in data[condition_labels[0]].values()]+[v['intensity'] for v in data[condition_labels[1]].values()]), axis=None))
+                global_dwell = scale(np.log10(np.concatenate(([v['dwell'] for v in data[condition_labels[0]].values()]+[v['dwell'] for v in data[condition_labels[1]].values()]), axis=None)))
+                x = np.linspace(min(global_intensity), max(global_intensity))
+                y = np.linspace(min(global_dwell), max(global_dwell))
+                X, Y = np.meshgrid(x, y)
+                XX = np.array([X.ravel(), Y.ravel()]).T
+                Z = -model.score_samples(XX)
+                Z = Z.reshape(X.shape)
+            else:
+                model = None
         with pl.style.context(plot_style):
             # Plot dwell and median
             fig, ax = pl.subplots(figsize=figsize)
 
             for label, d in plot_data_dict.items():
-
-                _ = sns.kdeplot(
-                    d["intensity"],
-                    d["dwell"],
-                    cmap=sns.light_palette(d["color"], as_cmap=True),
-                    ax=ax)
-
-                _ = ax.scatter (
-                    x=d["intensity"],
-                    y=d["dwell"],
-                    color=d["color"],
-                    label=label)
-
+                if kde:
+                    _ = sns.kdeplot(
+                        d["intensity"],
+                        d["dwell"],
+                        cmap=sns.light_palette(d["color"], as_cmap=True),
+                        ax=ax,
+                        clip=((min(d["intensity"]), max(d["intensity"])), (min(d["dwell"]),max(d["dwell"]))))
+                if scatter:
+                    _ = ax.scatter (
+                        x=d["intensity"],
+                        y=d["dwell"],
+                        color=d["color"],
+                        label=label,
+                        alpha=alpha,
+                        s=pointSize)
+            if model:
+                _ = ax.contour(X, Y, Z, levels=np.logspace(0, 1, 10), alpha=1, colors="black")
             # Adjust display
             _ = ax.set_title ("%s\n%s (%s)"%(ref_id,pos, ref_kmer))
             _ = ax.set_ylabel ("log10 (Dwell Time)")
