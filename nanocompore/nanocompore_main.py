@@ -47,7 +47,6 @@ def sample_compare_main ():
 
     # Define arguments
     parser.add_argument("subprogram")
-
     parser.add_argument("-1", "--s1_fn", required=True,
         help="Path to sample 1 eventalign_collapse data file")
     parser.add_argument("-2", "--s2_fn", required=True,
