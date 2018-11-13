@@ -401,7 +401,7 @@ class SampCompDB (object):
             pl.tight_layout()
             return (fig, (ax1, ax2))
 
-    def plot_coverage (self, ref_id, start=None, end=None, figsize=(30,5), palette="Set2", plot_style="ggplot"):
+    def plot_coverage (self, ref_id, start=None, end=None, scale=False, figsize=(30,5), palette="Set2", plot_style="ggplot"):
         """
         Plot pvalues per position (by default plot all fields starting by "pvalue")
         It is pointless to plot more than 50 positions at once as it becomes hard to distiguish
@@ -435,6 +435,8 @@ class SampCompDB (object):
         if not valid:
             raise NanocomporeError ("No data available for selected coordinates")
         df = pd.DataFrame (l, columns=["pos", "Sample", "cov"])
+        if scale:
+            df['cov'] = df.groupby('Sample')['cov'].apply(lambda x: x/max(x))
 
         # Define plotting style
         with pl.style.context (plot_style):
@@ -447,7 +449,8 @@ class SampCompDB (object):
                 ax=ax,
                 palette=palette,
                 drawstyle="steps")
-            _ = ax.axhline  (y=self._min_coverage, linestyle=":", color="grey", label="minimal coverage")
+            if not scale:
+                _ = ax.axhline  (y=self._min_coverage, linestyle=":", color="grey", label="minimal coverage")
             _ = ax.set_ylim (0, None)
             _ = ax.set_xlim (start, end)
             _ = ax.set_title ("Reference:{}  Start:{}  End:{}".format(ref_id, start, end))
