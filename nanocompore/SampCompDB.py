@@ -31,12 +31,13 @@ class SampCompDB (object):
     """ Wrapper over the result shelve SampComp """
 
     #~~~~~~~~~~~~~~FUNDAMENTAL METHODS~~~~~~~~~~~~~~#
-    def __init__(self, db_fn, fasta_fn, run_type="RNA"):
+    def __init__(self, db_fn, fasta_fn, bed_fn=None, run_type="RNA"):
         """
         Import a shelve db and a fasta reference file. Automatically returned by SampComp
         Can also be manually created from an existing shelve db output
         db_fn: Path where to write the result database
         fasta_fn: Path to a fasta file corresponding to the reference used for read alignemnt
+        bed_fn: Path to a BED file containing the annotation of the transcriptome used as reference when mapping
         """
 
         # Try to get ref_id list and metadata from shelve db
@@ -63,7 +64,7 @@ class SampCompDB (object):
 
         # Test is Fasta can be opened
         try:
-            with Fasta (fasta_fn):
+            with Fasta(fasta_fn):
                 self._fasta_fn = fasta_fn
         except IOError:
             raise NanocomporeError("The fasta file cannot be opened")
@@ -73,6 +74,11 @@ class SampCompDB (object):
             self._model_dict = models.RNA_model_dict
         else:
             raise NanocomporeError ("Only RNA is implemented at the moment")
+
+        self.bed_fn = bed_fn
+
+        # Create results DF with adjusted p-values
+        self.calculate_results()
 
     def __repr__ (self):
         """readable description of the object"""
@@ -173,7 +179,7 @@ class SampCompDB (object):
             fp.write('\t'.join([ str(i) for i in record ])+'\n')
         fp.close()
     
-    def calculate_results(self, bed_fn=None, adjust=True, methods=None):
+    def calculate_results(self, adjust=True, methods=None):
         # Compose a lists with the name of the results
         tests=[]
         if methods is None:
@@ -195,10 +201,10 @@ class SampCompDB (object):
         with shelve.open(self._db_fn, flag = "r") as db:
             df = pd.DataFrame([dict({x:y for a,b in v.items() if a == "txComp" for x,y in b.items()  if x in tests}, ref=ref_id, pos=k, ref_kmer=v['ref_kmer'])  for ref_id, rec in db.items() for k,v in rec.items() if ref_id!="__metadata" ])
 
-        if bed_fn:
+        if self.bed_fn:
             bed_annot={}
             try:
-                with open(bed_fn) as tsvfile:
+                with open(self.bed_fn) as tsvfile:
                     for line in tsvfile:
                         record_name=line.split('\t')[3]
                         if( record_name in self.ref_id_list):
@@ -213,6 +219,8 @@ class SampCompDB (object):
             df['chr'] = df.apply(lambda row: bed_annot[row['ref']].chr,axis=1)
             df['strand'] = df.apply(lambda row: bed_annot[row['ref']].strand,axis=1)
             df=df[['ref', 'pos', 'chr', 'strand', 'genomicPos', 'ref_kmer']+tests]
+        else:
+            df=df[['ref', 'pos', 'ref_kmer']+tests]
 
         if adjust:
             for col in tests:
