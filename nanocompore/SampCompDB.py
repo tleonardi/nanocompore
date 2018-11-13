@@ -7,6 +7,7 @@ import shelve
 from dbm import error as dbm_error
 from math import log
 import re
+import sys
 
 # Third party
 from pyfaidx import Fasta
@@ -137,6 +138,41 @@ class SampCompDB (object):
                         line=line.translateChr(assembly=assembly, target="ens", patches=True)
                     bed_file.write("%s\t%s\t%s\t%s\n" % (line.chr, line.start, line.end, line.score))
 
+    def save_report(self, output_fn=None):
+        """Saves an extended tabular report
+        """
+        if output_fn is None:
+            fp = sys.stdout
+        elif isinstance(output_fn, str):
+            try:
+                fp = open(output_fn, "w")
+            except:
+                raise NanocomporeError("Error opening output file %s"%output_fn)
+        else:
+            raise NanocomporeError("output_fn needs to be a string or None")
+        r = re.compile("adjusted_*")
+        methods = list(filter(r.match, list(self.results)))
+        
+        headers = ['chr', 'pos', 'ref','strand', 'ref_kmer', 'lowCov']+methods
+        # Read extra GMM info from the shelve
+        if "GMM" in self._comparison_method:
+            headers += ['LOR', 'clusters']
+            gmm_info=OrderedDict()
+            for tx, refpos in self:
+                gmm_info[tx] = {k:{'lor': v['txComp']['GMM_model'][1], 'clusters':v['txComp']['GMM_model'][3]} for k,v in refpos.items() if "GMM_model" in v['txComp']}
+        fp.write('\t'.join([ str(i) for i in headers ])+'\n')
+        for record in self.results[['chr', 'pos', 'ref','strand', 'ref_kmer', 'lowCov']+methods].values.tolist():
+            if "GMM" in self._comparison_method:
+                try:
+                    lor = gmm_info[record[2]][record[1]]['lor']
+                    clusters = gmm_info[record[2]][record[1]]['clusters']
+                    clusters = '#'.join([ ','.join([str(x) for x in i]) for i in clusters])
+                    record += [lor, clusters]
+                except KeyError:
+                    record += ["nan", "nan"]
+            fp.write('\t'.join([ str(i) for i in record ])+'\n')
+        fp.close()
+    
     def calculate_results(self, bed_fn=None, adjust=True, methods=None):
         # Compose a lists with the name of the results
         tests=[]
@@ -149,7 +185,7 @@ class SampCompDB (object):
                 if self._sequence_context:
                     tests.append("{}_intensity_pvalue_context_{}".format(m, self._sequence_context))
                     tests.append("{}_dwell_pvalue_context_{}".format(m, self._sequence_context))
-            elif m =="GMM":
+            elif m == "GMM":
                 tests.append("GMM_pvalue")
                 if self._sequence_context:
                     tests.append("GMM_pvalue_context_{}".format(self._sequence_context))
@@ -157,7 +193,7 @@ class SampCompDB (object):
         # We open the DB rather that calling __getitem__ to avoid
         # opening and closing the file for every transcript
         with shelve.open(self._db_fn, flag = "r") as db:
-            df = pd.DataFrame([dict({x:y for a,b in v.items() if a == "txComp" for x,y in b.items()  if x in tests}, ref=ref_id, pos=k)  for ref_id, rec in db.items() for k,v in rec.items() if ref_id!="__metadata" ])
+            df = pd.DataFrame([dict({x:y for a,b in v.items() if a == "txComp" for x,y in b.items()  if x in tests}, ref=ref_id, pos=k, ref_kmer=v['ref_kmer'])  for ref_id, rec in db.items() for k,v in rec.items() if ref_id!="__metadata" ])
 
         if bed_fn:
             bed_annot={}
@@ -176,7 +212,7 @@ class SampCompDB (object):
             # This is very inefficient. We should get chr and strand only once per transcript, ideally when writing the BED file
             df['chr'] = df.apply(lambda row: bed_annot[row['ref']].chr,axis=1)
             df['strand'] = df.apply(lambda row: bed_annot[row['ref']].strand,axis=1)
-            df=df[['ref', 'pos', 'chr', 'strand', 'genomicPos']+tests]
+            df=df[['ref', 'pos', 'chr', 'strand', 'genomicPos', 'ref_kmer']+tests]
 
         if adjust:
             for col in tests:
@@ -190,7 +226,7 @@ class SampCompDB (object):
     def list_most_significant_references (self, n=10):
         pass
 
-    #~~~~~~~~~~~~~~PLOTING METHODS~~~~~~~~~~~~~~#
+    #~~~~~~~~~~~~~~PLOTTING METHODS~~~~~~~~~~~~~~#
 
     def plot_pvalue (self, ref_id, start=None, end=None, threshold=0.01, figsize=(30,10), palette="Set2", plot_style="ggplot", method=None):
         """
