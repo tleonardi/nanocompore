@@ -88,7 +88,7 @@ class SampComp (object):
         for sample_dict in eventalign_fn_dict.values():
             for fn in sample_dict.values():
                 if not access_file (fn):
-                    raise NanocomporeError("Cannot access eventalign_collapse file {}".format(idx_fn))
+                    raise NanocomporeError("Cannot access eventalign_collapse file {}".format(fn))
 
         if nthreads < 3:
             raise NanocomporeError("Number of threads not valid")
