@@ -235,8 +235,7 @@ class SampCompDB (object):
         pass
 
     #~~~~~~~~~~~~~~PLOTTING METHODS~~~~~~~~~~~~~~#
-
-    def plot_pvalue (self, ref_id, start=None, end=None, threshold=0.01, figsize=(30,10), palette="Set2", plot_style="ggplot", method=None):
+    def plot_pvalue(self, ref_id, start=None, end=None, threshold=0.01, figsize=(30,10), palette="Set2", plot_style="ggplot", method=None, barplot=False):
         """
         Plot pvalues per position (by default plot all fields starting by "pvalue")
         It is pointless to plot more than 50 positions at once as it becomes hard to distiguish
@@ -249,9 +248,10 @@ class SampCompDB (object):
         plot_style: Matplotlib plotting style. Default="ggplot"
             . See https://matplotlib.org/users/style_sheets.html
         method: Limit the pvalue methods shown in the plot. Either a list of methods or a regular expression as a string.
+        barplot: plot p-value bars instead of lines
         """
         # Extract fasta and positions
-        start, end = self.__get_positions(ref_id, start, end)
+        start, end = self._SampCompDB__get_positions(ref_id, start, end)
 
         try:
             ref_pos_dict = self.results.query('ref==@ref_id').set_index('pos').to_dict('index')
@@ -285,40 +285,44 @@ class SampCompDB (object):
                 for k,v in ref_pos_dict[pos].items():
                     if k in method:
                         if not np.isnan(v):
-                            res_dict[k] = v
+                            res_dict[k] = -np.log10(v)
                         else:
-                            res_dict[k] = 1
+                            res_dict[k] = 0
+                res_dict['ref_kmer'] = ref_pos_dict[pos]['ref_kmer']
             d[pos] = res_dict
 
-        # Create x label including the original sequence and its position
-        x_lab = []
-        for pos in range(start, end+1):
-            x_lab.append("{}\n{}".format(pos, self[ref_id][pos]['ref_kmer']))
 
         # Cast collected results to dataframe
         df = pd.DataFrame.from_dict(d, orient="index")
         if df.empty:
             raise NanocomporeError("No data available for the selected interval")
-
-        # filling missing values and log transform the data
-        df.fillna(1, inplace=True)
-        df = -np.log10(df)
-
         # Define plotting style
         with pl.style.context(plot_style):
             fig, ax = pl.subplots(figsize=figsize)
-            _ = sns.lineplot(data=df, palette=palette, ax=ax, dashes=False)
+            if not barplot:
+                _ = sns.lineplot(data=df.drop('ref_kmer', axis=1), palette=palette, ax=ax, dashes=False)
+            else:
+                df = df.reset_index().melt(id_vars=["index","ref_kmer"], var_name="method", value_name="pvalue").set_index('index')
+                _ = sns.barplot(x=df.index.values, y=df.pvalue, hue=df.method,  palette=palette, ax=ax)
             _ = ax.axhline(y=-np.log10(threshold), color="grey", linestyle=":", label="pvalue={}".format(threshold))
-            _ = ax.legend ()
+            _ = ax.legend()
             _ = ax.set_ylabel("-log (pvalue)")
             _ = ax.set_xlabel("Reference position")
             _ = ax.set_title(ref_id)
-            _ = ax.set_xlim(start, end)
-            if end-start<30:
-                _ = ax.set_xticks(df.index)
-                _ = ax.set_xticklabels(x_lab)
+            if not barplot:
+                if end-start<30:
+                    _ = ax.set_xticks(df.index.values)
+                    _ = ax.set_xticklabels( [ "{}\n{}".format(i[0], i[1]) for i in zip(df.index, df.ref_kmer) ] )
+            else:
+                if end-start<30:
+                    _ = ax.set_xticklabels( [ "{}\n{}".format(i[0], i[1]) for i in zip(df.index, df.ref_kmer) ] )
+                else:
+                    step = (end-start)//10
+                    breaks = list(range(start, end+1, step))
+                    _ = ax.set_xticklabels( [ i if i in breaks else "" for i in df.index ]  )
             pl.tight_layout()
             return(fig, ax)
+
 
     def plot_signal (self, ref_id, start=None, end=None, split_samples=False, feature="intensity", figsize=(30,10), palette="Set2", plot_style="ggplot", bw=0.25):
         """
