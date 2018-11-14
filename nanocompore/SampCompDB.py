@@ -302,7 +302,7 @@ class SampCompDB (object):
         barplot: plot p-value bars instead of lines
         """
         # Extract fasta and positions
-        start, end = self._SampCompDB__get_positions(ref_id, start, end)
+        start, end = self.__get_positions(ref_id, start, end)
 
         try:
             ref_pos_dict = self.results.query('ref==@ref_id').set_index('pos').to_dict('index')
@@ -625,6 +625,78 @@ class SampCompDB (object):
             pl.tight_layout()
 
             return (fig, ax)
+
+    def plot_volcano(self, ref_id, threshold=0.01, figsize=(30,10), palette="Set2", plot_style="ggplot", method=None):
+        """
+        Plot pvalues per position (by default plot all fields starting by "pvalue")
+        It is pointless to plot more than 50 positions at once as it becomes hard to distiguish
+        ref_id: Valid reference id name in the database
+        start: Start coordinate. Default=0
+        end: End coordinate (included). Default=reference length
+        figsize: length and heigh of the output plot. Default=(30,10)
+        palette: Colormap. Default="Set2"
+            see https://matplotlib.org/users/colormaps.html, https://matplotlib.org/examples/color/named_colors.html
+        plot_style: Matplotlib plotting style. Default="ggplot"
+            . See https://matplotlib.org/users/style_sheets.html
+        method: Limit the pvalue methods shown in the plot. Either a list of methods or a regular expression as a string.
+        barplot: plot p-value bars instead of lines
+        """
+        # Extract fasta and positions
+        start, end = self.__get_positions(ref_id)
+
+        try:
+            ref_pos_dict = self.results.query('ref==@ref_id').set_index('pos').to_dict('index')
+        except NameError:
+            raise NanocomporeError("It looks like there's not results slot in SampCompDB")
+
+        # Make a list with all methods available
+        methods=list(self.results)
+
+        if method not in methods:
+            raise NanocomporeError("Method %s is not in the results dataframe"%method)
+
+        # Parse line position per position
+        d = OrderedDict()
+        
+            
+        rp=self[ref_id]
+        for pos in range(start, end+1):
+            # Collect results for position
+            res_dict = OrderedDict ()
+            if pos in ref_pos_dict:
+                for k,v in ref_pos_dict[pos].items():
+                    if k == method:
+                        if not np.isnan(v):
+                            res_dict[k] = -np.log10(v)
+                        else:
+                            res_dict[k] = 0
+                res_dict['ref_kmer'] = ref_pos_dict[pos]['ref_kmer']
+                if 'GMM_model' in rp[pos]['txComp']:
+                    res_dict['LOR'] = rp[pos]['txComp']['GMM_model'][1]
+                else:
+                    res_dict['LOR'] = 0
+            d[pos] = res_dict
+
+
+        # Cast collected results to dataframe
+        df = pd.DataFrame.from_dict(d, orient="index")
+        if df.empty:
+            raise NanocomporeError("No data available for the selected interval")
+        # Define plotting style
+        with pl.style.context(plot_style):
+            fig, ax = pl.subplots(figsize=figsize)
+            _ = sns.scatterplot(x=df.LOR, y=df[method], palette=palette, ax=ax)
+            for line in df.index.values:
+                if df[method][line] > -np.log10(threshold):
+
+                    ax.text(df.LOR[line], df[method][line], line, horizontalalignment='left', size='medium', color='black')
+            _ = ax.axhline(y=-np.log10(threshold), color="grey", linestyle=":", label="pvalue={}".format(threshold))
+            _ = ax.legend()
+            _ = ax.set_ylabel("-log (pvalue)")
+            _ = ax.set_xlabel("Log Odds Ratio")
+            _ = ax.set_title(ref_id)
+            pl.tight_layout()
+            return(fig, ax)
 
     @staticmethod
     def __multipletests_filter_nan(pvalues, method="fdr_bh"):
