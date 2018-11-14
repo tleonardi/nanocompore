@@ -102,17 +102,23 @@ class SampCompDB (object):
                 raise KeyError ("Item not found in the database")
 
     #~~~~~~~~~~~~~~PUBLIC METHODS~~~~~~~~~~~~~~#
-    def save_to_bed (self, output_fn, bedgraph=False, pvalue_field=None, pvalue_thr=0.01, sequence_context=0, convert=None, assembly=None, title=None):
+
+    def save_to_bed (self, output_fn, bedgraph=False, pvalue_field=None, pvalue_thr=0.01, span=5, convert=None, assembly=None, title=None):
         """Saves the results object to BED6 format.
             bedgraph: save file in bedgraph format instead of bed
             pvalue_field: specifies what column to use as BED score (field 5, as -log10)
             pvalue_thr: only report positions with pvalue<=thr
-            sequence_context: produce BED files for the given context
+            span: The size of each BED feature.
+                  If size=5 (default) features correspond to kmers. If size=1 features correspond to the first base of each kmer.
             convert: one of 'ensembl_to_ucsc' or 'ucsc_to_ensembl". Convert chromosome named between Ensembl and Ucsc conventions
             assembly: required if convert is used. One of "hg38" or "mm10"
         """
-        if sequence_context != 0:
-            pvalue_field=pvalue_field+"_context="+str(sequence_context)
+        if self.bed_fn is None:
+            raise NanocomporeError("In order to generate a BED file SampCompDB needs to be initialised with a transcriptome BED")
+        if span < 1:
+            raise NanocomporeError("span has to be >=1")
+        if span != 5 and bedgraph:
+            raise NanocomporeError("Span is ignored when generating bedGraph files")
         if pvalue_field not in self.results:
             raise NanocomporeError(("The field '%s' is not in the results" % pvalue_field))
         if "results" not in self.__dict__:
@@ -125,19 +131,26 @@ class SampCompDB (object):
         with open(output_fn, "w") as bed_file:
             if title is not None:
                 if not bedgraph:
-                    bed_file.write('track type=bed name="%s" description="%s"\n'%(title,title))
+                    bed_file.write('track type=bed name="%s" description="%s"\n'%(title,pvalue_field))
                 else:
-                    bed_file.write('track type=bedGraph name="%s" description="%s"\n'%(title,title))
-            for record in self.results[['chr', 'genomicPos', 'ref','strand']+[pvalue_field]].values.tolist():
-                if not bedgraph and record[-1]<=pvalue_thr:
-                    line=bedline([record[0], record[1], record[1]+sequence_context+1, record[2], -log(record[-1], 10), record[3]])
+                    bed_file.write('track type=bedGraph name="%s" description="%s"\n'%(title,pvalue_field))
+
+            Record = namedtuple('Record', ['chr', 'genomicPos', 'ref','strand', 'ref_kmer', pvalue_field ])
+            for record in self.results[ list(Record._fields) ].itertuples(index=False, name="Record"):
+                pvalue = getattr(record, pvalue_field)
+                if np.isnan(pvalue): 
+                    pvalue=0
+                else:
+                    pvalue=-log(pvalue, 10)
+                if not bedgraph and pvalue >= -log(pvalue_thr, 10):
+                    line=bedline([record.chr, record.genomicPos, record.genomicPos+span, f"{record.ref}_{record.ref_kmer}", pvalue, record.strand])
                     if convert is "ensembl_to_ucsc":
                         line=line.translateChr(assembly=assembly, target="ucsc", patches=True)
                     elif convert is "ucsc_to_ensembl":
                         line=line.translateChr(assembly=assembly, target="ens", patches=True)
                     bed_file.write("%s\t%s\t%s\t%s\t%s\t%s\n" % (line.chr, line.start, line.end, line.name, line.score, line.strand))
                 elif bedgraph:
-                    line=bedline([record[0], record[1], record[1]+sequence_context+1, record[2], -log(record[-1], 10), record[3]])
+                    line=bedline([record.chr, record.genomicPos+2, record.genomicPos+3, f"{record.ref}_{record.ref_kmer}", pvalue, record.strand])
                     if convert is "ensembl_to_ucsc":
                         line=line.translateChr(assembly=assembly, target="ucsc", patches=True)
                     elif convert is "ucsc_to_ensembl":
