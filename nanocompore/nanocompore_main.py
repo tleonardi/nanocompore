@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 from collections import OrderedDict
 import re
+import json
 
 
 # Local imports
@@ -58,7 +59,6 @@ def main(args=None):
     args.func(args)
 
 def sample_compare_main(args):
-    # Define parser object
 
     # Check if output folder already exists
     outpath=Path(args.outpath)
@@ -69,6 +69,11 @@ def sample_compare_main(args):
             raise NanocomporeError(f"{args.outpath} is not a folder")
     else:
         outpath.mkdir(parents=True, exist_ok=False)
+
+    # Save command line arguments to file 
+    sampcomp_log=outpath/'sample_compare.log'
+    with sampcomp_log.open(mode='w') as f:
+        json.dump({k:v for k,v in vars(args).items() if k!="func" }, f, indent=2)
 
     # Assemble eventalign_fn_dict
     eventalign_fn_dict = build_eventalign_fn_dict((args.label1, args.label2), (args.file_list1, args.file_list2))
