@@ -461,17 +461,24 @@ class SampCompDB (object):
             pl.tight_layout()
             return (fig, ax)
 
-    def plot_position (self, ref_id, pos=None, split_samples=False, figsize=(30,10), palette="Set2",  plot_style="ggplot", alpha=0.3, pointSize=20, scatter=True, kde=True, model=False):
+    def plot_position(self, ref_id, pos=None, split_samples=False, figsize=(30,10), palette="Set2",  plot_style="ggplot", xlim=None, ylim=None, alpha=0.3, pointSize=20, scatter=True, kde=True, model=False, gmm_levels=50):
         """
         Plot the dwell time and median intensity at the given position as a scatter plot.
         ref_id: Valid reference id name in the database
         pos: Position of interest
-        split_samples: If samples for a same condition are represented separatly. If false they are merged per condition
+        split_samples: If True, samples for a same condition are represented separately. If False, they are merged per condition
         figsize: length and heigh of the output plot. Default=(30,10)
         palette: Colormap. Default="Set2"
             see https://matplotlib.org/users/colormaps.html, https://matplotlib.org/examples/color/named_colors.html
-        plot_style: Matplotlib plotting style
-            . See https://matplotlib.org/users/style_sheets.html
+        plot_style: Matplotlib plotting style.
+            See https://matplotlib.org/users/style_sheets.html
+        xlim: A tuple of explicit limits for the x axis
+        ylim: A tuple of explicit limits for the y axis
+        kde: plot the KDE of the intensity/dwell bivarariate distributions in the two samples
+        scatter: if True, plot the individual data points
+        pointSize: int specifying the point size for the scatter plot
+        model: If true, plot the GMM density estimate
+        gmm_levels: number of contour lines to use for the GMM countour plot
         """
         # Extract data for ref_id
         ref_data = self.__get_ref_data (ref_id)
@@ -521,8 +528,8 @@ class SampCompDB (object):
                 condition_labels = tuple(data.keys())
                 global_intensity = scale(np.concatenate(([v['intensity'] for v in data[condition_labels[0]].values()]+[v['intensity'] for v in data[condition_labels[1]].values()]), axis=None))
                 global_dwell = scale(np.log10(np.concatenate(([v['dwell'] for v in data[condition_labels[0]].values()]+[v['dwell'] for v in data[condition_labels[1]].values()]), axis=None)))
-                x = np.linspace(min(global_intensity), max(global_intensity))
-                y = np.linspace(min(global_dwell), max(global_dwell))
+                x = np.linspace(min(global_intensity), max(global_intensity), num=1000)
+                y = np.linspace(min(global_dwell), max(global_dwell), num=1000)
                 X, Y = np.meshgrid(x, y)
                 XX = np.array([X.ravel(), Y.ravel()]).T
                 Z = -model.score_samples(XX)
@@ -550,11 +557,15 @@ class SampCompDB (object):
                         alpha=alpha,
                         s=pointSize)
             if model:
-                _ = ax.contour(X, Y, Z, levels=np.logspace(0, 1, 10), alpha=1, colors="black")
+                _ = ax.contour(X, Y, Z, levels=gmm_levels, alpha=alpha, colors="black")
             # Adjust display
             _ = ax.set_title ("%s\n%s (%s)"%(ref_id,pos, ref_kmer))
             _ = ax.set_ylabel ("log10 (Dwell Time)")
             _ = ax.set_xlabel ("Median Intensity")
+            if xlim:
+                _ = ax.set_xlim(xlim)
+            if ylim:
+                _ = ax.set_ylim(ylim)
             _ = ax.legend()
             pl.tight_layout()
 
