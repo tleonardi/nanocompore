@@ -341,7 +341,7 @@ class SampCompDB (object):
         """
 
         # Extract data for ref_id
-        ref_data = self.__get_ref_data (ref_id)
+        ref_data = self[ref_id]
         start, end = self.__get_positions (ref_id, start, end)
 
         # Parse line position per position
@@ -419,7 +419,7 @@ class SampCompDB (object):
             . See https://matplotlib.org/users/style_sheets.html
         """
         # Extract data for ref_id
-        ref_data = self.__get_ref_data (ref_id)
+        ref_data = self[ref_id]
         start, end = self.__get_positions (ref_id, start, end)
 
         # Parse line position per position
@@ -485,7 +485,7 @@ class SampCompDB (object):
         gmm_levels: number of contour lines to use for the GMM countour plot
         """
         # Extract data for ref_id
-        ref_data = self.__get_ref_data (ref_id)
+        ref_data = self[ref_id]
 
         # Check that position is valid
         if not isinstance(pos, int):
@@ -576,14 +576,6 @@ class SampCompDB (object):
             return (fig, ax)
 
     #~~~~~~~~~~~~~~PRIVATE  METHODS~~~~~~~~~~~~~~#
-
-    def __get_ref_data (self, ref_id):
-        """ Extract data corresponding to ref with error handling """
-        # Get data record
-        try:
-            return self[ref_id]
-        except KeyError:
-            raise NanocomporeError("Reference id not present in result database")
 
     def __get_fasta_seq (self, ref_id, start, end):
         """ Extract fasta record corresponding to ref with error handling """
