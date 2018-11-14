@@ -31,8 +31,8 @@ def main(args=None):
    
     # Sampcomp subparser
     parser_sampComp = subparsers.add_parser('sampcomp', help="Run SumpComp")
-    parser_sampComp.add_argument("--file_list1", type=str, help="Comma separate list of NanopolishComp files for label 1", required=True)
-    parser_sampComp.add_argument("--file_list2", type=str, help="Comma separate list of NanopolishComp files for label 2", required=True)
+    parser_sampComp.add_argument("--file_list1", type=str, help="Comma separated list of NanopolishComp files for label 1", required=True)
+    parser_sampComp.add_argument("--file_list2", type=str, help="Comma separated list of NanopolishComp files for label 2", required=True)
     parser_sampComp.add_argument("--label1", type=str, help="Label for files in --file_list1", required=True)
     parser_sampComp.add_argument("--label2", type=str, help="Label for files in --file_list2", required=True)
     parser_sampComp.add_argument("--fasta", type=str, help="Fasta file used for mapping", required=True)
@@ -111,7 +111,7 @@ def sample_compare_main(args):
     #Save main report
     sc_out.save_report(output_fn=f"{outpath}/nanocompore_results.txt")
 
-    # Save a bed and bedg files for each method used
+    # Save bed and bedg files for each method used
     r = re.compile("adjusted_*")
     methods = list(filter(r.match, list(sc_out.results)))
     out_bedpath = outpath / "bed_files"
