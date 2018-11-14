@@ -5,6 +5,10 @@
 # Standard library imports
 import argparse
 import sys
+from pathlib import Path
+from collections import OrderedDict
+import re
+
 
 # Local imports
 from nanocompore import __version__ as package_version
@@ -14,87 +18,113 @@ from nanocompore.Whitelist import Whitelist
 from nanocompore.common import NanocomporeError
 
 
-#~~~~~~~~~~~~~~TOP LEVEL ENTRY POINT~~~~~~~~~~~~~~#
-def main ():
-    # Main triage function
-    try:
-        args = sys.argv
-        if len(args) == 1:
-            raise NanocomporeError ("Error: Missing command\n")
-        elif args[1] == "sample_compare":
-            sample_compare_main ()
-        elif args[1] == "model_compare":
-            model_compare_main ()
-        elif args[1] in ["-v", "--version"]:
-            print ("{} v{}\n".format(package_name, package_version))
-        elif args[1] in ["-h", "--help"]:
-            raise NanocomporeError ("nanocompore help\n")
-        else:
-            raise NanocomporeError ("Error: Invalid command '{}'\n".format(args[1]))
+def main(args=None):
+    parser = argparse.ArgumentParser(
+            description="""
+            Find signal differences between nanopolish eventalign collapsed files 
+            """)
 
-    except NanocomporeError as E:
-        print (E)
-        print ("Usage: nanocompore [command] [options]\n")
-        print ("Valid command:\n\t-v/--version\n\tsample_compare\n\tmodel_compare\n")
-        print ("For help on given command, type nanocompore [command] -h\n")
-        sys.exit()
+    parser.add_argument('--version', '-v', action='version', version='v'+package_version)
+    subparsers = parser.add_subparsers(help='Nanocompore implements the following subcommands', dest='sub-command')
+    subparsers.required = True
+   
+    # Sampcomp subparser
+    parser_sampComp = subparsers.add_parser('sampcomp', help="Run SumpComp")
+    parser_sampComp.add_argument("--file_list1", type=str, help="Comma separate list of NanopolishComp files for label 1", required=True)
+    parser_sampComp.add_argument("--file_list2", type=str, help="Comma separate list of NanopolishComp files for label 2", required=True)
+    parser_sampComp.add_argument("--label1", type=str, help="Label for files in --file_list1", required=True)
+    parser_sampComp.add_argument("--label2", type=str, help="Label for files in --file_list2", required=True)
+    parser_sampComp.add_argument("--fasta", type=str, help="Fasta file used for mapping", required=True)
+    parser_sampComp.add_argument("--bed", type=str, help="BED file with annotation of transcriptome used for mapping", default=None)
+    parser_sampComp.add_argument("--comparison_methods", type=str, help="Comma separated list of comparison methods. Valid methods are: GMM,KS,TT,MW", default="GMM,KS")
+    parser_sampComp.add_argument("--sequence_context", type=int, help="Sequence context for combining p-values", default=2, choices=range(0,5))
+    parser_sampComp.add_argument("--outpath", "-o", type=str, help="Path to the output folder", required=True)
+    parser_sampComp.add_argument("--overwrite", help="Use --outpath even if it exists already", action='store_true')
+    parser_sampComp.add_argument("--max_invalid_kmers_freq", type=float, default=0.1, help="Max fequency of invalid kmers")
+    parser_sampComp.add_argument("--min_coverage", type=int, default=50, help="Minimum coverage required in each condition to do the comparison")
+    parser_sampComp.add_argument("--downsample_high_coverage", type=int, default=None, help="Used for debug: transcripts with high covergage will be downsampled")
+    parser_sampComp.add_argument("--pvalue_thr", type=float, default=0.05, help="Adjusted p-value threshold for reporting significant sites")
+    parser_sampComp.add_argument("--nthreads", "-n", type=int, default=3, help="Number of threads")
+    parser_sampComp.add_argument("--loglevel", type=str, default="info", help="log level", choices=["warning", "info", "debug"])
 
-#~~~~~~~~~~~~~~SAMPLE COMPARE~~~~~~~~~~~~~~#
-def sample_compare_main ():
+    parser_sampComp.set_defaults(func=sample_compare_main)
+
+    # Downstream subparser
+    parser_downstream = subparsers.add_parser('downstream', help="Run downstream")
+    parser_downstream.add_argument("--file", "-f", type=str, help="path to the summary file.")
+    parser_downstream.set_defaults(func=sample_compare_main)
+
+    args = parser.parse_args()
+    args.func(args)
+
+def sample_compare_main(args):
     # Define parser object
-    parser = argparse.ArgumentParser (description="Find differences in two nanopolish eventalign collapsed files")
-    parser.prog = "nanocompore sample_compare"
 
-    # Define arguments
-    parser.add_argument("subprogram")
-    parser.add_argument("-1", "--s1_fn", required=True,
-        help="Path to sample 1 eventalign_collapse data file")
-    parser.add_argument("-2", "--s2_fn", required=True,
-        help="Path to sample 2 eventalign_collapse data file")
-    parser.add_argument("-f", "--fasta_index_fn", required=True,
-        help="Path to a fasta index corresponding to the reference used for read alignemnt (see samtools faidx)")
-    parser.add_argument("-o", "--output_db_fn", required=True,
-        help="Path where to write the result database")
-    parser.add_argument("--min_coverage", default=10, type=int,
-        help="minimal coverage required in all samples")
-    parser.add_argument("--downsample_high_coverage", default=0, type=int,
-        help="For reference with higher coverage, downsample by randomly selecting reads.")
-    parser.add_argument("--max_invalid_kmers_freq", default=0.1, type=float,
-        help="maximum frequency of NNNNN, mismatching and missing kmers in reads")
-    parser.add_argument("--comparison_method", default="kmean",
-        help="Statistical method to compare the 2 samples signal")
-    parser.add_argument("--sequence_context", default=0, type=int,
-        help="Extend statistical analysis to contigous adjacent base is available")
-    parser.add_argument("-t", "--nthreads", default=4, type=int,
-        help="Number of threads, 2 are used for reading and writing, all the others for processing in parallel")
-    parser.add_argument("--logLevel", default="info",
-        help="Set the log level. Valid values: warning, info, debug")
+    # Check if output folder already exists
+    outpath=Path(args.outpath)
+    if outpath.exists():
+        if not args.overwrite:
+            raise NanocomporeError(f"{args.outpath} already exists and --overwrite not specified")
+        elif not outpath.is_dir():
+            raise NanocomporeError(f"{args.outpath} is not a folder")
+    else:
+        outpath.mkdir(parents=True, exist_ok=False)
 
-    a = parser.parse_args()
+    # Assemble eventalign_fn_dict
+    eventalign_fn_dict = build_eventalign_fn_dict((args.label1, args.label2), (args.file_list1, args.file_list2))
 
-    ###############################################################################################################
-    # Parse condition file containing condition and sample label as well as the eventalign_collapse files paths   #
-    # Convert it in multilevel dict for SampComp                                                                  #
-    ###############################################################################################################
+    # Check if fasta file exists
+    fasta_fn=Path(args.fasta)
+    if not fasta_fn.is_file():
+        raise NanocomporeError(f"{args.fasta} is not a valid file")
 
-    s = SampComp(
+    # Check if BED file exists
+    if args.bed:
+        bed_fn=Path(args.bed)
+        if not bed_fn.is_file():
+            raise NanocomporeError(f"{args.bed} is not a valid file")
+
+    # Check at least 3 threads
+    if args.nthreads < 3:
+        raise NanocomporeError("The minimum number of threads is 3")
+
+    s = SampComp (
         eventalign_fn_dict = eventalign_fn_dict,
-        output_db_fn = a.output_db_fn,
-        fasta_index_fn = a.fasta_index_fn,
-        whitelist = a.whitelist,
-        comparison_method = a.comparison_method,
-        sequence_context = a.sequence_context,
-        min_coverage = a.min_coverage,
-        downsample_high_coverage = a.downsample_high_coverage,
-        max_NNNNN_freq = a.max_NNNNN_freq,
-        max_mismatching_freq = a.max_mismatching_freq,
-        max_missing_freq = a.max_missing_freq,
-        nthreads = a.nthreads,
-        logLevel = a.logLevel)
+        max_invalid_kmers_freq=args.max_invalid_kmers_freq,
+        output_db_fn = args.outpath+"/sampCompDB.db",
+        fasta_fn = args.fasta,
+        bed_fn = args.bed,
+        nthreads = args.nthreads,
+        min_coverage = args.min_coverage,
+        downsample_high_coverage = args.downsample_high_coverage,
+        comparison_method = args.comparison_methods,
+        logLevel = args.loglevel,
+        sequence_context = args.sequence_context)
 
-    # s.write_results ()
-    # s.do_other_stuff ()
+    sc_out = s()
 
-#~~~~~~~~~~~~~~MODEL COMPARE~~~~~~~~~~~~~~#
-def model_compare_main ():
-    print ("Not implemented yet")
+    # Save a bed and bedg files for each method used
+    r = re.compile("adjusted_*")
+    methods = list(filter(r.match, list(sc_out.results)))
+    out_bedpath = outpath / "bed_files"
+    out_bedpath.mkdir()
+    out_bedgpath = outpath / "bedgraph_files"
+    out_bedgpath.mkdir()
+    for m in methods:
+        sc_out.save_to_bed(output_fn=f"{out_bedpath}/sig_sites_{m}_thr{args.pvalue_thr}.bed", bedgraph=False, pvalue_field=m, pvalue_thr=args.pvalue_thr, span=5, title="Nanocompore Significant Sites")
+        sc_out.save_to_bed(output_fn=f"{out_bedgpath}/sig_sites_{m}_thr{args.pvalue_thr}.bedg", bedgraph=True, pvalue_field=m, title="Nanocompore Significant Sites")
+
+def build_eventalign_fn_dict(labels, files):
+    """ Build the eventalign_fn_dict
+        labels: tuple of size 2 with sample lables
+        files:  tuple of size 2 with comma separated lists of files
+    """
+    eventalign_fn_dict = dict()
+    for cond in range(2):
+        eventalign_fn_dict[ labels[cond] ] = { f"{labels[cond]}{i}": v for i,v in enumerate(files[cond].split(","), 1) }
+    return(eventalign_fn_dict)
+
+
+if __name__ == "__main__":
+    # execute only if run as a script
+    main()
