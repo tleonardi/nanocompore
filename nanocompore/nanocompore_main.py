@@ -63,9 +63,9 @@ def main(args=None):
 
 
     # Downstream subparser
-    parser_downstream = subparsers.add_parser('downstream', help="Run downstream")
-    parser_downstream.add_argument("--file", "-f", type=str, help="path to the summary file.")
-    parser_downstream.set_defaults(func=sample_compare_main)
+    parser_plot = subparsers.add_parser('plot', help="Run downstream")
+    parser_plot.add_argument("--sampComp_db", type=str, help="path to SampCompDB")
+    parser_plot.set_defaults(func=plot)
 
     args = parser.parse_args()
     args.func(args)
@@ -134,6 +134,8 @@ def sample_compare_main(args):
         sc_out.save_to_bed(output_fn=f"{out_bedpath}/sig_sites_{m}_thr{args.pvalue_thr}.bed", bedgraph=False, pvalue_field=m, pvalue_thr=args.pvalue_thr, span=5, title="Nanocompore Significant Sites")
         sc_out.save_to_bed(output_fn=f"{out_bedgpath}/sig_sites_{m}_thr{args.pvalue_thr}.bedg", bedgraph=True, pvalue_field=m, title="Nanocompore Significant Sites")
 
+def plot(args):
+    raise NanocomporeError("The plotting CLI methods haven't been implemented yet. Please load the the SampCompDB in jupyter for downstream analysis.")
 def build_eventalign_fn_dict(labels, files):
     """ Build the eventalign_fn_dict
         labels: tuple of size 2 with sample lables
