@@ -31,22 +31,33 @@ def main(args=None):
    
     # Sampcomp subparser
     parser_sampComp = subparsers.add_parser('sampcomp', help="Run SumpComp")
-    parser_sampComp.add_argument("--file_list1", type=str, help="Comma separated list of NanopolishComp files for label 1", required=True)
-    parser_sampComp.add_argument("--file_list2", type=str, help="Comma separated list of NanopolishComp files for label 2", required=True)
-    parser_sampComp.add_argument("--label1", type=str, help="Label for files in --file_list1", required=True)
-    parser_sampComp.add_argument("--label2", type=str, help="Label for files in --file_list2", required=True)
-    parser_sampComp.add_argument("--fasta", type=str, help="Fasta file used for mapping", required=True)
-    parser_sampComp.add_argument("--bed", type=str, help="BED file with annotation of transcriptome used for mapping", default=None)
-    parser_sampComp.add_argument("--comparison_methods", type=str, help="Comma separated list of comparison methods. Valid methods are: GMM,KS,TT,MW", default="GMM,KS")
-    parser_sampComp.add_argument("--sequence_context", type=int, help="Sequence context for combining p-values", default=2, choices=range(0,5))
-    parser_sampComp.add_argument("--outpath", "-o", type=str, help="Path to the output folder", required=True)
-    parser_sampComp.add_argument("--overwrite", help="Use --outpath even if it exists already", action='store_true')
-    parser_sampComp.add_argument("--max_invalid_kmers_freq", type=float, default=0.1, help="Max fequency of invalid kmers")
-    parser_sampComp.add_argument("--min_coverage", type=int, default=50, help="Minimum coverage required in each condition to do the comparison")
-    parser_sampComp.add_argument("--downsample_high_coverage", type=int, default=None, help="Used for debug: transcripts with high covergage will be downsampled")
-    parser_sampComp.add_argument("--pvalue_thr", type=float, default=0.05, help="Adjusted p-value threshold for reporting significant sites")
-    parser_sampComp.add_argument("--nthreads", "-n", type=int, default=3, help="Number of threads")
-    parser_sampComp.add_argument("--loglevel", type=str, default="info", help="log level", choices=["warning", "info", "debug"])
+
+    parser_input = parser_sampComp.add_argument_group('Input files')
+    parser_input.add_argument("--file_list1", type=str, help="Comma separated list of NanopolishComp files for label 1", required=True)
+    parser_input.add_argument("--file_list2", type=str, help="Comma separated list of NanopolishComp files for label 2", required=True)
+    parser_input.add_argument("--label1", type=str, help="Label for files in --file_list1", required=True)
+    parser_input.add_argument("--label2", type=str, help="Label for files in --file_list2", required=True)
+    parser_input.add_argument("--fasta", type=str, help="Fasta file used for mapping", required=True)
+    parser_input.add_argument("--bed", type=str, help="BED file with annotation of transcriptome used for mapping", default=None)
+
+    parser_output = parser_sampComp.add_argument_group('Output paths')
+    parser_output.add_argument("--outpath", "-o", type=str, help="Path to the output folder", required=True)
+    parser_output.add_argument("--overwrite", help="Use --outpath even if it exists already", action='store_true')
+
+    parser_filtering = parser_sampComp.add_argument_group('Transcript filtering')
+    parser_filtering.add_argument("--max_invalid_kmers_freq", type=float, default=0.1, help="Max fequency of invalid kmers")
+    parser_filtering.add_argument("--min_coverage", type=int, default=50, help="Minimum coverage required in each condition to do the comparison")
+    parser_filtering.add_argument("--downsample_high_coverage", type=int, default=None, help="Used for debug: transcripts with high covergage will be downsampled")
+
+    parser_testing = parser_sampComp.add_argument_group('Statistical testing')
+    parser_testing.add_argument("--comparison_methods", type=str, help="Comma separated list of comparison methods. Valid methods are: GMM,KS,TT,MW", default="GMM,KS")
+    parser_testing.add_argument("--sequence_context", type=int, help="Sequence context for combining p-values", default=2, choices=range(0,5))
+    parser_testing.add_argument("--pvalue_thr", type=float, default=0.05, help="Adjusted p-value threshold for reporting significant sites")
+
+    parser_common = parser_sampComp.add_argument_group('Other options')
+    parser_common.add_argument("--nthreads", "-n", type=int, default=3, help="Number of threads")
+    parser_common.add_argument("--loglevel", type=str, default="info", help="log level", choices=["warning", "info", "debug"])
+
 
     parser_sampComp.set_defaults(func=sample_compare_main)
 
