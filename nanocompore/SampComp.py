@@ -12,7 +12,7 @@ os.environ['OPENBLAS_NUM_THREADS'] = '1'
 
 # Std lib
 import logging
-from collections import OrderedDict, namedtuple
+from collections import OrderedDict, Counter
 import shelve
 import multiprocessing as mp
 from warnings import warn
@@ -20,6 +20,7 @@ from warnings import warn
 # Third party
 from tqdm import tqdm
 import numpy as np
+from pyfaidx import Fasta
 
 # Local package
 from nanocompore.common import counter_to_str, access_file, NanocomporeError, NanocomporeWarning, numeric_cast_list
@@ -135,7 +136,7 @@ class SampComp (object):
         self.__eventalign_fn_dict = eventalign_fn_dict
         self.__output_db_fn = output_db_fn
         self.__fasta_fn = fasta_fn
-        self.__bed_fn = bed_fn 
+        self.__bed_fn = bed_fn
         self.__whitelist = whitelist
         self.__comparison_methods = comparison_method
         self.__sequence_context = sequence_context
@@ -152,45 +153,45 @@ class SampComp (object):
     def __call__ (self):
         """Run analysis"""
 
-        logger.info ("Start data processing")
+        logger.info("Start data processing")
         # Init Multiprocessing variables
-        in_q = mp.Queue (maxsize = 100)
-        out_q = mp.Queue (maxsize = 100)
+        in_q = mp.Queue(maxsize = 100)
+        out_q = mp.Queue(maxsize = 100)
 
         # Define processes
         ps_list = []
-        ps_list.append (mp.Process (target=self.__list_refid, args=(in_q,)))
-        for i in range (self.__nthreads):
-            ps_list.append (mp.Process (target=self.__process_references, args=(in_q, out_q)))
-        ps_list.append (mp.Process (target=self.__write_output, args=(out_q,)))
+        ps_list.append(mp.Process(target=self.__list_refid, args=(in_q,)))
+        for i in range(self.__nthreads):
+            ps_list.append(mp.Process(target=self.__process_references, args=(in_q, out_q)))
+        ps_list.append(mp.Process(target=self.__write_output, args=(out_q,)))
 
         # Start processes and block until done
         try:
             for ps in ps_list:
-                ps.start ()
+                ps.start()
             for ps in ps_list:
-                ps.join ()
+                ps.join()
 
         # Kill processes if early stop
         except (BrokenPipeError, KeyboardInterrupt) as E:
-            if self.verbose: stderr_print ("Early stop. Kill processes\n")
+            if self.verbose: stderr_print("Early stop. Kill processes\n")
             for ps in ps_list:
-                ps.terminate ()
+                ps.terminate()
 
         # Return database wrapper object
-        return SampCompDB (db_fn=self.__output_db_fn, fasta_fn=self.__fasta_fn, bed_fn=self.__bed_fn)
+        return SampCompDB(db_fn=self.__output_db_fn, fasta_fn=self.__fasta_fn, bed_fn=self.__bed_fn)
 
     #~~~~~~~~~~~~~~PRIVATE MULTIPROCESSING METHOD~~~~~~~~~~~~~~#
     def __list_refid (self, in_q):
         # Add refid to inqueue to dispatch the data among the workers
         for ref_id, ref_dict in self.__whitelist:
-            logger.debug("Adding %s to in_q"%ref_id)
-            in_q.put ((ref_id, ref_dict))
+            logger.debug("Adding {} to in_q".format(ref_id))
+            in_q.put((ref_id, ref_dict))
 
         # Add 1 poison pill for each worker thread
-        for i in range (self.__nthreads):
+        for i in range(self.__nthreads):
             logger.debug("Adding poison pill to in_q")
-            in_q.put (None)
+            in_q.put(None)
 
     def __process_references (self, in_q, out_q):
         """
@@ -204,24 +205,16 @@ class SampComp (object):
             fp_dict = self.__eventalign_fn_open()
 
             # Process refid in input queue
-            for ref_id, ref_dict in iter (in_q.get, None):
-                logger.debug("Worker thread processing new item from in_q: %s"%ref_id)
+            for ref_id, ref_dict in iter(in_q.get, None):
+                logger.debug("Worker thread processing new item from in_q: {}".format(ref_id))
 
-                # List valid positions for ref_id identified by whitelist
-                valid_pos_list = []
-                for interval_start, interval_end in ref_dict["interval_list"]:
-                    for pos in range (interval_start, interval_end+1):
-                        valid_pos_list.append(pos)
+                # Create an empty dict for all positions first
+                ref_pos_dict = self.__make_ref_pos_dict (ref_id)
 
-                # Parse read data for each sample and fill in a position level multilevel
-                # dict with median, coverage and dwell time values
-                ref_pos_dict = OrderedDict ()
-                for cond_lab, sample_dict in ref_dict.items():
-                    # Skip interval list entry
-                    if cond_lab == "interval_list":
-                        continue
+                for cond_lab, sample_dict in ref_dict["data"].items():
                     for sample_lab, read_list in sample_dict.items():
                         fp = fp_dict[cond_lab][sample_lab]
+
                         for read in read_list:
 
                             # Move to read, save read data chunk and reset file pointer
@@ -236,27 +229,35 @@ class SampComp (object):
 
                             # Extract col names from second line
                             col_names = line_list[1].split("\t")
+
                             # Parse data files kmers per kmers
+                            prev_pos = None
                             for line in line_list[2:]:
                                 # Transform line to dict and cast str numbers to actual numbers
                                 kmer = dict (zip (col_names, numeric_cast_list (line.split("\t"))))
 
                                 # Check if ref position is in the whitelist valid intervals and add kmer data if so
                                 pos = kmer["ref_pos"]
-                                if pos in valid_pos_list:
-                                    if not pos in ref_pos_dict:
-                                        ref_pos_dict[pos] = OrderedDict()
-                                        ref_pos_dict[pos]["ref_kmer"] = kmer["ref_kmer"]
-                                        ref_pos_dict[pos]["data"] = OrderedDict()
-                                    if not cond_lab in ref_pos_dict[pos]["data"]:
-                                        ref_pos_dict[pos]["data"][cond_lab] = OrderedDict()
-                                    if not sample_lab in ref_pos_dict[pos]["data"][cond_lab]:
-                                        ref_pos_dict[pos]["data"][cond_lab][sample_lab] = {"intensity":[], "dwell":[], "coverage":0}
 
-                                    # Append median intensity and dwell time value per position
-                                    ref_pos_dict[pos]["data"][cond_lab][sample_lab]["intensity"].append(kmer["median"])
-                                    ref_pos_dict[pos]["data"][cond_lab][sample_lab]["dwell"].append(kmer["n_signals"])
-                                    ref_pos_dict[pos]["data"][cond_lab][sample_lab]["coverage"] += 1
+                                # Fill in the missing positions
+                                if prev_pos and pos-prev_pos > 1:
+                                    for missing_pos in range(prev_pos+1, pos):
+                                        ref_pos_dict[missing_pos]["data"][cond_lab][sample_lab]["events_stats"]["missing"] += 1
+
+                                # And then fill dict with the current pos values
+                                ref_pos_dict[pos]["data"][cond_lab][sample_lab]["intensity"].append(kmer["median"])
+                                ref_pos_dict[pos]["data"][cond_lab][sample_lab]["dwell"].append(kmer["n_signals"])
+                                ref_pos_dict[pos]["data"][cond_lab][sample_lab]["coverage"] += 1
+
+                                # Also fill in with normalised position event stats
+                                n_valid = (kmer["n_events"]-(kmer["NNNNN_events"]+kmer["mismatching_events"])) / kmer["n_events"]
+                                n_NNNNN = kmer["NNNNN_events"] / kmer["n_events"]
+                                n_mismatching = kmer["mismatching_events"] / kmer["n_events"]
+                                ref_pos_dict[pos]["data"][cond_lab][sample_lab]["events_stats"]["valid"] += n_valid
+                                ref_pos_dict[pos]["data"][cond_lab][sample_lab]["events_stats"]["NNNNN"] += n_NNNNN
+                                ref_pos_dict[pos]["data"][cond_lab][sample_lab]["events_stats"]["mismatching"] += n_mismatching
+
+                                prev_pos = pos
 
                 if self.__comparison_methods:
                     ref_pos_dict=txCompare(
@@ -313,3 +314,26 @@ class SampComp (object):
         for sample_dict in fp_dict.values():
             for fp in sample_dict.values():
                 fp.close()
+
+    def __make_ref_pos_dict (self, ref_id):
+
+        ref_pos_dict = OrderedDict()
+        with Fasta (self.__fasta_fn) as fasta:
+            ref_fasta = fasta [ref_id]
+            ref_len = len(ref_fasta)
+            ref_seq = str(ref_fasta)+"#####" # Add padding for last kmers
+
+            for pos in range(ref_len):
+                pos_dict = OrderedDict()
+                pos_dict["ref_kmer"] = ref_seq[pos:pos+5]
+                pos_dict["data"] = OrderedDict()
+                for cond_lab, s_dict in self.__eventalign_fn_dict.items():
+                    pos_dict["data"][cond_lab] = OrderedDict()
+                    for sample_lab in s_dict.keys():
+                        pos_dict["data"][cond_lab][sample_lab] = {
+                            "intensity":[],
+                            "dwell":[],
+                            "coverage":0,
+                            "events_stats":{"missing":0,"valid":0,"NNNNN":0,"mismatching":0}}
+                ref_pos_dict[pos] = pos_dict
+        return ref_pos_dict
