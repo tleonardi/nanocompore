@@ -265,7 +265,7 @@ class SampCompDB (object):
             for tx, refpos in self:
                 gmm_info[tx] = {k:{'lor': v['txComp']['GMM_model'][1], 'clusters':v['txComp']['GMM_model'][3]} for k,v in refpos.items() if "GMM_model" in v['txComp']}
         fp.write('\t'.join([ str(i) for i in headers ])+'\n')
-        for record in self.results[['chr', 'pos', 'ref','strand', 'ref_kmer', 'lowCov']+methods].values.tolist():
+        for record in [ i for i in headers if i in self.results.values.tolist()] :
             if "GMM" in self._comparison_method:
                 try:
                     lor = gmm_info[record[2]][record[1]]['lor']

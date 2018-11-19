@@ -124,15 +124,16 @@ def sample_compare_main(args):
     sc_out.save_report(output_fn=f"{outpath}/nanocompore_results.txt")
 
     # Save bed and bedg files for each method used
-    r = re.compile("adjusted_*")
-    methods = list(filter(r.match, list(sc_out.results)))
-    out_bedpath = outpath / "bed_files"
-    out_bedpath.mkdir(exist_ok=True)
-    out_bedgpath = outpath / "bedgraph_files"
-    out_bedgpath.mkdir(exist_ok=True)
-    for m in methods:
-        sc_out.save_to_bed(output_fn=f"{out_bedpath}/sig_sites_{m}_thr{args.pvalue_thr}.bed", bedgraph=False, pvalue_field=m, pvalue_thr=args.pvalue_thr, span=5, title="Nanocompore Significant Sites")
-        sc_out.save_to_bed(output_fn=f"{out_bedgpath}/sig_sites_{m}_thr{args.pvalue_thr}.bedg", bedgraph=True, pvalue_field=m, title="Nanocompore Significant Sites")
+    if args.bed:
+        r = re.compile("adjusted_*")
+        methods = list(filter(r.match, list(sc_out.results)))
+        out_bedpath = outpath / "bed_files"
+        out_bedpath.mkdir(exist_ok=True)
+        out_bedgpath = outpath / "bedgraph_files"
+        out_bedgpath.mkdir(exist_ok=True)
+        for m in methods:
+            sc_out.save_to_bed(output_fn=f"{out_bedpath}/sig_sites_{m}_thr{args.pvalue_thr}.bed", bedgraph=False, pvalue_field=m, pvalue_thr=args.pvalue_thr, span=5, title="Nanocompore Significant Sites")
+            sc_out.save_to_bed(output_fn=f"{out_bedgpath}/sig_sites_{m}_thr{args.pvalue_thr}.bedg", bedgraph=True, pvalue_field=m, title="Nanocompore Significant Sites")
 
 def plot(args):
     raise NanocomporeError("The plotting CLI methods haven't been implemented yet. Please load the the SampCompDB in jupyter for downstream analysis.")
