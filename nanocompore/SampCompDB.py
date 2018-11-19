@@ -78,7 +78,8 @@ class SampCompDB (object):
         self.bed_fn = bed_fn
 
         # Create results DF with adjusted p-values
-        self.__calculate_results()
+        if self._comparison_method :
+            self.__calculate_results()
 
     def __repr__ (self):
         """readable description of the object"""
@@ -223,7 +224,7 @@ class SampCompDB (object):
             Record = namedtuple('Record', ['chr', 'genomicPos', 'ref','strand', 'ref_kmer', pvalue_field ])
             for record in self.results[ list(Record._fields) ].itertuples(index=False, name="Record"):
                 pvalue = getattr(record, pvalue_field)
-                if np.isnan(pvalue): 
+                if np.isnan(pvalue):
                     pvalue=0
                 else:
                     pvalue=-log(pvalue, 10)
@@ -256,7 +257,7 @@ class SampCompDB (object):
             raise NanocomporeError("output_fn needs to be a string or None")
         r = re.compile("adjusted_*")
         methods = list(filter(r.match, list(self.results)))
-        
+
         headers = ['chr', 'pos', 'ref','strand', 'ref_kmer', 'lowCov']+methods
         # Read extra GMM info from the shelve
         if "GMM" in self._comparison_method:
@@ -276,7 +277,7 @@ class SampCompDB (object):
                     record += ["nan", "nan"]
             fp.write('\t'.join([ str(i) for i in record ])+'\n')
         fp.close()
-    
+
 
 
     def list_most_significant_positions (self, n=10):
@@ -451,15 +452,13 @@ class SampCompDB (object):
             _ = ax2.legend ()
 
             # Adjust display
-            _ = fig.suptitle("Reference:{}  Start:{}  End:{}".format(ref_id, start, end), y=1.01)
+            _ = fig.suptitle("Reference:{}  Start:{}  End:{}".format(ref_id, start, end), y=1.01, fontsize=18)
 
             pl.tight_layout()
             return (fig, (ax1, ax2))
 
     def plot_coverage (self, ref_id, start=None, end=None, scale=False, figsize=(30,5), palette="Set2", plot_style="ggplot"):
         """
-        Plot pvalues per position (by default plot all fields starting by "pvalue")
-        It is pointless to plot more than 50 positions at once as it becomes hard to distiguish
         ref_id: Valid reference id name in the database
         start: Start coordinate. Default=0
         end: End coordinate (included). Default=reference length
@@ -473,25 +472,17 @@ class SampCompDB (object):
         ref_data = self[ref_id]
         start, end = self.__get_positions (ref_id, start, end)
 
-        # Parse line position per position
+        # Parse data from database
         l=[]
-        valid=0
-        # Extract data from database if position in db
         for pos in np.arange (start, end+1):
-            if pos in ref_data:
-                valid+=1
-                for k1, v1 in ref_data[pos]['data'].items():
-                    for k2, v2 in v1.items():
-                        l.append ((pos, "{}_{}".format(k1, k2), v2["coverage"]))
-            else:
-                l.append ((pos, None, None))
+            for cond_lab, cond_dict in ref_data[pos]['data'].items():
+                for sample_lab, sample_val in cond_dict.items():
+                    l.append ((pos, "{}_{}".format(cond_lab, sample_lab), sample_val["coverage"]))
 
-        # Check that we found valid position and cast collected results to dataframe
-        if not valid:
-            raise NanocomporeError ("No data available for selected coordinates")
-        df = pd.DataFrame (l, columns=["pos", "Sample", "cov"])
+        # Cast collected results to dataframe
+        df = pd.DataFrame (l, columns=["pos", "sample", "cov"])
         if scale:
-            df['cov'] = df.groupby('Sample')['cov'].apply(lambda x: x/max(x))
+            df['cov'] = df.groupby('sample')['cov'].apply(lambda x: x/max(x))
 
         # Define plotting style
         with pl.style.context (plot_style):
@@ -499,7 +490,7 @@ class SampCompDB (object):
             _ = sns.lineplot (
                 x="pos",
                 y="cov",
-                hue="Sample",
+                hue="sample",
                 data=df,
                 ax=ax,
                 palette=palette,
@@ -511,10 +502,63 @@ class SampCompDB (object):
             _ = ax.set_title ("Reference:{}  Start:{}  End:{}".format(ref_id, start, end))
             _ = ax.set_ylabel ("Coverage")
             _ = ax.set_xlabel ("Reference position")
+            _ = ax.legend(bbox_to_anchor=(1, 1), loc=2)
             _ = ax.legend()
 
             pl.tight_layout()
             return (fig, ax)
+
+    def plot_event_stats (self, ref_id, start=None, end=None, split_samples=False, figsize=(30,10), palette="Accent", plot_style="ggplot"):
+        """
+        ref_id: Valid reference id name in the database
+        start: Start coordinate. Default=0
+        end: End coordinate (included). Default=reference length
+
+        figsize: length and heigh of the output plot. Default=(30,10)
+        palette: Colormap. Default="Set2"
+            see https://matplotlib.org/users/colormaps.html, https://matplotlib.org/examples/color/named_colors.html
+        plot_style: Matplotlib plotting style. Default="ggplot"
+            . See https://matplotlib.org/users/style_sheets.html
+        """
+        # Extract data for ref_id
+        ref_data = self[ref_id]
+        start, end = self.__get_positions (ref_id, start, end)
+
+        # Parse data from database
+        d = OrderedDict()
+        for pos in range (start, end):
+            for cond_lab, sample_dict in ref_data[pos]["data"].items():
+                for samp_lab, sample_val in sample_dict.items():
+                    lab = "{}_{}".format(cond_lab, samp_lab) if split_samples else cond_lab
+
+                    # Create dict arborescence
+                    if not lab in d:
+                        d[lab] = OrderedDict()
+                    if not pos in d[lab]:
+                        d[lab][pos] = {"valid":0,"NNNNN":0,"mismatching":0,"missing":0}
+
+                    # Fill-in with values
+                    d[lab][pos]["valid"] += sample_val["events_stats"]["valid"]
+                    d[lab][pos]["NNNNN"] += sample_val["events_stats"]["NNNNN"]
+                    d[lab][pos]["mismatching"] += sample_val["events_stats"]["mismatching"]
+                    d[lab][pos]["missing"] += sample_val["events_stats"]["missing"]
+
+        with pl.style.context (plot_style):
+            fig, axes = pl.subplots (len(d),1, figsize=figsize)
+            for ax, (lab, pos_dict) in zip (axes, d.items()):
+                sample_df = pd.DataFrame.from_dict(pos_dict, orient="index")
+
+                _ = sample_df.plot.area (ax=ax, colormap=palette, legend=False)
+                _ = ax.set_title (lab)
+                _ = ax.set_ylabel ("Coverage")
+                _ = ax.set_xlim (-1, end-start+1)
+
+            _ = axes[-1].set_xlabel ("Reference position")
+            _ = axes[0].legend(bbox_to_anchor=(1, 1), loc=2)
+            _ = fig.suptitle ("Reference:{}  Start:{}  End:{}".format(ref_id, start, end), y=1.02, fontsize=18)
+            pl.tight_layout()
+
+        return (fig, axes)
 
     def plot_position(self, ref_id, pos=None, split_samples=False, figsize=(30,10), palette="Set2",  plot_style="ggplot", xlim=None, ylim=None, alpha=0.3, pointSize=20, scatter=True, kde=True, model=False, gmm_levels=50):
         """
