@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 # Define self package variable
-__version__ = "1.0.0b1"
+__version__ = "1.0.0b2"
 
 description = 'Software package that identifies raw signal changes between two conditions from https://github.com/jts/nanopolish resquiggled dRNA-Seq data.'
 long_description = """"""
@@ -35,7 +35,7 @@ setup_dict = {
         "seaborn>=0.9.0",
         "pandas>=0.23.3",
         "statsmodels>=0.9.0",
-        "scikit-learn>=0.20"
-        "bedparse"],
+        "scikit-learn>=0.20",
+        "bedparse==0.1.1b1"],
     "packages": [__name__],
     "entry_points":{'console_scripts': ['nanocompore=nanocompore.nanocompore_main:main']}}

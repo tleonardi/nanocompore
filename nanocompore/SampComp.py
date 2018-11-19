@@ -42,6 +42,7 @@ class SampComp (object):
         eventalign_fn_dict,
         output_db_fn,
         fasta_fn,
+        bed_fn=None,
         whitelist=None,
         comparison_method = None,
         sequence_context = 0,
@@ -59,6 +60,7 @@ class SampComp (object):
             2 conditions are expected, and at least 2 sample replicates are highly recomended per condition
         output_db_fn: Path where to write the result database
         fasta_fn: Path to a fasta file corresponding to the reference used for read alignemnt
+        bed_fn: Path to a BED file containing the annotation of the transcriptome used as reference when mapping
         whitelist: Whitelist object previously generated with nanocompore Whitelist. If not given, will be automatically generated
         comparison_method: Statistical method to compare the 2 samples (mann_whitney, kolmogorov_smirnov, t_test, gmm).
             This can be a list or a comma separated string
@@ -86,7 +88,7 @@ class SampComp (object):
         for sample_dict in eventalign_fn_dict.values():
             for fn in sample_dict.values():
                 if not access_file (fn):
-                    raise NanocomporeError("Cannot access eventalign_collapse file {}".format(idx_fn))
+                    raise NanocomporeError("Cannot access eventalign_collapse file {}".format(fn))
 
         if nthreads < 3:
             raise NanocomporeError("Number of threads not valid")
@@ -133,6 +135,7 @@ class SampComp (object):
         self.__eventalign_fn_dict = eventalign_fn_dict
         self.__output_db_fn = output_db_fn
         self.__fasta_fn = fasta_fn
+        self.__bed_fn = bed_fn 
         self.__whitelist = whitelist
         self.__comparison_methods = comparison_method
         self.__sequence_context = sequence_context
@@ -175,7 +178,7 @@ class SampComp (object):
                 ps.terminate ()
 
         # Return database wrapper object
-        return SampCompDB (db_fn=self.__output_db_fn, fasta_fn=self.__fasta_fn)
+        return SampCompDB (db_fn=self.__output_db_fn, fasta_fn=self.__fasta_fn, bed_fn=self.__bed_fn)
 
     #~~~~~~~~~~~~~~PRIVATE MULTIPROCESSING METHOD~~~~~~~~~~~~~~#
     def __list_refid (self, in_q):
