@@ -104,7 +104,7 @@ class Whitelist (object):
             min_coverage = min_coverage,
             downsample_high_coverage=downsample_high_coverage)
 
-        self.ref_reads = ref_reads
+        #self.ref_reads = ref_reads
 
     def __repr__ (self):
         m = "Whitelist: Number of references: {}".format(len(self))
@@ -163,7 +163,7 @@ class Whitelist (object):
                     for line in fp:
                         try:
                             # Transform line to dict and cast str numbers to actual numbers
-                            read = dict (zip(col_names, numeric_cast_list(line.rstrip().split())))
+                            read = dict(zip(col_names, numeric_cast_list(line.rstrip().split())))
 
                             # Filter out ref_id if a select_ref_id list or exclude_ref_id list was provided
                             if select_ref_id and not read["ref_id"] in select_ref_id:
@@ -302,8 +302,9 @@ class Whitelist (object):
                 if valid_interval_list:
                     if self.__logLevel == "debug":
                         c["ref_id"] += 1
-                    ref_interval_reads [ref_id] = OrderedDict ()
-                    ref_interval_reads [ref_id] ["interval_list"] = valid_interval_list
+                    ref_interval_reads[ref_id] = OrderedDict ()
+                    ref_interval_reads[ref_id]["interval_list"] = valid_interval_list
+                    ref_interval_reads[ref_id]["data"] = OrderedDict ()
 
                     # Select reads overlapping at least one valid interval
                     for cond_lab, sample_dict in cond_dict.items():
@@ -322,9 +323,9 @@ class Whitelist (object):
                                 lab = "{} {} Reads".format(cond_lab, sample_lab)
                                 c[lab] += len(valid_reads)
 
-                            if not cond_lab in ref_interval_reads[ref_id]:
-                                ref_interval_reads[ref_id][cond_lab] = OrderedDict ()
-                            ref_interval_reads[ref_id][cond_lab][sample_lab] = valid_reads
+                            if not cond_lab in ref_interval_reads[ref_id]["data"]:
+                                ref_interval_reads[ref_id]["data"][cond_lab] = OrderedDict ()
+                            ref_interval_reads[ref_id]["data"][cond_lab][sample_lab] = valid_reads
 
         pbar.close ()
         logger.debug (counter_to_str(c))
