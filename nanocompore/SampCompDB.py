@@ -256,7 +256,7 @@ class SampCompDB (object):
             raise NanocomporeError("output_fn needs to be a string or None")
         r = re.compile("adjusted_*")
         methods = list(filter(r.match, list(self.results)))
-        
+
         headers = ['chr', 'pos', 'ref','strand', 'ref_kmer', 'lowCov']+methods
         # Read extra GMM info from the shelve
         if "GMM" in self._comparison_method:
@@ -265,7 +265,7 @@ class SampCompDB (object):
             for tx, refpos in self:
                 gmm_info[tx] = {k:{'lor': v['txComp']['GMM_model'][1], 'clusters':v['txComp']['GMM_model'][3]} for k,v in refpos.items() if "GMM_model" in v['txComp']}
         fp.write('\t'.join([ str(i) for i in headers ])+'\n')
-        for record in [ i for i in headers if i in self.results.values.tolist()] :
+        for record in self.results[[i for i in headers if i in list(self.results)]].values.tolist() :
             if "GMM" in self._comparison_method:
                 try:
                     lor = gmm_info[record[2]][record[1]]['lor']
@@ -276,8 +276,6 @@ class SampCompDB (object):
                     record += ["nan", "nan"]
             fp.write('\t'.join([ str(i) for i in record ])+'\n')
         fp.close()
-    
-
 
     def list_most_significant_positions (self, n=10):
         pass
