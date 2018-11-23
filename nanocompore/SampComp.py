@@ -110,6 +110,8 @@ class SampComp (object):
                     comparison_method[i]="GMM"
                 else:
                     raise NanocomporeError("Invalid comparison method {}".format(method))
+
+        if not whitelist:
             whitelist = Whitelist (
                 eventalign_fn_dict = eventalign_fn_dict,
                 fasta_fn = fasta_fn,
@@ -119,10 +121,13 @@ class SampComp (object):
                 select_ref_id = select_ref_id,
                 exclude_ref_id = exclude_ref_id,
                 logLevel = logLevel)
-                # Set private args
-            self.__min_coverage = min_coverage
-            self.__downsample_high_coverage = downsample_high_coverage
-            self.__max_invalid_kmers_freq = max_invalid_kmers_freq
+        elif not isinstance (whitelist, Whitelist):
+            raise NanocomporeError("Whitelist is not valid")
+
+        # Set private args from whitelist args
+        self.__min_coverage = whitelist._Whitelist__min_coverage
+        self.__downsample_high_coverage = whitelist._Whitelist__downsample_high_coverage
+        self.__max_invalid_kmers_freq = whitelist._Whitelist__max_invalid_kmers_freq
 
         # Save private args
         self.__eventalign_fn_dict = eventalign_fn_dict
