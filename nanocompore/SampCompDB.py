@@ -507,12 +507,14 @@ class SampCompDB (object):
             pl.tight_layout()
             return (fig, ax)
 
+    def plot_bleeding_hulk (self, ref_id, start=None, end=None, split_samples=False, figsize=(30,10)):
+        self.plot_event_stats(ref_id, start, end, split_samples, figsize, "Accent")
+
     def plot_event_stats (self, ref_id, start=None, end=None, split_samples=False, figsize=(30,10), palette="Accent", plot_style="ggplot"):
         """
         ref_id: Valid reference id name in the database
         start: Start coordinate. Default=0
         end: End coordinate (included). Default=reference length
-
         figsize: length and heigh of the output plot. Default=(30,10)
         palette: Colormap. Default="Set2"
             see https://matplotlib.org/users/colormaps.html, https://matplotlib.org/examples/color/named_colors.html
@@ -525,9 +527,9 @@ class SampCompDB (object):
 
         # Parse data from database
         d = OrderedDict()
-        for pos in range (start, end):
-            for cond_lab, sample_dict in ref_data[pos]["data"].items():
-                for samp_lab, sample_val in sample_dict.items():
+        for pos in np.arange (start, end):
+            for cond_lab, cond_dict in ref_data[pos]["data"].items():
+                for samp_lab, sample_val in cond_dict.items():
                     lab = "{}_{}".format(cond_lab, samp_lab) if split_samples else cond_lab
 
                     # Create dict arborescence
@@ -550,16 +552,16 @@ class SampCompDB (object):
                 _ = sample_df.plot.area (ax=ax, colormap=palette, legend=False)
                 _ = ax.set_title (lab)
                 _ = ax.set_ylabel ("Coverage")
-                _ = ax.set_xlim (-1, end-start+1)
+                _ = ax.set_xlim (start, end-1)
 
             _ = axes[-1].set_xlabel ("Reference position")
-            _ = axes[0].legend(bbox_to_anchor=(1, 1), loc=2)
+            _ = axes[0].legend(bbox_to_anchor=(1, 1), loc=2, facecolor="white", frameon=False)
             _ = fig.suptitle ("Reference:{}  Start:{}  End:{}".format(ref_id, start, end), y=1.02, fontsize=18)
             pl.tight_layout()
 
         return (fig, axes)
 
-    def plot_position(self, ref_id, pos=None, split_samples=False, figsize=(30,10), palette="Set2",  plot_style="ggplot", xlim=None, ylim=None, alpha=0.3, pointSize=20, scatter=True, kde=True, model=False, gmm_levels=50):
+    def plot_position(self, ref_id, pos=None, split_samples=False, figsize=(30,10), palette="Set2",  plot_style="ggplot", xlim=(None,None), ylim=(None,None), alpha=0.3, pointSize=20, scatter=True, kde=True, model=False, gmm_levels=50):
         """
         Plot the dwell time and median intensity at the given position as a scatter plot.
         ref_id: Valid reference id name in the database
@@ -584,65 +586,62 @@ class SampCompDB (object):
         # Check that position is valid
         if not isinstance(pos, int):
             raise NanocomporeError("pos must be a single position")
-        if pos not in ref_data:
-            raise NanocomporeError("No data available for the selected position")
+        if pos > len(ref_data):
+            raise NanocomporeError("Position out of range")
+        # if not ref_data[pos]['data']["intensity"] or not ref_data[pos]['data']["dwell"]:
+        #     raise NanocomporeError("No data found for selected position")
 
         # Extract data from database if position in db
         ref_kmer = ref_data[pos]['ref_kmer']
         data = ref_data[pos]['data']
 
-        # Disretize palette
-        if split_samples:
-            colors = sns.mpl_palette(palette, self._n_samples)
-        else:
-            colors = sns.mpl_palette(palette, 2)
+        # Sample colors in palette
+        col_gen = self.__color_generator (palette=palette, n=self._n_samples if split_samples else 2)
 
         # Collect and transform data in dict
         plot_data_dict = OrderedDict ()
-        i = 0
-        for cond_label, cond_data in data.items():
+        for cond_lab, cond_dict in ref_data[pos]["data"].items():
             if split_samples:
-                for rep_lab, rep_data in cond_data.items():
-                    plot_data_dict["{}_{}".format(cond_label, rep_lab)] = {
-                        "intensity":scale(rep_data["intensity"]),
-                        "dwell":scale(np.log10(rep_data["dwell"])),
-                        "color":colors[i]}
-                    i+=1
+                for samp_lab, sample_val in cond_dict.items():
+                    plot_data_dict["{}_{}".format(cond_lab, samp_lab)] = {
+                        "intensity":scale(sample_val["intensity"]),
+                        "dwell":scale(np.log10(sample_val["dwell"])),
+                        "color":next(col_gen)}
             else:
                 intensity_list = []
                 dwell_list = []
-                for rep_lab, rep_data in cond_data.items():
-                    intensity_list.append(rep_data["intensity"])
-                    dwell_list.append(rep_data["dwell"])
-                plot_data_dict[cond_label] = {
+                for samp_lab, sample_val in cond_dict.items():
+                    intensity_list.append(sample_val["intensity"])
+                    dwell_list.append(sample_val["dwell"])
+                plot_data_dict[cond_lab] = {
                     "intensity":scale(np.concatenate(intensity_list)),
                     "dwell":scale(np.log10(np.concatenate(dwell_list))),
-                    "color":colors[i]}
-                i+=1
+                    "color":next(col_gen)}
 
-        if model:
-            model = self[ref_id][pos]['txComp']['GMM_model'][4]
-            if isinstance(model, GaussianMixture):
-                condition_labels = tuple(data.keys())
-                global_intensity = scale(np.concatenate(([v['intensity'] for v in data[condition_labels[0]].values()]+[v['intensity'] for v in data[condition_labels[1]].values()]), axis=None))
-                global_dwell = scale(np.log10(np.concatenate(([v['dwell'] for v in data[condition_labels[0]].values()]+[v['dwell'] for v in data[condition_labels[1]].values()]), axis=None)))
-                x = np.linspace(min(global_intensity), max(global_intensity), num=1000)
-                y = np.linspace(min(global_dwell), max(global_dwell), num=1000)
-                X, Y = np.meshgrid(x, y)
-                XX = np.array([X.ravel(), Y.ravel()]).T
-                Z = -model.score_samples(XX)
-                Z = Z.reshape(X.shape)
-            else:
-                model = None
+        # Add GMM model if required and available
+        if model and 'txComp' in ref_data[pos] and 'GMM_model' in ref_data[pos]['txComp'] and isinstance(model, GaussianMixture):
+            model = ref_data[pos]['txComp']['GMM_model'][4]
+            condition_labels = tuple(data.keys())
+            global_intensity = scale(np.concatenate(([v['intensity'] for v in data[condition_labels[0]].values()]+[v['intensity'] for v in data[condition_labels[1]].values()]), axis=None))
+            global_dwell = scale(np.log10(np.concatenate(([v['dwell'] for v in data[condition_labels[0]].values()]+[v['dwell'] for v in data[condition_labels[1]].values()]), axis=None)))
+            x = np.linspace(min(global_intensity), max(global_intensity), num=1000)
+            y = np.linspace(min(global_dwell), max(global_dwell), num=1000)
+            X, Y = np.meshgrid(x, y)
+            XX = np.array([X.ravel(), Y.ravel()]).T
+            Z = -model.score_samples(XX)
+            Z = Z.reshape(X.shape)
+        else:
+            model = None
+
+        # plot collected data
         with pl.style.context(plot_style):
-            # Plot dwell and median
             fig, ax = pl.subplots(figsize=figsize)
 
             for label, d in plot_data_dict.items():
                 if kde:
                     _ = sns.kdeplot(
-                        d["intensity"],
-                        d["dwell"],
+                        data=d["intensity"],
+                        data2=d["dwell"],
                         cmap=sns.light_palette(d["color"], as_cmap=True),
                         ax=ax,
                         clip=((min(d["intensity"]), max(d["intensity"])), (min(d["dwell"]),max(d["dwell"]))))
@@ -656,34 +655,14 @@ class SampCompDB (object):
                         s=pointSize)
             if model:
                 _ = ax.contour(X, Y, Z, levels=gmm_levels, alpha=alpha, colors="black")
+
             # Adjust display
             _ = ax.set_title ("%s\n%s (%s)"%(ref_id,pos, ref_kmer))
             _ = ax.set_ylabel ("log10 (Dwell Time)")
             _ = ax.set_xlabel ("Median Intensity")
-            if xlim:
-                _ = ax.set_xlim(xlim)
-            if ylim:
-                _ = ax.set_ylim(ylim)
+            _ = ax.set_xlim(xlim)
+            _ = ax.set_ylim(ylim)
             _ = ax.legend()
             pl.tight_layout()
 
             return (fig, ax)
-
-    @staticmethod
-    def __multipletests_filter_nan(pvalues, method="fdr_bh"):
-        """
-        Performs p-value correction for multiple hypothesis testing
-        using the method specified. The pvalues list can contain
-        np.nan values, which are ignored during p-value correction.
-
-        test: input=[0.1, 0.01, np.nan, 0.01, 0.5, 0.4, 0.01, 0.001, np.nan, np.nan, 0.01, np.nan]
-        out: array([0.13333333, 0.016     ,        nan, 0.016     , 0.5       ,
-        0.45714286, 0.016     , 0.008     ,        nan,        nan,
-        0.016     ,        nan])
-        """
-        pvalues_no_nan = [p for p in pvalues if not np.isnan(p)]
-        corrected_p_values = multipletests(pvalues_no_nan, method=method)[1]
-        for i, p in enumerate(pvalues):
-            if np.isnan(p):
-                corrected_p_values=np.insert(corrected_p_values, i, np.nan, axis=0)
-        return(corrected_p_values)
