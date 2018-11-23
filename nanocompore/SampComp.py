@@ -206,9 +206,9 @@ class SampComp (object):
                 logger.debug("Worker thread processing new item from in_q: {}".format(ref_id))
 
                 # Create an empty dict for all positions first
-                ref_pos_dict = self.__make_ref_pos_dict (ref_id)
+                ref_pos_list = self.__make_ref_pos_list (ref_id)
 
-                for cond_lab, sample_dict in ref_dict["data"].items():
+                for cond_lab, sample_dict in ref_dict.items():
                     for sample_lab, read_list in sample_dict.items():
                         fp = fp_dict[cond_lab][sample_lab]
 
@@ -239,35 +239,33 @@ class SampComp (object):
                                 # Fill in the missing positions
                                 if prev_pos and pos-prev_pos > 1:
                                     for missing_pos in range(prev_pos+1, pos):
-                                        ref_pos_dict[missing_pos]["data"][cond_lab][sample_lab]["events_stats"]["missing"] += 1
+                                        ref_pos_list[missing_pos]["data"][cond_lab][sample_lab]["events_stats"]["missing"] += 1
 
                                 # And then fill dict with the current pos values
-                                ref_pos_dict[pos]["data"][cond_lab][sample_lab]["intensity"].append(kmer["median"])
-                                ref_pos_dict[pos]["data"][cond_lab][sample_lab]["dwell"].append(kmer["n_signals"])
-                                ref_pos_dict[pos]["data"][cond_lab][sample_lab]["coverage"] += 1
+                                ref_pos_list[pos]["data"][cond_lab][sample_lab]["intensity"].append(kmer["median"])
+                                ref_pos_list[pos]["data"][cond_lab][sample_lab]["dwell"].append(kmer["n_signals"])
+                                ref_pos_list[pos]["data"][cond_lab][sample_lab]["coverage"] += 1
 
                                 # Also fill in with normalised position event stats
                                 n_valid = (kmer["n_events"]-(kmer["NNNNN_events"]+kmer["mismatching_events"])) / kmer["n_events"]
                                 n_NNNNN = kmer["NNNNN_events"] / kmer["n_events"]
                                 n_mismatching = kmer["mismatching_events"] / kmer["n_events"]
-                                ref_pos_dict[pos]["data"][cond_lab][sample_lab]["events_stats"]["valid"] += n_valid
-                                ref_pos_dict[pos]["data"][cond_lab][sample_lab]["events_stats"]["NNNNN"] += n_NNNNN
-                                ref_pos_dict[pos]["data"][cond_lab][sample_lab]["events_stats"]["mismatching"] += n_mismatching
-
+                                ref_pos_list[pos]["data"][cond_lab][sample_lab]["events_stats"]["valid"] += n_valid
+                                ref_pos_list[pos]["data"][cond_lab][sample_lab]["events_stats"]["NNNNN"] += n_NNNNN
+                                ref_pos_list[pos]["data"][cond_lab][sample_lab]["events_stats"]["mismatching"] += n_mismatching
                                 prev_pos = pos
 
                 if self.__comparison_methods:
-                    ref_pos_dict=txCompare(
-                        data=ref_pos_dict,
+                    ref_pos_list = txCompare(
+                        ref_pos_list=ref_pos_list,
                         methods=self.__comparison_methods,
                         sequence_context=self.__sequence_context,
-                        min_coverage=self.__min_coverage,
-                        logger=logger,
-                        ref=ref_id)
+                        min_coverage= self.__min_coverage,
+                        logger=logger)
 
                 # Add the current read details to queue
                 logger.debug("Adding %s to out_q"%(ref_id))
-                out_q.put ((ref_id, ref_pos_dict))
+                out_q.put ((ref_id, ref_pos_list))
 
         finally:
             # Add a poison pill in queue
@@ -286,7 +284,7 @@ class SampComp (object):
                     for ref_id, ref_pos_dict in iter (out_q.get, None):
                         logger.debug("Writer thread writing %s"%ref_id)
                         # Write results in a shelve db
-                        db [ref_id] = ref_pos_dict
+                        db [ref_id] = ref_pos_list
                         pbar.update ()
                 pbar.close()
 
@@ -312,15 +310,14 @@ class SampComp (object):
             for fp in sample_dict.values():
                 fp.close()
 
-    def __make_ref_pos_dict (self, ref_id):
-
-        ref_pos_dict = OrderedDict()
+    def __make_ref_pos_list (self, ref_id):
+        ref_pos_list = []
         with Fasta (self.__fasta_fn) as fasta:
             ref_fasta = fasta [ref_id]
             ref_len = len(ref_fasta)
-            ref_seq = str(ref_fasta)+"#####" # Add padding for last kmers
+            ref_seq = str(ref_fasta)
 
-            for pos in range(ref_len):
+            for pos in range(ref_len-4):
                 pos_dict = OrderedDict()
                 pos_dict["ref_kmer"] = ref_seq[pos:pos+5]
                 pos_dict["data"] = OrderedDict()
@@ -332,5 +329,5 @@ class SampComp (object):
                             "dwell":[],
                             "coverage":0,
                             "events_stats":{"missing":0,"valid":0,"NNNNN":0,"mismatching":0}}
-                ref_pos_dict[pos] = pos_dict
-        return ref_pos_dict
+                ref_pos_list.append(pos_dict)
+        return ref_pos_list
