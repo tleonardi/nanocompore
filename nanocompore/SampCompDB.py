@@ -463,7 +463,7 @@ class SampCompDB (object):
             pl.tight_layout()
             return (fig, (ax1, ax2))
 
-    def plot_coverage (self, ref_id, start=None, end=None, scale=False, figsize=(30,5), palette="Set2", plot_style="ggplot"):
+    def plot_coverage (self, ref_id, start=None, end=None, scale=False, split_samples=False, figsize=(30,5), palette="Set2", plot_style="ggplot"):
         """
         ref_id: Valid reference id name in the database
         start: Start coordinate. Default=0
@@ -479,8 +479,8 @@ class SampCompDB (object):
         start, end = self.__get_positions (ref_id, start, end)
 
         # Parse data from database
-        l=[]
-        for pos in np.arange (start, end+1):
+        l = []
+        for pos in np.arange (start, end):
             for cond_lab, cond_dict in ref_data[pos]['data'].items():
                 for sample_lab, sample_val in cond_dict.items():
                     l.append ((pos, "{}_{}".format(cond_lab, sample_lab), sample_val["coverage"]))
@@ -493,23 +493,16 @@ class SampCompDB (object):
         # Define plotting style
         with pl.style.context (plot_style):
             fig, ax = pl.subplots (figsize=figsize)
-            _ = sns.lineplot (
-                x="pos",
-                y="cov",
-                hue="sample",
-                data=df,
-                ax=ax,
-                palette=palette,
-                drawstyle="steps")
+            _ = sns.lineplot ( x="pos", y="cov", hue="sample", data=df, ax=ax, palette=palette, drawstyle="steps")
             if not scale:
                 _ = ax.axhline  (y=self._min_coverage, linestyle=":", color="grey", label="minimal coverage")
+
             _ = ax.set_ylim (0, None)
-            _ = ax.set_xlim (start, end)
-            _ = ax.set_title ("Reference:{}  Start:{}  End:{}".format(ref_id, start, end))
+            _ = ax.set_xlim (start, end-1)
+            _ = ax.set_title ("Reference:{}  Start:{}  End:{}".format(ref_id, start, end), fontsize=18)
             _ = ax.set_ylabel ("Coverage")
             _ = ax.set_xlabel ("Reference position")
-            _ = ax.legend(bbox_to_anchor=(1, 1), loc=2)
-            _ = ax.legend()
+            _ = ax.legend(bbox_to_anchor=(1, 1), loc=2, facecolor="white", frameon=False)
 
             pl.tight_layout()
             return (fig, ax)
