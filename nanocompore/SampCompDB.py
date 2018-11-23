@@ -178,105 +178,127 @@ class SampCompDB (object):
             raise NanocomporeError ("End coordinate has to be higher or equal to start")
         return (start, end)
 
+    @staticmethod
+    def __multipletests_filter_nan(pvalues, method="fdr_bh"):
+        """
+        Performs p-value correction for multiple hypothesis testing
+        using the method specified. The pvalues list can contain
+        np.nan values, which are ignored during p-value correction.
+
+        test: input=[0.1, 0.01, np.nan, 0.01, 0.5, 0.4, 0.01, 0.001, np.nan, np.nan, 0.01, np.nan]
+        out: array([0.13333333, 0.016     ,        nan, 0.016     , 0.5       ,
+        0.45714286, 0.016     , 0.008     ,        nan,        nan,
+        0.016     ,        nan])
+        """
+        pvalues_no_nan = [p for p in pvalues if not np.isnan(p)]
+        corrected_p_values = multipletests(pvalues_no_nan, method=method)[1]
+        for i, p in enumerate(pvalues):
+            if np.isnan(p):
+                corrected_p_values=np.insert(corrected_p_values, i, np.nan, axis=0)
+        return(corrected_p_values)
+
+    @staticmethod
+    def __color_generator (palette, n):
+        pal = sns.mpl_palette(palette, n)
+        for i in range(n):
+            yield (pal[i])
 
     #~~~~~~~~~~~~~~PUBLIC METHODS~~~~~~~~~~~~~~#
 
-    def save_to_bed (self, output_fn, bedgraph=False, pvalue_field=None, pvalue_thr=0.01, span=5, convert=None, assembly=None, title=None):
-        """Saves the results object to BED6 format.
-            bedgraph: save file in bedgraph format instead of bed
-            pvalue_field: specifies what column to use as BED score (field 5, as -log10)
-            pvalue_thr: only report positions with pvalue<=thr
-            span: The size of each BED feature.
-                  If size=5 (default) features correspond to kmers. If size=1 features correspond to the first base of each kmer.
-            convert: one of 'ensembl_to_ucsc' or 'ucsc_to_ensembl". Convert chromosome named between Ensembl and Ucsc conventions
-            assembly: required if convert is used. One of "hg38" or "mm10"
-        """
-        if self.bed_fn is None:
-            raise NanocomporeError("In order to generate a BED file SampCompDB needs to be initialised with a transcriptome BED")
-        if span < 1:
-            raise NanocomporeError("span has to be >=1")
-        if span != 5 and bedgraph:
-            raise NanocomporeError("Span is ignored when generating bedGraph files")
-        if pvalue_field not in self.results:
-            raise NanocomporeError(("The field '%s' is not in the results" % pvalue_field))
-        if "results" not in self.__dict__:
-            raise NanocomporeError("It looks like there's not results slot in SampCompDB")
-        if convert not in [None, "ensembl_to_ucsc", "ucsc_to_ensembl"]:
-            raise NanocomporeError("Convert value not valid")
-        if convert is not None and assembly is None:
-            raise NanocomporeError("The assembly argument is required in order to do the conversion. Choose one of 'hg38' or 'mm10' ")
-
-        with open(output_fn, "w") as bed_file:
-            if title is not None:
-                if not bedgraph:
-                    bed_file.write('track type=bed name="%s" description="%s"\n'%(title,pvalue_field))
-                else:
-                    bed_file.write('track type=bedGraph name="%s" description="%s"\n'%(title,pvalue_field))
-
-            Record = namedtuple('Record', ['chr', 'genomicPos', 'ref','strand', 'ref_kmer', pvalue_field ])
-            for record in self.results[ list(Record._fields) ].itertuples(index=False, name="Record"):
-                pvalue = getattr(record, pvalue_field)
-                if np.isnan(pvalue):
-                    pvalue=0
-                else:
-                    pvalue=-log(pvalue, 10)
-                if not bedgraph and pvalue >= -log(pvalue_thr, 10):
-                    line=bedline([record.chr, record.genomicPos, record.genomicPos+span, f"{record.ref}_{record.ref_kmer}", pvalue, record.strand])
-                    if convert is "ensembl_to_ucsc":
-                        line=line.translateChr(assembly=assembly, target="ucsc", patches=True)
-                    elif convert is "ucsc_to_ensembl":
-                        line=line.translateChr(assembly=assembly, target="ens", patches=True)
-                    bed_file.write("%s\t%s\t%s\t%s\t%s\t%s\n" % (line.chr, line.start, line.end, line.name, line.score, line.strand))
-                elif bedgraph:
-                    line=bedline([record.chr, record.genomicPos+2, record.genomicPos+3, f"{record.ref}_{record.ref_kmer}", pvalue, record.strand])
-                    if convert is "ensembl_to_ucsc":
-                        line=line.translateChr(assembly=assembly, target="ucsc", patches=True)
-                    elif convert is "ucsc_to_ensembl":
-                        line=line.translateChr(assembly=assembly, target="ens", patches=True)
-                    bed_file.write("%s\t%s\t%s\t%s\n" % (line.chr, line.start, line.end, line.score))
-
-    def save_report(self, output_fn=None):
-        """Saves an extended tabular report
-        """
-        if output_fn is None:
-            fp = sys.stdout
-        elif isinstance(output_fn, str):
-            try:
-                fp = open(output_fn, "w")
-            except:
-                raise NanocomporeError("Error opening output file %s"%output_fn)
-        else:
-            raise NanocomporeError("output_fn needs to be a string or None")
-        r = re.compile("adjusted_*")
-        methods = list(filter(r.match, list(self.results)))
-
-        headers = ['chr', 'pos', 'ref','strand', 'ref_kmer', 'lowCov']+methods
-        # Read extra GMM info from the shelve
-        if "GMM" in self._comparison_method:
-            headers += ['LOR', 'clusters']
-            gmm_info=OrderedDict()
-            for tx, refpos in self:
-                gmm_info[tx] = {k:{'lor': v['txComp']['GMM_model'][1], 'clusters':v['txComp']['GMM_model'][3]} for k,v in refpos.items() if "GMM_model" in v['txComp']}
-        fp.write('\t'.join([ str(i) for i in headers ])+'\n')
-        for record in self.results[['chr', 'pos', 'ref','strand', 'ref_kmer', 'lowCov']+methods].values.tolist():
-            if "GMM" in self._comparison_method:
-                try:
-                    lor = gmm_info[record[2]][record[1]]['lor']
-                    clusters = gmm_info[record[2]][record[1]]['clusters']
-                    clusters = '#'.join([ ','.join([str(x) for x in i]) for i in clusters])
-                    record += [lor, clusters]
-                except KeyError:
-                    record += ["nan", "nan"]
-            fp.write('\t'.join([ str(i) for i in record ])+'\n')
-        fp.close()
-
-
-
-    def list_most_significant_positions (self, n=10):
-        pass
-
-    def list_most_significant_references (self, n=10):
-        pass
+    # def save_to_bed (self, output_fn, bedgraph=False, pvalue_field=None, pvalue_thr=0.01, span=5, convert=None, assembly=None, title=None):
+    #     """Saves the results object to BED6 format.
+    #         bedgraph: save file in bedgraph format instead of bed
+    #         pvalue_field: specifies what column to use as BED score (field 5, as -log10)
+    #         pvalue_thr: only report positions with pvalue<=thr
+    #         span: The size of each BED feature.
+    #               If size=5 (default) features correspond to kmers. If size=1 features correspond to the first base of each kmer.
+    #         convert: one of 'ensembl_to_ucsc' or 'ucsc_to_ensembl". Convert chromosome named between Ensembl and Ucsc conventions
+    #         assembly: required if convert is used. One of "hg38" or "mm10"
+    #     """
+    #     if self.bed_fn is None:
+    #         raise NanocomporeError("In order to generate a BED file SampCompDB needs to be initialised with a transcriptome BED")
+    #     if span < 1:
+    #         raise NanocomporeError("span has to be >=1")
+    #     if span != 5 and bedgraph:
+    #         raise NanocomporeError("Span is ignored when generating bedGraph files")
+    #     if pvalue_field not in self.results:
+    #         raise NanocomporeError(("The field '%s' is not in the results" % pvalue_field))
+    #     if "results" not in self.__dict__:
+    #         raise NanocomporeError("It looks like there's not results slot in SampCompDB")
+    #     if convert not in [None, "ensembl_to_ucsc", "ucsc_to_ensembl"]:
+    #         raise NanocomporeError("Convert value not valid")
+    #     if convert is not None and assembly is None:
+    #         raise NanocomporeError("The assembly argument is required in order to do the conversion. Choose one of 'hg38' or 'mm10' ")
+    #
+    #     with open(output_fn, "w") as bed_file:
+    #         if title is not None:
+    #             if not bedgraph:
+    #                 bed_file.write('track type=bed name="%s" description="%s"\n'%(title,pvalue_field))
+    #             else:
+    #                 bed_file.write('track type=bedGraph name="%s" description="%s"\n'%(title,pvalue_field))
+    #
+    #         Record = namedtuple('Record', ['chr', 'genomicPos', 'ref','strand', 'ref_kmer', pvalue_field ])
+    #         for record in self.results[ list(Record._fields) ].itertuples(index=False, name="Record"):
+    #             pvalue = getattr(record, pvalue_field)
+    #             if np.isnan(pvalue):
+    #                 pvalue=0
+    #             else:
+    #                 pvalue=-log(pvalue, 10)
+    #             if not bedgraph and pvalue >= -log(pvalue_thr, 10):
+    #                 line=bedline([record.chr, record.genomicPos, record.genomicPos+span, f"{record.ref}_{record.ref_kmer}", pvalue, record.strand])
+    #                 if convert is "ensembl_to_ucsc":
+    #                     line=line.translateChr(assembly=assembly, target="ucsc", patches=True)
+    #                 elif convert is "ucsc_to_ensembl":
+    #                     line=line.translateChr(assembly=assembly, target="ens", patches=True)
+    #                 bed_file.write("%s\t%s\t%s\t%s\t%s\t%s\n" % (line.chr, line.start, line.end, line.name, line.score, line.strand))
+    #             elif bedgraph:
+    #                 line=bedline([record.chr, record.genomicPos+2, record.genomicPos+3, f"{record.ref}_{record.ref_kmer}", pvalue, record.strand])
+    #                 if convert is "ensembl_to_ucsc":
+    #                     line=line.translateChr(assembly=assembly, target="ucsc", patches=True)
+    #                 elif convert is "ucsc_to_ensembl":
+    #                     line=line.translateChr(assembly=assembly, target="ens", patches=True)
+    #                 bed_file.write("%s\t%s\t%s\t%s\n" % (line.chr, line.start, line.end, line.score))
+    #
+    # def save_report(self, output_fn=None):
+    #     """Saves an extended tabular report
+    #     """
+    #     if output_fn is None:
+    #         fp = sys.stdout
+    #     elif isinstance(output_fn, str):
+    #         try:
+    #             fp = open(output_fn, "w")
+    #         except:
+    #             raise NanocomporeError("Error opening output file %s"%output_fn)
+    #     else:
+    #         raise NanocomporeError("output_fn needs to be a string or None")
+    #     r = re.compile("adjusted_*")
+    #     methods = list(filter(r.match, list(self.results)))
+    #
+    #     headers = ['chr', 'pos', 'ref','strand', 'ref_kmer', 'lowCov']+methods
+    #     # Read extra GMM info from the shelve
+    #     if "GMM" in self._comparison_method:
+    #         headers += ['LOR', 'clusters']
+    #         gmm_info=OrderedDict()
+    #         for tx, refpos in self:
+    #             gmm_info[tx] = {k:{'lor': v['txComp']['GMM_model'][1], 'clusters':v['txComp']['GMM_model'][3]} for k,v in refpos.items() if "GMM_model" in v['txComp']}
+    #     fp.write('\t'.join([ str(i) for i in headers ])+'\n')
+    #     for record in self.results[['chr', 'pos', 'ref','strand', 'ref_kmer', 'lowCov']+methods].values.tolist():
+    #         if "GMM" in self._comparison_method:
+    #             try:
+    #                 lor = gmm_info[record[2]][record[1]]['lor']
+    #                 clusters = gmm_info[record[2]][record[1]]['clusters']
+    #                 clusters = '#'.join([ ','.join([str(x) for x in i]) for i in clusters])
+    #                 record += [lor, clusters]
+    #             except KeyError:
+    #                 record += ["nan", "nan"]
+    #         fp.write('\t'.join([ str(i) for i in record ])+'\n')
+    #     fp.close()
+    #
+    # def list_most_significant_positions (self, n=10):
+    #     pass
+    #
+    # def list_most_significant_references (self, n=10):
+    #     pass
 
     #~~~~~~~~~~~~~~PLOTTING METHODS~~~~~~~~~~~~~~#
     def plot_pvalue(self, ref_id, start=None, end=None, threshold=0.01, figsize=(30,10), palette="Set2", plot_style="ggplot", method=None, barplot=False):
