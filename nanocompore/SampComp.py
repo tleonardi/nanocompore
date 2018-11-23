@@ -276,13 +276,20 @@ class SampComp (object):
 
     def __write_output (self, out_q):
         # Get results out of the out queue and write in shelve
+        pvalue_tests = set()
         try:
             with shelve.open (self.__output_db_fn, flag='n') as db:
                 # Iterate over the counter queue and process items until all poison pills are found
                 pbar = tqdm (total = len(self.__whitelist), unit=" Processed References", disable=self.__logLevel in ("warning", "debug"))
                 for _ in range (self.__nthreads):
-                    for ref_id, ref_pos_dict in iter (out_q.get, None):
+                    for ref_id, ref_pos_list in iter (out_q.get, None):
                         logger.debug("Writer thread writing %s"%ref_id)
+                        # Get pvalue fields available in analysed data before
+                        for pos_dict in ref_pos_list:
+                            if 'txComp' in pos_dict:
+                                for res in pos_dict['txComp'].keys():
+                                    if "pvalue" in res:
+                                        pvalue_tests.add(res)
                         # Write results in a shelve db
                         db [ref_id] = ref_pos_list
                         pbar.update ()
@@ -292,7 +299,8 @@ class SampComp (object):
                     "comparison_method": self.__comparison_methods,
                     "sequence_context": self.__sequence_context,
                     "min_coverage": self.__min_coverage,
-                    "n_samples": self.__n_samples}
+                    "n_samples": self.__n_samples,
+                    "pvalue_tests": sorted(list(pvalue_tests))}
         except IOError:
             raise NanocomporeError("Error writing to output db")
 
