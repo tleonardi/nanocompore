@@ -379,13 +379,14 @@ class SampCompDB (object):
             return(fig, ax)
 
 
-    def plot_signal (self, ref_id, start=None, end=None, split_samples=False, feature="intensity", figsize=(30,10), palette="Set2", plot_style="ggplot", bw=0.25):
+    def plot_signal (self, ref_id, start=None, end=None, kind="violinplot", split_samples=False, figsize=(30,10), palette="Set2", plot_style="ggplot"):
         """
         Plot the dwell time and median intensity distribution position per positon in a split violin plot representation.
         It is pointless to plot more than 50 positions at once as it becomes hard to distiguish
         ref_id: Valid reference id name in the database
         start: Start coordinate (Must be higher or equal to 0)
         end: End coordinate (included) (must be lower or equal to the reference length)
+        kind: Kind of plot. Can be violinplot, boxenplot or swarmplot
         split_samples: If samples for a same condition are represented separatly. If false they are merged per condition
         figsize: length and heigh of the output plot. Default=(30,10)
         palette: Colormap. Default="Set2"
@@ -402,59 +403,61 @@ class SampCompDB (object):
         # Parse line position per position
         l_intensity = []
         l_dwell = []
-        valid=0
         x_ticks_list = []
         model_means_list = []
 
         # Extract data from database if position in db
-        for pos in np.arange (start, end+1):
-            if pos in ref_data:
-                valid+=1
-                ref_kmer=ref_data[pos]['ref_kmer']
-                x_ticks_list.append("{}\n{}".format(pos, ref_kmer))
+        for pos in np.arange (start, end):
+            ref_kmer=ref_data[pos]['ref_kmer']
+            x_ticks_list.append("{}\n{}".format(pos, ref_kmer))
+
+            if ref_kmer in self._model_dict:
                 model_means_list.append(self._model_dict[ref_kmer][0])
-
-                for k1, v1 in ref_data[pos]['data'].items():
-                    # Collect dwell or median data
-                    for k2, v2 in v1.items():
-                        lab = "{}_{}".format(k1, k2) if split_samples else k1
-
-                        for value in v2["intensity"]:
-                            l_intensity.append ((pos, lab, value))
-                        for value in v2["dwell"]:
-                            l_dwell.append ((pos, lab, np.log10(value)))
-
             else:
-                l_intensity.append ((pos, None, None))
-                l_dwell.append ((pos, None, None))
-                x_ticks_list.append(str(pos))
                 model_means_list.append(None)
 
-        # Check that we found valid position and cast collected results to dataframe
-        if not valid:
-            raise NanocomporeError ("No data available for selected coordinates")
-        df_intensity = pd.DataFrame (l_intensity, columns=["pos", "lab", "value"])
-        df_dwell = pd.DataFrame (l_dwell, columns=["pos", "lab", "value"])
+            for cond_lab, cond_dict in ref_data[pos]['data'].items():
+                for sample_lab, sample_val in cond_dict.items():
+                    lab = "{}_{}".format(cond_lab, sample_lab) if split_samples else cond_lab
+
+                    # Add intensity and dwell values to list for curent pos / lab
+                    if not sample_val["intensity"]:
+                        l_intensity.append ((pos, lab, None))
+                    for value in sample_val["intensity"]:
+                        l_intensity.append ((pos, lab, value))
+                    if not sample_val["dwell"]:
+                        l_dwell.append ((pos, lab, None))
+                    for value in sample_val["dwell"]:
+                        l_dwell.append ((pos, lab, np.log10(value)))
 
         # Define ploting style
         with pl.style.context (plot_style):
             fig, (ax1, ax2) = pl.subplots(2,1, figsize=figsize, sharex=True)
 
-            # Plot median intensity violin + model mean
-            _ = sns.violinplot (x="pos", y="value", hue="lab", data=df_intensity, ax=ax1, split=not split_samples, inner="quartile", bw=bw, linewidth=1, scale="area", palette=palette)
-            _ = ax1.plot (model_means_list, color="black", marker="x", label="Model Mean", linestyle="")
-            _ = ax1.set_ylabel ("Mean Intensity")
-            _ = ax1.set_xlabel ("")
-            _ = ax1.legend ()
+            for ax, l in ((ax1,l_intensity), (ax2,l_dwell)):
+                df = pd.DataFrame (l, columns=["pos", "lab", "value"])
+                if kind == "violinplot":
+                    _ = sns.violinplot (x="pos", y="value", hue="lab", data=df, ax=ax, split=not split_samples, inner="quartile",
+                                        bw=0.25, linewidth=1, scale="area", palette=palette, zorder=0)
+                elif kind == "boxenplot":
+                    _ = sns.boxenplot (x="pos", y="value", hue="lab", data=df, ax=ax, scale="area", palette=palette, zorder=0)
+                elif kind == "swarmplot":
+                    _ = sns.swarmplot (x="pos", y="value", hue="lab", data=df, ax=ax, dodge=True, palette=palette, zorder=0)
+                else:
+                    raise NanocomporeError("Not a valid plot kind {}".format(kind))
 
-            _ = sns.violinplot ( x="pos", y="value", hue="lab", data=df_dwell, ax=ax2, split=not split_samples, inner="quartile", bw=bw, linewidth=1, scale="area", palette=palette)
-            _ = ax2.set_ylabel ("log10 (Dwell Time)")
-            _ = ax2.set_xlabel ("Reference position")
-            _ = ax2.set_xlim (-1, end-start+1)
-            _ = ax2.set_xticklabels (x_ticks_list)
-            _ = ax2.legend ()
+            # Add model intensity
+            _ = ax1.plot (model_means_list, color="black", marker="x", label="Model Mean", linestyle="", zorder=1)
 
             # Adjust display
+            _ = ax1.set_xlabel ("")
+            _ = ax2.set_xlabel ("Reference position")
+            _ = ax1.set_ylabel ("Mean Intensity")
+            _ = ax2.set_ylabel ("log10 (Dwell Time)")
+            _ = ax1.legend(bbox_to_anchor=(1, 1), loc=2, facecolor="white", frameon=False)
+            _ = ax2.legend("")
+            _ = ax2.set_xlim (-1, end-start)
+            _ = ax2.set_xticklabels (x_ticks_list)
             _ = fig.suptitle("Reference:{}  Start:{}  End:{}".format(ref_id, start, end), y=1.01, fontsize=18)
 
             pl.tight_layout()
