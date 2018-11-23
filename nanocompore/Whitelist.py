@@ -91,53 +91,48 @@ class Whitelist (object):
             select_ref_id = select_ref_id,
             exclude_ref_id = exclude_ref_id)
 
-        # First filtering pass at transcript level
+        # Filtering at transcript level
         logger.info ("Filter out references with low coverage")
-        ref_reads = self.__select_ref (
+        self.ref_reads = self.__select_ref (
             ref_reads = ref_reads,
-            min_coverage=min_coverage)
-
-        # Second filtering pass at base level
-        logger.info ("Compute coverage per reference and select intervals with high enough coverage")
-        self.ref_interval_reads = self.__select_intervals (
-            ref_reads = ref_reads,
-            min_coverage = min_coverage,
+            min_coverage=min_coverage,
             downsample_high_coverage=downsample_high_coverage)
 
-        #self.ref_reads = ref_reads
+        self.__min_coverage = min_coverage
+        self.__downsample_high_coverage = downsample_high_coverage
+        self.__max_invalid_kmers_freq = max_invalid_kmers_freq
 
     def __repr__ (self):
-        m = "Whitelist: Number of references: {}".format(len(self))
+        return "Whitelist: Number of references: {}".format(len(self))
+
+    def __str__ (self):
+        m = ""
+        for ref_id, ref_dict in self.ref_reads.items():
+            m += "{}\n".format(ref_id)
+            for cond_lab, cond_dict in ref_dict.items():
+                for sample_lab, read_list in cond_dict.items():
+                    m += "\t{} {}\n".format(cond_lab, sample_lab)
+                    for reads in read_list:
+                        m += "\t\t"
+                        for k,v in reads.items():
+                            m += "{}:{}  ".format(k,v)
+                        m += "\n"
         return m
 
     def __len__ (self):
-        return len(self.ref_interval_reads)
+        return len(self.ref_reads)
 
     def __iter__ (self):
-        for i, j in self.ref_interval_reads.items():
+        for i, j in self.ref_reads.items():
             yield (i,j)
 
     def __getitem__(self, items):
-        return self.ref_interval_reads.get(items, None)
+        return self.ref_reads.get(items, None)
 
     #~~~~~~~~~~~~~~PUBLIC METHODS AND PROPERTIES~~~~~~~~~~~~~~#
-    def to_bed (self, bed_fn):
-        with open (bed_fn, "w") as fp:
-            for ref_id, ref_dict in self.ref_interval_reads.items ():
-                for start, end in ref_dict["interval_list"]:
-                    fp.write ("{}\t{}\t{}\n".format (ref_id, start, end))
-
     @property
     def ref_id_list (self):
-        return list (self.ref_interval_reads.keys())
-
-    @property
-    def interval_dict (self):
-        d = defaultdict (list)
-        for ref_id, ref_dict in self.ref_interval_reads.items():
-            for interval in ref_dict["interval_list"]:
-                d[ref_id].append(interval)
-        return d
+        return list (self.ref_reads.keys())
 
     #~~~~~~~~~~~~~~PRIVATE METHODS~~~~~~~~~~~~~~#
     def __read_eventalign_index (self,
@@ -205,130 +200,43 @@ class Whitelist (object):
 
     def __select_ref (self,
         ref_reads,
-        min_coverage):
-        """Select ref_id with a minimal coverage in both sample"""
+        min_coverage,
+        downsample_high_coverage):
+        """Select ref_id with a minimal coverage in both sample + downsample if needed"""
 
         valid_ref_reads = OrderedDict ()
         c = Counter()
         with Fasta (self._fasta_fn) as fasta:
-            for ref_id, cond_dict in ref_reads.items():
-                n=0
-                for cond_lab, sample_dict in cond_dict.items():
-                    for sample_lab, read_list in sample_dict.items():
-                        if len(read_list) >= min_coverage:
-                            n+=1
 
-                # Add to valid ref_id
-                if n == self.__n_samples:
-                    valid_ref_reads [ref_id] = cond_dict
-                    # Update Counter dict if debug mode
+            for ref_id, ref_dict in ref_reads.items():
+                try:
+                    valid_dict = OrderedDict()
+                    for cond_lab, cond_dict in ref_dict.items():
+                        valid_dict[cond_lab] = OrderedDict()
+                        for sample_lab, read_list in cond_dict.items():
+                            # Filter out if coverage too low
+                            assert len(read_list) >= min_coverage
+                            # Downsample if coverage too high
+                            if downsample_high_coverage and len(read_list) > downsample_high_coverage:
+                                read_list = random.sample (read_list, downsample_high_coverage)
+                            valid_dict[cond_lab][sample_lab]=read_list
+
+
+                    # If all valid add to new dict
+                    valid_ref_reads [ref_id] = valid_dict
+
+                    # Save extra info for debug
                     if self.__logLevel == "debug":
                         c["valid_ref_id"] += 1
-                        c["positions"] += len(fasta[ref_id])
-                        for cond_lab, sample_dict in cond_dict.items():
-                            for sample_lab, read_list in sample_dict.items():
+                        for cond_lab, cond_dict in valid_dict.items():
+                            for sample_lab, read_list in cond_dict.items():
                                 lab = "{} {} Reads".format(cond_lab, sample_lab)
                                 c[lab] += len(read_list)
-                else:
-                    c["invalid_ref_id"] += 1
+
+                except AssertionError:
+                    if self.__logLevel == "debug":
+                        c["invalid_ref_id"] += 1
 
         logger.debug (counter_to_str(c))
         logger.info ("\tReferences remaining after reference coverage filtering: {}".format(len(valid_ref_reads)))
         return valid_ref_reads
-
-    def __select_intervals (self,
-         ref_reads,
-         min_coverage,
-         downsample_high_coverage):
-        """Iterate over all transcripts find valid coverage intervals and extract overlapping reads"""
-
-        c = Counter ()
-        pbar = tqdm (total=len(ref_reads), unit=" References", disable=self.__logLevel == "warning")
-
-        # Create a dict to associate each sample to an index in the coverage array
-        idx = OrderedDict()
-        n = 0
-        for cond_lab, sample_dict in self.__eventalign_fn_dict.items():
-            idx[cond_lab] = OrderedDict()
-            for sample_lab in sample_dict.keys():
-                idx[cond_lab][sample_lab] = n
-                n+=1
-
-        # Iterate over the dict cobtaining valid reads per conditions and samples
-        ref_interval_reads = OrderedDict ()
-        with Fasta (self._fasta_fn) as fasta:
-            for ref_id, cond_dict in ref_reads.items():
-                pbar.update()
-
-                # Compute reference coverage in a single numpy array
-                cov_array = np.zeros (shape=(len(fasta[ref_id]), self.__n_samples))
-                for cond_lab, sample_dict in cond_dict.items():
-                    for sample_lab, read_list in sample_dict.items():
-                        sample_idx = idx[cond_lab][sample_lab]
-                        for read in read_list:
-                            cov_array [read["ref_start"]:read["ref_end"]+1, sample_idx] += 1
-
-                # Reduce to min coverage per position
-                cov_array = cov_array.min (axis=1)
-
-                # Get coordinates of intervals with minimum coverage
-                valid_cov = False
-                valid_interval_list = []
-                for pos, cov in enumerate (cov_array):
-                    # If coverage insuficient
-                    if cov < min_coverage:
-                        if valid_cov:
-                            valid_interval_list.append ((ref_start, ref_end))
-                            if self.__logLevel == "debug":
-                                c["intervals"] += 1
-                                c["positions"] += abs (ref_start-ref_end)
-                        valid_cov = False
-                    # If the coverage is high enough for both samples
-                    else:
-                        if valid_cov:
-                            ref_end = pos
-                        else:
-                            ref_start = ref_end = pos
-                            valid_cov = True
-
-                # Last valid interval exception
-                if valid_cov:
-                    valid_interval_list.append ((ref_start, ref_end))
-                    if self.__logLevel == "debug":
-                        c["intervals"] += 1
-                        c["positions"] += abs (ref_start-ref_end)
-
-                # Intersect reads with valid coverage for all samples
-                if valid_interval_list:
-                    if self.__logLevel == "debug":
-                        c["ref_id"] += 1
-                    ref_interval_reads[ref_id] = OrderedDict ()
-                    ref_interval_reads[ref_id]["interval_list"] = valid_interval_list
-                    ref_interval_reads[ref_id]["data"] = OrderedDict ()
-
-                    # Select reads overlapping at least one valid interval
-                    for cond_lab, sample_dict in cond_dict.items():
-                        for sample_lab, read_list in sample_dict.items():
-                            valid_reads = []
-                            for read in read_list:
-                                for interval_start, interval_end in valid_interval_list:
-                                    if read["ref_end"] >= interval_start and read["ref_start"] <= interval_end:
-                                        valid_reads.append (read)
-                                        break
-                            # Downsample if coverage too high
-                            if downsample_high_coverage and len(valid_reads) > downsample_high_coverage:
-                                valid_reads = random.sample (valid_reads, downsample_high_coverage)
-
-                            if self.__logLevel == "debug":
-                                lab = "{} {} Reads".format(cond_lab, sample_lab)
-                                c[lab] += len(valid_reads)
-
-                            if not cond_lab in ref_interval_reads[ref_id]["data"]:
-                                ref_interval_reads[ref_id]["data"][cond_lab] = OrderedDict ()
-                            ref_interval_reads[ref_id]["data"][cond_lab][sample_lab] = valid_reads
-
-        pbar.close ()
-        logger.debug (counter_to_str(c))
-        logger.info ("\tReferences remaining after position coverage filtering: {}".format(len(ref_interval_reads)))
-
-        return ref_interval_reads
