@@ -50,6 +50,7 @@ class SampCompDB (object):
                     self._sequence_context = metadata['sequence_context']
                     self._min_coverage = metadata['min_coverage']
                     self._n_samples = metadata['n_samples']
+                    self._pvalue_tests = metadata['pvalue_tests']
                 except KeyError:
                     raise NanocomporeError("The result database does not contain metadata")
                 # Try to load read_ids
@@ -77,9 +78,9 @@ class SampCompDB (object):
 
         self.bed_fn = bed_fn
 
-        # Create results DF with adjusted p-values
-        if self._comparison_method :
-            self.__calculate_results()
+        #Create results df with adjusted p-values
+        if self._pvalue_tests :
+            self.results = self.__calculate_results (adjust=True)
 
     def __repr__ (self):
         """readable description of the object"""
@@ -102,88 +103,79 @@ class SampCompDB (object):
             else:
                 raise KeyError ("Item not found in the database")
 
-
     #~~~~~~~~~~~~~~PRIVATE  METHODS~~~~~~~~~~~~~~#
 
-    def __calculate_results(self, adjust=True, methods=None):
-        # Compose a lists with the name of the results
-        tests=[]
-        if methods is None:
-            methods = self._comparison_method
-        for m in methods:
-            if m in ["MW", "KS", "TT"]:
-                tests.append("{}_intensity_pvalue".format(m))
-                tests.append("{}_dwell_pvalue".format(m))
-                if self._sequence_context:
-                    tests.append("{}_intensity_pvalue_context_{}".format(m, self._sequence_context))
-                    tests.append("{}_dwell_pvalue_context_{}".format(m, self._sequence_context))
-            elif m == "GMM":
-                tests.append("GMM_pvalue")
-                if self._sequence_context:
-                    tests.append("GMM_pvalue_context_{}".format(self._sequence_context))
-        tests.append("lowCov")
-        # We open the DB rather that calling __getitem__ to avoid
-        # opening and closing the file for every transcript
-        with shelve.open(self._db_fn, flag = "r") as db:
-            df = pd.DataFrame([dict({x:y for a,b in v.items() if a == "txComp" for x,y in b.items()  if x in tests}, ref=ref_id, pos=k, ref_kmer=v['ref_kmer'])  for ref_id, rec in db.items() for k,v in rec.items() if ref_id!="__metadata" ])
+    def __calculate_results(self, adjust=True):
+        """"""
 
-        if self.bed_fn:
-            bed_annot={}
-            try:
-                with open(self.bed_fn) as tsvfile:
-                    for line in tsvfile:
-                        record_name=line.split('\t')[3]
-                        if( record_name in self.ref_id_list):
-                            bed_annot[record_name]=bedline(line.split('\t'))
-                if len(bed_annot) != len(self.ref_id_list):
-                    raise NanocomporeError("Some references are missing from the BED file provided")
-            except:
-                raise NanocomporeError("Can't open BED file")
+        # Collect all pvalue results in a dataframe
+        l = []
+        for ref_id, ref_pos_list in self:
+            for pos, pos_dict in enumerate(ref_pos_list):
+                if "txComp" in pos_dict:
+                    row_dict = OrderedDict()
+                    row_dict["ref_id"] = ref_id
+                    row_dict["pos"] = pos
+                    row_dict["ref_kmer"] = pos_dict["ref_kmer"]
+                    for test in self._pvalue_tests:
+                        if test in pos_dict["txComp"]:
+                            pval = pos_dict["txComp"][test]
+                            row_dict[test] = pval
+                    l.append(row_dict)
+        df = pd.DataFrame(l)
 
-            df['genomicPos'] = df.apply(lambda row: bed_annot[row['ref']].tx2genome(coord=row['pos']),axis=1)
-            # This is very inefficient. We should get chr and strand only once per transcript, ideally when writing the BED file
-            df['chr'] = df.apply(lambda row: bed_annot[row['ref']].chr,axis=1)
-            df['strand'] = df.apply(lambda row: bed_annot[row['ref']].strand,axis=1)
-            df=df[['ref', 'pos', 'chr', 'strand', 'genomicPos', 'ref_kmer']+tests]
-        else:
-            df=df[['ref', 'pos', 'ref_kmer']+tests]
+        # if self.bed_fn:
+        #     bed_annot={}
+        #     try:
+        #         with open(self.bed_fn) as tsvfile:
+        #             for line in tsvfile:
+        #                 record_name=line.split('\t')[3]
+        #                 if( record_name in self.ref_id_list):
+        #                     bed_annot[record_name]=bedline(line.split('\t'))
+        #         if len(bed_annot) != len(self.ref_id_list):
+        #             raise NanocomporeError("Some references are missing from the BED file provided")
+        #     except:
+        #         raise NanocomporeError("Can't open BED file")
+        #
+        #     df['genomicPos'] = df.apply(lambda row: bed_annot[row['ref']].tx2genome(coord=row['pos']),axis=1)
+        #     # This is very inefficient. We should get chr and strand only once per transcript, ideally when writing the BED file
+        #     df['chr'] = df.apply(lambda row: bed_annot[row['ref']].chr,axis=1)
+        #     df['strand'] = df.apply(lambda row: bed_annot[row['ref']].strand,axis=1)
+        #     df=df[['ref', 'pos', 'chr', 'strand', 'genomicPos', 'ref_kmer']+tests]
+        # else:
+        #     df=df[['ref', 'pos', 'ref_kmer']+tests]
 
         if adjust:
-            for col in tests:
-                if "pvalue" in col:
-                    df['adjusted_'+col] = self.__multipletests_filter_nan(df[col], method="fdr_bh")
-        self.results = df
+            for col in self._pvalue_tests:
+                df[col] = self.__multipletests_filter_nan(df[col], method="fdr_bh") ######################## Is it really needed ? I am not sure there are nan in the results
+        return df
 
-
-    def __get_fasta_seq (self, ref_id, start, end):
+    def __get_kmer_list (self, ref_id, start, end, kmer_size=5):
         """ Extract fasta record corresponding to ref with error handling """
         try:
             with Fasta(self._fasta_fn) as fasta:
                 fasta = (fasta [ref_id])
-                return str (fasta[start:end])
+                seq = str(fasta[start:end+5])
+                kmer_list = []
+                for i in range(end-start):
+                    kmer_list.append(seq[i:i+5])
+                return kmer_list
         except KeyError:
             raise NanocomporeError("Reference id not present in fasta file")
-
 
     def __get_positions (self, ref_id, start=None, end=None):
         """ Verify start and end and if not available try to infer them"""
         try:
             with Fasta(self._fasta_fn) as fasta:
-                max_len = len(fasta [ref_id])
+                max_len = len(fasta [ref_id])-4
         except KeyError:
             raise NanocomporeError("Reference id not present in fasta file")
-
-        if not start:
+        if not start or start < 0:
             start = 0
-        if not end:
+        if not end or end > max_len:
             end = max_len
         if start > end:
             raise NanocomporeError ("End coordinate has to be higher or equal to start")
-        if start < 0:
-            raise NanocomporeError ("Coordinates have to be higher that 0")
-        if end > max_len:
-            raise NanocomporeError ("Coordinates have to be lower than the ref_id sequence length ({})".format(max_len))
-
         return (start, end)
 
 
