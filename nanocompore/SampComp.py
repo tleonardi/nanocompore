@@ -97,27 +97,19 @@ class SampComp (object):
         # Parse comparison methods
         if comparison_method:
             if type (comparison_method) == str:
-                comparison_method = comparison_method.upper().split(",")
-            for i in range(len(comparison_method)):
-                if comparison_method[i] == "mann_whitney".upper():
+                comparison_method = comparison_method.split(",")
+            for i, method in enumerate (comparison_method):
+                method = method.upper()
+                if method in ["MANN_WHITNEY", "MW"]:
                     comparison_method[i]="MW"
-                elif comparison_method[i] == "kolmogorov_smirnov".upper():
+                elif method in ["KOLMOGOROV_SMIRNOV", "KS"]:
                     comparison_method[i]="KS"
-                elif comparison_method[i] == "t_test".upper():
+                elif method in ["T_TEST", "TT"]:
                     comparison_method[i]="TT"
-            allowed_comparison_methods = ["MW", "KS", "TT", "GMM"]
-            if not all([cm in allowed_comparison_methods for cm in comparison_method]):
-                raise NanocomporeError("Invalid comparison method")
-
-        if whitelist:
-            if not isinstance (whitelist, Whitelist):
-                raise NanocomporeError("Whitelist is not valid")
-            # Set private args from whitelist args
-            self.__min_coverage = whitelist._Whitelist__min_coverage
-            self.__downsample_high_coverage = whitelist._Whitelist__downsample_high_coverage
-            self.__max_invalid_kmers_freq = whitelist._Whitelist__max_invalid_kmers_freq
-
-        else:
+                elif method in ["GAUSSIAN_MIXTURE_MODEL", "GMM"]:
+                    comparison_method[i]="GMM"
+                else:
+                    raise NanocomporeError("Invalid comparison method {}".format(method))
             whitelist = Whitelist (
                 eventalign_fn_dict = eventalign_fn_dict,
                 fasta_fn = fasta_fn,
