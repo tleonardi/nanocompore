@@ -2,7 +2,7 @@
 
 #~~~~~~~~~~~~~~IMPORTS~~~~~~~~~~~~~~#
 # Std lib
-from collections import OrderedDict, Counter
+from collections import OrderedDict, Counter, defaultdict
 import warnings
 
 
@@ -18,78 +18,88 @@ import pandas as pd
 # Local package
 from nanocompore.common import NanocomporeError
 
-def txCompare(data, methods=None, sequence_context=0, min_coverage=0, logger=None, ref=None):
+# Init randon seed
+np.random.seed(42)
 
+def txCompare(ref_pos_list, methods=None, sequence_context=0, min_coverage=20, logger=None, ref=None):
+
+    n_lowcov = 0
     tests = set()
-    for pos in data.keys():
-        res = dict()
+    for pos, pos_dict in enumerate(ref_pos_list):
 
-        if len(data[pos]['data']) != 2:
-            logger.debug("Skipping position %s of ref %s because not present in all conditions" % (pos, ref))
-            res['lowCov']=True
-            data[pos]['txComp'] = res
-            continue
-        # Filter out positions with low coverage
-        if not all( [ rep['coverage'] > min_coverage for cond in data[pos]['data'].values() for rep in cond.values() ] ):
-            res['lowCov']=True
-            data[pos]['txComp'] = res
-            continue
+        # Filter out low coverage positions
+        lowcov = False
+        for cond_dict in pos_dict["data"].values():
+            for sample_val in cond_dict.values():
+                if sample_val["coverage"] < min_coverage:
+                    lowcov=True
+        ref_pos_list[pos]["lowCov"]=lowcov
 
+        # Perform stat tests if not low cov
+        if lowcov:
+            n_lowcov+=1
         else:
-            res['lowCov']=False
-        for met in methods:
-            if met in ["MW", "KS", "TT"] :
-                pvalues = nonparametric_test(data[pos]['data'], method=met)
-                res["{}_intensity_pvalue".format(met)]=pvalues[0]
-                res["{}_dwell_pvalue".format(met)]=pvalues[1]
-                tests.add("{}_intensity_pvalue".format(met))
-                tests.add("{}_dwell_pvalue".format(met))
-            elif met == "GMM":
-                gmm_results = gmm_test(data[pos]['data'], verbose=True)
-                res["GMM_pvalue"] = gmm_results[0]
-                res["GMM_model"] = gmm_results
-                tests.add("GMM_pvalue")
-        data[pos]['txComp'] = res
+            res = dict()
+            data = pos_dict['data']
+            for met in methods:
+                if met in ["MW", "KS", "TT"] :
+                    pvalues = nonparametric_test(data, method=met)
+                    res["{}_intensity_pvalue".format(met)]=pvalues[0]
+                    res["{}_dwell_pvalue".format(met)]=pvalues[1]
+                    tests.add("{}_intensity_pvalue".format(met))
+                    tests.add("{}_dwell_pvalue".format(met))
+                elif met == "GMM":
+                    gmm_results = gmm_test(data, verbose=True)
+                    res["GMM_pvalue"] = gmm_results[0]
+                    res["GMM_model"] = gmm_results ################################# optional ?
+                    tests.add("GMM_pvalue")
 
+            # Save results in main
+            ref_pos_list[pos]['txComp'] = res
+    logger.debug ("Skipping {} positions because not present in all samples with sufficient coverage".format(n_lowcov))
+
+    # Combine pvalue within a given sequence context
     if sequence_context > 0:
+
+        logger.debug ("Calculate harmonic weighs and cross correlation matrices by tests")
         # Generate weights as a symmetrical harmonic series
-        weights=[]
-        for i in range(-sequence_context, sequence_context+1):
-            weights.append(1/(abs(i)+1))
-
+        weights = harmomic_series (sequence_context)
+        # Collect pvalue lists per tests
+        pval_list_dict = defaultdict(list)
+        for pos_dict in ref_pos_list:
+            if 'txComp' in pos_dict:
+                for test in tests:
+                    if test in pos_dict['txComp']:
+                        pval_list_dict[test].append(pos_dict['txComp'][test])
+        # Compute cross correlation matrix per test
+        corr_matrix_dict = OrderedDict()
         for test in tests:
-            pvalues_vector = [i['txComp'][test] if test in i['txComp'] else 1 for i in data.values() if 'txComp' in i ]
-            # For the purpose of estimating the pvalue correlations, consider NaNs as 1
-            pvalues_vector_no_nan = np.array([p if not np.isnan(p) else 1 for p in pvalues_vector])
-            cor_mat = cross_corr_matrix(pvalues_vector_no_nan, sequence_context)
+            corr_matrix_dict[test] = cross_corr_matrix (pval_list_dict[test], sequence_context)
 
-            for mid_pos in data.keys():
-                label = "{}_context_{}".format(test, sequence_context)
-                pval_list = []
-                # If the current position is low coverage just return NaN
-                if data[mid_pos]['txComp']['lowCov']:
-                    combined_p_value=np.nan
-                else:
-                    #try:
-                        for pos in range(mid_pos-sequence_context, mid_pos+sequence_context+1):
-                            # If any the neughbouring positions is missing or any
-                            # of the pvalues in the context is lowCov or NaN, consider it 1
-                            if pos not in data or data[pos]['txComp']['lowCov'] or np.isnan(data[pos]['txComp'][test]):
-                                pval_list.append(1)
-                            else:
-                                pval_list.append(data[pos]['txComp'][test])
-                        combined_p_value = combine_pvalues_hou(pval_list, weights, cor_mat)
-                    #except KeyError:
-                    #    # If one of the adjacent positions is missing, return NaN
-                    #    # so that we don't consider it when correcting pvalues
-                    #    combined_p_value = 0.42
-                if combined_p_value == 0:
-                    combined_p_value = np.finfo(np.float).min
-                data[mid_pos]['txComp'][label] = combined_p_value
-    return data
+        logger.debug ("Combine adjacent position pvalues with Hou's method positon per position")
+        # Iterate over each positions in previously generated result dictionnary
+        for mid_pos in range (len(ref_pos_list)):
+            # Perform test only if middle pos is valid
+            if not ref_pos_list[mid_pos]["lowCov"]:
+                pval_list_dict = defaultdict(list)
+                for pos in range (mid_pos-sequence_context, mid_pos+sequence_context+1):
+                    # If any the positions is missing or any of the pvalues in the context is lowCov or NaN, consider it 1
+                    if pos < 0 or pos >= len(ref_pos_list) or ref_pos_list[pos]["lowCov"]:
+                        for test in tests:
+                            pval_list_dict[test].append(1)
+                    # else just extract the corresponding pvalue
+                    else:
+                        for test in tests:
+                            pval_list_dict[test].append(ref_pos_list[pos]["txComp"][test])
+                # Combine collected pvalues add add to dict
+                for test in tests:
+                    test_label = "{}_context_{}".format(test, sequence_context)
+                    ref_pos_list[mid_pos]['txComp'][test_label] = combine_pvalues_hou (pval_list_dict[test], weights, corr_matrix_dict[test])
+
+    return ref_pos_list
 
 def nonparametric_test(data, method=None):
-    np.random.seed(42)
+
     if method in ["mann_whitney", "MW"]:
         stat_test = mannwhitneyu
     elif method in ["kolmogorov_smirnov", "KS"]:
@@ -148,12 +158,12 @@ def gmm_test(data, log_dwell=True, verbose=False):
     else:
         return (pvalue, coef)
 
-
 def cross_corr_matrix(pvalues_vector, context=2):
     """Calculate the cross correlation matrix of the
         pvalues for a given context.
     """
     matrix=[]
+    pvalues_vector = np.array(pvalues_vector)
     s=pvalues_vector.size
     if all(p==1 for p in pvalues_vector):
         return(np.ones((context*2+1, context*2+1)))
@@ -202,5 +212,14 @@ def combine_pvalues_hou(pvalues, weights, cor_mat):
     # Degrees of freedom
     f = (4*w_sum**2) / (2*sw_sum+cov_sum)
     # chi2.sf is the same as 1-chi2.cdf but is more accurate
-    combined_p = chi2.sf(tau/c,f)
-    return(combined_p)
+    combined_p_value = chi2.sf(tau/c,f)
+    # Return a very small number if pvalue =0
+    if combined_p_value == 0:
+        combined_p_value = np.finfo(np.float).min
+    return combined_p_value
+
+def harmomic_series (sequence_context):
+    weights = []
+    for i in range(-sequence_context, sequence_context+1):
+        weights.append(1/(abs(i)+1))
+    return weights
