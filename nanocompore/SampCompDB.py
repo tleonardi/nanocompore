@@ -301,91 +301,80 @@ class SampCompDB (object):
     #     pass
 
     #~~~~~~~~~~~~~~PLOTTING METHODS~~~~~~~~~~~~~~#
-    def plot_pvalue(self, ref_id, start=None, end=None, threshold=0.01, figsize=(30,10), palette="Set2", plot_style="ggplot", method=None, barplot=False):
+    def plot_pvalue( self, ref_id, start=None, end=None, kind="lineplot", threshold=0.01, figsize=(30,10), palette="Set2", plot_style="ggplot", tests=None):
         """
         Plot pvalues per position (by default plot all fields starting by "pvalue")
         It is pointless to plot more than 50 positions at once as it becomes hard to distiguish
         ref_id: Valid reference id name in the database
         start: Start coordinate. Default=0
         end: End coordinate (included). Default=reference length
+        kind: kind of plot to represent the data (lineplot or barplot)
         figsize: length and heigh of the output plot. Default=(30,10)
         palette: Colormap. Default="Set2"
             see https://matplotlib.org/users/colormaps.html, https://matplotlib.org/examples/color/named_colors.html
         plot_style: Matplotlib plotting style. Default="ggplot"
             . See https://matplotlib.org/users/style_sheets.html
-        method: Limit the pvalue methods shown in the plot. Either a list of methods or a regular expression as a string.
-        barplot: plot p-value bars instead of lines
+        tests: Limit the pvalue methods shown in the plot. Either a list of methods or a string coresponding to a part of the name
         """
         # Extract fasta and positions
-        start, end = self._SampCompDB__get_positions(ref_id, start, end)
+        start, end = self.__get_positions(ref_id, start, end)
+        kmer_list = self.__get_kmer_list(ref_id, start, end)
+        pos_list = list(range(start, end))
 
-        try:
-            ref_pos_dict = self.results.query('ref==@ref_id').set_index('pos').to_dict('index')
-        except NameError:
-            raise NanocomporeError("It looks like there's not results slot in SampCompDB")
-
-        # Make a list with all methods available
-        methods=list(self.results)
-
-        # If method not provided, set it to a default regex
-        if method is None:
-            method="adjusted_*"
-        # Parse the method as regex if string
-        if isinstance(method, str):
-            r = re.compile(method)
-            method = list(filter(r.match, methods))
-        elif not isinstance(method, list):
-            raise NanocomporeError("Method must be either a string or a list")
-
-        for m in method:
-            if m not in methods:
-                raise NanocomporeError("Method %s is not in the results dataframe"%m)
-
-        # Parse line position per position
-        d = OrderedDict()
-
-        for pos in range(start, end+1):
-            # Collect results for position
-            res_dict = OrderedDict ()
-            if pos in ref_pos_dict:
-                for k,v in ref_pos_dict[pos].items():
-                    if k in method:
-                        if not np.isnan(v):
-                            res_dict[k] = -np.log10(v)
-                        else:
-                            res_dict[k] = 0
-                res_dict['ref_kmer'] = ref_pos_dict[pos]['ref_kmer']
-            d[pos] = res_dict
-
-
-        # Cast collected results to dataframe
-        df = pd.DataFrame.from_dict(d, orient="index")
+        # Extract data from result dataframe
+        df = self.results.query ("ref_id==@ref_id and @start<=pos<@end")
         if df.empty:
             raise NanocomporeError("No data available for the selected interval")
+
+        # list tests methods
+        if not tests:
+            tests = self._pvalue_tests
+        else:
+            if isinstance(tests, str):
+                tests = tests.split(",")
+            elif not isinstance(tests, list):
+                raise NanocomporeError("Method must be either a string or a list")
+            tests_set = set()
+            for test in tests:
+                for available_test in self._pvalue_tests:
+                    if test in available_test:
+                        tests_set.add(available_test)
+            if not tests_set:
+                raise NanocomporeError("No matching tests found in the list of available tests: {}".format(self._pvalue_tests))
+            tests = sorted(list(tests_set))
+
+        # Collect data for interval in a numpy array
+        array = np.zeros(end-start, dtype=[(test, np.float) for test in tests])
+        for id, row in df.iterrows():
+            for test in tests:
+                array[row["pos"]-start][test] = -np.log10(row[test])
+        # Cast collected results to dataframe
+        df = pd.DataFrame (array, index=pos_list)
+
         # Define plotting style
         with pl.style.context(plot_style):
             fig, ax = pl.subplots(figsize=figsize)
-            if not barplot:
-                _ = sns.lineplot(data=df.drop('ref_kmer', axis=1), palette=palette, ax=ax, dashes=False)
-            else:
-                df = df.reset_index().melt(id_vars=["index","ref_kmer"], var_name="method", value_name="pvalue").set_index('index')
-                _ = sns.barplot(x=df.index.values, y=df.pvalue, hue=df.method,  palette=palette, ax=ax)
+            if kind == "lineplot":
+                _ = sns.lineplot(data=df, palette=palette, ax=ax, dashes=False)
+                if end-start<30:
+                    _ = ax.set_xticks(pos_list)
+                    _ = ax.set_xticklabels([ "{}\n{}".format(i, j) for i,j in zip(pos_list, kmer_list)])
+
+            elif kind == "barplot":
+                df = df.reset_index()
+                df = df.melt(id_vars="index", var_name="method", value_name="pvalue")
+                _ = sns.barplot(x="index", y="pvalue", hue="method", data=df, palette=palette, ax=ax)
+                if end-start<30:
+                    _ = ax.set_xticklabels([ "{}\n{}".format(i, j) for i,j in zip(pos_list, kmer_list)])
+                else:
+                    breaks = list(range(start, end+1, (end-start)//10))
+                    _ = ax.set_xticklabels([ i if i in breaks else "" for i in pos_list])
+
             _ = ax.axhline(y=-np.log10(threshold), color="grey", linestyle=":", label="pvalue={}".format(threshold))
-            _ = ax.legend()
+            _ = ax.legend(bbox_to_anchor=(1, 1), loc=2, facecolor="white", frameon=False)
             _ = ax.set_ylabel("-log (pvalue)")
             _ = ax.set_xlabel("Reference position")
             _ = ax.set_title(ref_id)
-            if not barplot:
-                if end-start<30:
-                    _ = ax.set_xticks(df.index.values)
-                    _ = ax.set_xticklabels( [ "{}\n{}".format(i[0], i[1]) for i in zip(df.index, df.ref_kmer) ] )
-            else:
-                if end-start<30:
-                    _ = ax.set_xticklabels( [ "{}\n{}".format(i[0], i[1]) for i in zip(df.index, df.ref_kmer) ] )
-                else:
-                    step = (end-start)//10
-                    breaks = list(range(start, end+1, step))
-                    _ = ax.set_xticklabels( [ i if i in breaks else "" for i in df.index ]  )
             pl.tight_layout()
             return(fig, ax)
 
