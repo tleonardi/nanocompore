@@ -124,26 +124,27 @@ class SampCompDB (object):
                     l.append(row_dict)
         df = pd.DataFrame(l)
 
-        # if self.bed_fn:
-        #     bed_annot={}
-        #     try:
-        #         with open(self.bed_fn) as tsvfile:
-        #             for line in tsvfile:
-        #                 record_name=line.split('\t')[3]
-        #                 if( record_name in self.ref_id_list):
-        #                     bed_annot[record_name]=bedline(line.split('\t'))
-        #         if len(bed_annot) != len(self.ref_id_list):
-        #             raise NanocomporeError("Some references are missing from the BED file provided")
-        #     except:
-        #         raise NanocomporeError("Can't open BED file")
-        #
-        #     df['genomicPos'] = df.apply(lambda row: bed_annot[row['ref']].tx2genome(coord=row['pos']),axis=1)
-        #     # This is very inefficient. We should get chr and strand only once per transcript, ideally when writing the BED file
-        #     df['chr'] = df.apply(lambda row: bed_annot[row['ref']].chr,axis=1)
-        #     df['strand'] = df.apply(lambda row: bed_annot[row['ref']].strand,axis=1)
-        #     df=df[['ref', 'pos', 'chr', 'strand', 'genomicPos', 'ref_kmer']+tests]
-        # else:
-        #     df=df[['ref', 'pos', 'ref_kmer']+tests]
+        if self.bed_fn:
+            bed_annot={}
+            try:
+                with open(self.bed_fn) as tsvfile:
+                    for line in tsvfile:
+                        record_name=line.split('\t')[3]
+                        if( record_name in self.ref_id_list):
+                            bed_annot[record_name]=bedline(line.split('\t'))
+            except:
+                raise NanocomporeError("Can't open BED file")
+            print(bed_annot)
+            if len(bed_annot) != len(self.ref_id_list):
+                raise NanocomporeError("Some references are missing from the BED file provided")
+        
+            df['genomicPos'] = df.apply(lambda row: bed_annot[row['ref_id']].tx2genome(coord=row['pos']),axis=1)
+            # This is very inefficient. We should get chr and strand only once per transcript, ideally when writing the BED file
+            df['chr'] = df.apply(lambda row: bed_annot[row['ref_id']].chr,axis=1)
+            df['strand'] = df.apply(lambda row: bed_annot[row['ref_id']].strand,axis=1)
+            df=df[['ref_id', 'pos', 'chr', 'strand', 'genomicPos', 'ref_kmer']+self._pvalue_tests]
+        else:
+            df=df[['ref_id', 'pos', 'ref_kmer']+tests]
 
         if adjust:
             for col in self._pvalue_tests:
