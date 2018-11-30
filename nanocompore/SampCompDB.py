@@ -667,15 +667,15 @@ class SampCompDB (object):
         start, end = self.__get_positions(ref_id)
 
         try:
-            ref_pos_dict = self.results.query('ref==@ref_id').set_index('pos').to_dict('index')
+            ref_pos_dict = self.results.query('ref_id==@ref_id').set_index('pos').to_dict('index')
         except NameError:
             raise NanocomporeError("It looks like there's not results slot in SampCompDB")
 
         # Make a list with all methods available
         methods=list(self.results)
 
-        if method not in methods:
-            raise NanocomporeError("Method %s is not in the results dataframe"%method)
+        if method not in self._pvalue_tests:
+            raise NanocomporeError("Method %s is not in the results dataframe. Please chose one of %s "%(method, self._pvalue_tests))
 
         # Parse line position per position
         d = OrderedDict()
