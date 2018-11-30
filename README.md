@@ -1,4 +1,4 @@
-# Nanocompore v1.0.0b4
+# Nanocompore v1.0.0b5
 
 ---
 

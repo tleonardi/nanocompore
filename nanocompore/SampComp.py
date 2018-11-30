@@ -12,7 +12,7 @@ os.environ['OPENBLAS_NUM_THREADS'] = '1'
 
 # Std lib
 import logging
-from collections import OrderedDict, namedtuple
+from collections import OrderedDict, Counter
 import shelve
 import multiprocessing as mp
 from warnings import warn
@@ -20,6 +20,7 @@ from warnings import warn
 # Third party
 from tqdm import tqdm
 import numpy as np
+from pyfaidx import Fasta
 
 # Local package
 from nanocompore.common import counter_to_str, access_file, NanocomporeError, NanocomporeWarning, numeric_cast_list
@@ -96,27 +97,21 @@ class SampComp (object):
         # Parse comparison methods
         if comparison_method:
             if type (comparison_method) == str:
-                comparison_method = comparison_method.upper().split(",")
-            for i in range(len(comparison_method)):
-                if comparison_method[i] == "mann_whitney".upper():
+                comparison_method = comparison_method.split(",")
+            for i, method in enumerate (comparison_method):
+                method = method.upper()
+                if method in ["MANN_WHITNEY", "MW"]:
                     comparison_method[i]="MW"
-                elif comparison_method[i] == "kolmogorov_smirnov".upper():
+                elif method in ["KOLMOGOROV_SMIRNOV", "KS"]:
                     comparison_method[i]="KS"
-                elif comparison_method[i] == "t_test".upper():
+                elif method in ["T_TEST", "TT"]:
                     comparison_method[i]="TT"
-            allowed_comparison_methods = ["MW", "KS", "TT", "GMM"]
-            if not all([cm in allowed_comparison_methods for cm in comparison_method]):
-                raise NanocomporeError("Invalid comparison method")
+                elif method in ["GAUSSIAN_MIXTURE_MODEL", "GMM"]:
+                    comparison_method[i]="GMM"
+                else:
+                    raise NanocomporeError("Invalid comparison method {}".format(method))
 
-        if whitelist:
-            if not isinstance (whitelist, Whitelist):
-                raise NanocomporeError("Whitelist is not valid")
-            # Set private args from whitelist args
-            self.__min_coverage = whitelist._Whitelist__min_coverage
-            self.__downsample_high_coverage = whitelist._Whitelist__downsample_high_coverage
-            self.__max_invalid_kmers_freq = whitelist._Whitelist__max_invalid_kmers_freq
-
-        else:
+        if not whitelist:
             whitelist = Whitelist (
                 eventalign_fn_dict = eventalign_fn_dict,
                 fasta_fn = fasta_fn,
@@ -126,16 +121,19 @@ class SampComp (object):
                 select_ref_id = select_ref_id,
                 exclude_ref_id = exclude_ref_id,
                 logLevel = logLevel)
-                # Set private args
-            self.__min_coverage = min_coverage
-            self.__downsample_high_coverage = downsample_high_coverage
-            self.__max_invalid_kmers_freq = max_invalid_kmers_freq
+        elif not isinstance (whitelist, Whitelist):
+            raise NanocomporeError("Whitelist is not valid")
+
+        # Set private args from whitelist args
+        self.__min_coverage = whitelist._Whitelist__min_coverage
+        self.__downsample_high_coverage = whitelist._Whitelist__downsample_high_coverage
+        self.__max_invalid_kmers_freq = whitelist._Whitelist__max_invalid_kmers_freq
 
         # Save private args
         self.__eventalign_fn_dict = eventalign_fn_dict
         self.__output_db_fn = output_db_fn
         self.__fasta_fn = fasta_fn
-        self.__bed_fn = bed_fn 
+        self.__bed_fn = bed_fn
         self.__whitelist = whitelist
         self.__comparison_methods = comparison_method
         self.__sequence_context = sequence_context
@@ -152,45 +150,45 @@ class SampComp (object):
     def __call__ (self):
         """Run analysis"""
 
-        logger.info ("Start data processing")
+        logger.info("Start data processing")
         # Init Multiprocessing variables
-        in_q = mp.Queue (maxsize = 100)
-        out_q = mp.Queue (maxsize = 100)
+        in_q = mp.Queue(maxsize = 100)
+        out_q = mp.Queue(maxsize = 100)
 
         # Define processes
         ps_list = []
-        ps_list.append (mp.Process (target=self.__list_refid, args=(in_q,)))
-        for i in range (self.__nthreads):
-            ps_list.append (mp.Process (target=self.__process_references, args=(in_q, out_q)))
-        ps_list.append (mp.Process (target=self.__write_output, args=(out_q,)))
+        ps_list.append(mp.Process(target=self.__list_refid, args=(in_q,)))
+        for i in range(self.__nthreads):
+            ps_list.append(mp.Process(target=self.__process_references, args=(in_q, out_q)))
+        ps_list.append(mp.Process(target=self.__write_output, args=(out_q,)))
 
         # Start processes and block until done
         try:
             for ps in ps_list:
-                ps.start ()
+                ps.start()
             for ps in ps_list:
-                ps.join ()
+                ps.join()
 
         # Kill processes if early stop
         except (BrokenPipeError, KeyboardInterrupt) as E:
-            if self.verbose: stderr_print ("Early stop. Kill processes\n")
+            if self.verbose: stderr_print("Early stop. Kill processes\n")
             for ps in ps_list:
-                ps.terminate ()
+                ps.terminate()
 
         # Return database wrapper object
-        return SampCompDB (db_fn=self.__output_db_fn, fasta_fn=self.__fasta_fn, bed_fn=self.__bed_fn)
+        return SampCompDB(db_fn=self.__output_db_fn, fasta_fn=self.__fasta_fn, bed_fn=self.__bed_fn)
 
     #~~~~~~~~~~~~~~PRIVATE MULTIPROCESSING METHOD~~~~~~~~~~~~~~#
     def __list_refid (self, in_q):
         # Add refid to inqueue to dispatch the data among the workers
         for ref_id, ref_dict in self.__whitelist:
-            logger.debug("Adding %s to in_q"%ref_id)
-            in_q.put ((ref_id, ref_dict))
+            logger.debug("Adding {} to in_q".format(ref_id))
+            in_q.put((ref_id, ref_dict))
 
         # Add 1 poison pill for each worker thread
-        for i in range (self.__nthreads):
+        for i in range(self.__nthreads):
             logger.debug("Adding poison pill to in_q")
-            in_q.put (None)
+            in_q.put(None)
 
     def __process_references (self, in_q, out_q):
         """
@@ -204,24 +202,16 @@ class SampComp (object):
             fp_dict = self.__eventalign_fn_open()
 
             # Process refid in input queue
-            for ref_id, ref_dict in iter (in_q.get, None):
-                logger.debug("Worker thread processing new item from in_q: %s"%ref_id)
+            for ref_id, ref_dict in iter(in_q.get, None):
+                logger.debug("Worker thread processing new item from in_q: {}".format(ref_id))
 
-                # List valid positions for ref_id identified by whitelist
-                valid_pos_list = []
-                for interval_start, interval_end in ref_dict["interval_list"]:
-                    for pos in range (interval_start, interval_end+1):
-                        valid_pos_list.append(pos)
+                # Create an empty dict for all positions first
+                ref_pos_list = self.__make_ref_pos_list (ref_id)
 
-                # Parse read data for each sample and fill in a position level multilevel
-                # dict with median, coverage and dwell time values
-                ref_pos_dict = OrderedDict ()
                 for cond_lab, sample_dict in ref_dict.items():
-                    # Skip interval list entry
-                    if cond_lab == "interval_list":
-                        continue
                     for sample_lab, read_list in sample_dict.items():
                         fp = fp_dict[cond_lab][sample_lab]
+
                         for read in read_list:
 
                             # Move to read, save read data chunk and reset file pointer
@@ -236,40 +226,46 @@ class SampComp (object):
 
                             # Extract col names from second line
                             col_names = line_list[1].split("\t")
+
                             # Parse data files kmers per kmers
+                            prev_pos = None
                             for line in line_list[2:]:
                                 # Transform line to dict and cast str numbers to actual numbers
                                 kmer = dict (zip (col_names, numeric_cast_list (line.split("\t"))))
 
                                 # Check if ref position is in the whitelist valid intervals and add kmer data if so
                                 pos = kmer["ref_pos"]
-                                if pos in valid_pos_list:
-                                    if not pos in ref_pos_dict:
-                                        ref_pos_dict[pos] = OrderedDict()
-                                        ref_pos_dict[pos]["ref_kmer"] = kmer["ref_kmer"]
-                                        ref_pos_dict[pos]["data"] = OrderedDict()
-                                    if not cond_lab in ref_pos_dict[pos]["data"]:
-                                        ref_pos_dict[pos]["data"][cond_lab] = OrderedDict()
-                                    if not sample_lab in ref_pos_dict[pos]["data"][cond_lab]:
-                                        ref_pos_dict[pos]["data"][cond_lab][sample_lab] = {"intensity":[], "dwell":[], "coverage":0}
 
-                                    # Append median intensity and dwell time value per position
-                                    ref_pos_dict[pos]["data"][cond_lab][sample_lab]["intensity"].append(kmer["median"])
-                                    ref_pos_dict[pos]["data"][cond_lab][sample_lab]["dwell"].append(kmer["n_signals"])
-                                    ref_pos_dict[pos]["data"][cond_lab][sample_lab]["coverage"] += 1
+                                # Fill in the missing positions
+                                if prev_pos and pos-prev_pos > 1:
+                                    for missing_pos in range(prev_pos+1, pos):
+                                        ref_pos_list[missing_pos]["data"][cond_lab][sample_lab]["events_stats"]["missing"] += 1
+
+                                # And then fill dict with the current pos values
+                                ref_pos_list[pos]["data"][cond_lab][sample_lab]["intensity"].append(kmer["median"])
+                                ref_pos_list[pos]["data"][cond_lab][sample_lab]["dwell"].append(kmer["n_signals"])
+                                ref_pos_list[pos]["data"][cond_lab][sample_lab]["coverage"] += 1
+
+                                # Also fill in with normalised position event stats
+                                n_valid = (kmer["n_events"]-(kmer["NNNNN_events"]+kmer["mismatching_events"])) / kmer["n_events"]
+                                n_NNNNN = kmer["NNNNN_events"] / kmer["n_events"]
+                                n_mismatching = kmer["mismatching_events"] / kmer["n_events"]
+                                ref_pos_list[pos]["data"][cond_lab][sample_lab]["events_stats"]["valid"] += n_valid
+                                ref_pos_list[pos]["data"][cond_lab][sample_lab]["events_stats"]["NNNNN"] += n_NNNNN
+                                ref_pos_list[pos]["data"][cond_lab][sample_lab]["events_stats"]["mismatching"] += n_mismatching
+                                prev_pos = pos
 
                 if self.__comparison_methods:
-                    ref_pos_dict=txCompare(
-                        data=ref_pos_dict,
+                    ref_pos_list = txCompare(
+                        ref_pos_list=ref_pos_list,
                         methods=self.__comparison_methods,
                         sequence_context=self.__sequence_context,
-                        min_coverage=self.__min_coverage,
-                        logger=logger,
-                        ref=ref_id)
+                        min_coverage= self.__min_coverage,
+                        logger=logger)
 
                 # Add the current read details to queue
                 logger.debug("Adding %s to out_q"%(ref_id))
-                out_q.put ((ref_id, ref_pos_dict))
+                out_q.put ((ref_id, ref_pos_list))
 
         finally:
             # Add a poison pill in queue
@@ -280,15 +276,22 @@ class SampComp (object):
 
     def __write_output (self, out_q):
         # Get results out of the out queue and write in shelve
+        pvalue_tests = set()
         try:
             with shelve.open (self.__output_db_fn, flag='n') as db:
                 # Iterate over the counter queue and process items until all poison pills are found
                 pbar = tqdm (total = len(self.__whitelist), unit=" Processed References", disable=self.__logLevel in ("warning", "debug"))
                 for _ in range (self.__nthreads):
-                    for ref_id, ref_pos_dict in iter (out_q.get, None):
+                    for ref_id, ref_pos_list in iter (out_q.get, None):
                         logger.debug("Writer thread writing %s"%ref_id)
+                        # Get pvalue fields available in analysed data before
+                        for pos_dict in ref_pos_list:
+                            if 'txComp' in pos_dict:
+                                for res in pos_dict['txComp'].keys():
+                                    if "pvalue" in res:
+                                        pvalue_tests.add(res)
                         # Write results in a shelve db
-                        db [ref_id] = ref_pos_dict
+                        db [ref_id] = ref_pos_list
                         pbar.update ()
                 pbar.close()
 
@@ -296,7 +299,8 @@ class SampComp (object):
                     "comparison_method": self.__comparison_methods,
                     "sequence_context": self.__sequence_context,
                     "min_coverage": self.__min_coverage,
-                    "n_samples": self.__n_samples}
+                    "n_samples": self.__n_samples,
+                    "pvalue_tests": sorted(list(pvalue_tests))}
         except IOError:
             raise NanocomporeError("Error writing to output db")
 
@@ -313,3 +317,25 @@ class SampComp (object):
         for sample_dict in fp_dict.values():
             for fp in sample_dict.values():
                 fp.close()
+
+    def __make_ref_pos_list (self, ref_id):
+        ref_pos_list = []
+        with Fasta (self.__fasta_fn) as fasta:
+            ref_fasta = fasta [ref_id]
+            ref_len = len(ref_fasta)
+            ref_seq = str(ref_fasta)
+
+            for pos in range(ref_len-4):
+                pos_dict = OrderedDict()
+                pos_dict["ref_kmer"] = ref_seq[pos:pos+5]
+                pos_dict["data"] = OrderedDict()
+                for cond_lab, s_dict in self.__eventalign_fn_dict.items():
+                    pos_dict["data"][cond_lab] = OrderedDict()
+                    for sample_lab in s_dict.keys():
+                        pos_dict["data"][cond_lab][sample_lab] = {
+                            "intensity":[],
+                            "dwell":[],
+                            "coverage":0,
+                            "events_stats":{"missing":0,"valid":0,"NNNNN":0,"mismatching":0}}
+                ref_pos_list.append(pos_dict)
+        return ref_pos_list
