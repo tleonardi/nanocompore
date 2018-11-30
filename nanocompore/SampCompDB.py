@@ -134,7 +134,6 @@ class SampCompDB (object):
                             bed_annot[record_name]=bedline(line.split('\t'))
             except:
                 raise NanocomporeError("Can't open BED file")
-            print(bed_annot)
             if len(bed_annot) != len(self.ref_id_list):
                 raise NanocomporeError("Some references are missing from the BED file provided")
         
