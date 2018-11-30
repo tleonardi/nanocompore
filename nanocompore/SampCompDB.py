@@ -147,7 +147,7 @@ class SampCompDB (object):
 
         if adjust:
             for col in self._pvalue_tests:
-                df[col] = self.__multipletests_filter_nan(df[col], method="fdr_bh") ######################## Is it really needed ? I am not sure there are nan in the results
+                df[col] = multipletests(df[col], method="fdr_bh")[1]
         return df
 
     def __get_kmer_list (self, ref_id, start, end, kmer_size=5):
@@ -177,25 +177,6 @@ class SampCompDB (object):
         if start > end:
             raise NanocomporeError ("End coordinate has to be higher or equal to start")
         return (start, end)
-
-    @staticmethod
-    def __multipletests_filter_nan(pvalues, method="fdr_bh"):
-        """
-        Performs p-value correction for multiple hypothesis testing
-        using the method specified. The pvalues list can contain
-        np.nan values, which are ignored during p-value correction.
-
-        test: input=[0.1, 0.01, np.nan, 0.01, 0.5, 0.4, 0.01, 0.001, np.nan, np.nan, 0.01, np.nan]
-        out: array([0.13333333, 0.016     ,        nan, 0.016     , 0.5       ,
-        0.45714286, 0.016     , 0.008     ,        nan,        nan,
-        0.016     ,        nan])
-        """
-        pvalues_no_nan = [p for p in pvalues if not np.isnan(p)]
-        corrected_p_values = multipletests(pvalues_no_nan, method=method)[1]
-        for i, p in enumerate(pvalues):
-            if np.isnan(p):
-                corrected_p_values=np.insert(corrected_p_values, i, np.nan, axis=0)
-        return(corrected_p_values)
 
     @staticmethod
     def __color_generator (palette, n):
