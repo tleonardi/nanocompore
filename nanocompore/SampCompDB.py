@@ -242,46 +242,44 @@ class SampCompDB (object):
                         line=line.translateChr(assembly=assembly, target="ens", patches=True)
                     bed_file.write("%s\t%s\t%s\t%s\n" % (line.chr, line.start, line.end, line.score))
     
-    # def save_report(self, output_fn=None):
-    #     """Saves an extended tabular report
-    #     """
-    #     if output_fn is None:
-    #         fp = sys.stdout
-    #     elif isinstance(output_fn, str):
-    #         try:
-    #             fp = open(output_fn, "w")
-    #         except:
-    #             raise NanocomporeError("Error opening output file %s"%output_fn)
-    #     else:
-    #         raise NanocomporeError("output_fn needs to be a string or None")
-    #     r = re.compile("adjusted_*")
-    #     methods = list(filter(r.match, list(self.results)))
-    #
-    #     headers = ['chr', 'pos', 'ref','strand', 'ref_kmer', 'lowCov']+methods
-    #     # Read extra GMM info from the shelve
-    #     if "GMM" in self._comparison_method:
-    #         headers += ['LOR', 'clusters']
-    #         gmm_info=OrderedDict()
-    #         for tx, refpos in self:
-    #             gmm_info[tx] = {k:{'lor': v['txComp']['GMM_model'][1], 'clusters':v['txComp']['GMM_model'][3]} for k,v in refpos.items() if "GMM_model" in v['txComp']}
-    #     fp.write('\t'.join([ str(i) for i in headers ])+'\n')
-    #     for record in self.results[['chr', 'pos', 'ref','strand', 'ref_kmer', 'lowCov']+methods].values.tolist():
-    #         if "GMM" in self._comparison_method:
-    #             try:
-    #                 lor = gmm_info[record[2]][record[1]]['lor']
-    #                 clusters = gmm_info[record[2]][record[1]]['clusters']
-    #                 clusters = '#'.join([ ','.join([str(x) for x in i]) for i in clusters])
-    #                 record += [lor, clusters]
-    #             except KeyError:
-    #                 record += ["nan", "nan"]
-    #         fp.write('\t'.join([ str(i) for i in record ])+'\n')
-    #     fp.close()
-    #
-    # def list_most_significant_positions (self, n=10):
-    #     pass
-    #
-    # def list_most_significant_references (self, n=10):
-    #     pass
+    def save_report(self, output_fn=None):
+        """Saves an extended tabular report
+        """
+        if output_fn is None:
+            fp = sys.stdout
+        elif isinstance(output_fn, str):
+            try:
+                fp = open(output_fn, "w")
+            except:
+                raise NanocomporeError("Error opening output file %s"%output_fn)
+        else:
+            raise NanocomporeError("output_fn needs to be a string or None")
+    
+        headers = ['chr', 'pos', 'ref_id','strand', 'ref_kmer']+self._pvalue_tests
+        # Read extra GMM info from the shelve
+        if "GMM" in self._comparison_method:
+            headers += ['LOR', 'clusters']
+            gmm_info=OrderedDict()
+            for tx, refpos in self:
+                gmm_info[tx] = {k:{'lor': v['txComp']['GMM_model'][1], 'clusters':v['txComp']['GMM_model'][3]} for k,v in enumerate(refpos) if "txComp" in v and "GMM_model" in v['txComp']}
+        fp.write('\t'.join([ str(i) for i in headers ])+'\n')
+        for record in self.results[['chr', 'pos', 'ref_id','strand', 'ref_kmer']+self._pvalue_tests].values.tolist():
+            if "GMM" in self._comparison_method:
+                try:
+                    lor = gmm_info[record[2]][record[1]]['lor']
+                    clusters = gmm_info[record[2]][record[1]]['clusters']
+                    clusters = '#'.join([ ','.join([str(x) for x in i]) for i in clusters])
+                    record += [lor, clusters]
+                except KeyError:
+                    record += ["nan", "nan"]
+            fp.write('\t'.join([ str(i) for i in record ])+'\n')
+        fp.close()
+    
+    def list_most_significant_positions (self, n=10):
+        pass
+    
+    def list_most_significant_references (self, n=10):
+        pass
 
     #~~~~~~~~~~~~~~PLOTTING METHODS~~~~~~~~~~~~~~#
     def plot_pvalue( self, ref_id, start=None, end=None, kind="lineplot", threshold=0.01, figsize=(30,10), palette="Set2", plot_style="ggplot", tests=None):
