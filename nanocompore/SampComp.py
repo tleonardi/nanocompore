@@ -47,6 +47,7 @@ class SampComp (object):
         whitelist=None,
         comparison_method = None,
         sequence_context = 0,
+        sequence_context_weights = "uniform",
         min_coverage = 10,
         downsample_high_coverage = None,
         max_invalid_kmers_freq = 0.1,
@@ -66,6 +67,7 @@ class SampComp (object):
         comparison_method: Statistical method to compare the 2 samples (mann_whitney, kolmogorov_smirnov, t_test, gmm).
             This can be a list or a comma separated string
         sequence_context: Extend statistical analysis to contigous adjacent base if available
+        sequence_context_weights: type of weights to used for combining p-values
         min_cov: minimal coverage required in all sample
         downsample_high_coverage: For reference with higher coverage, downsample by randomly selecting reads.
         max_invalid_kmers_freq: maximum frequency of NNNNN, mismatching and missing kmers in reads
@@ -137,6 +139,7 @@ class SampComp (object):
         self.__whitelist = whitelist
         self.__comparison_methods = comparison_method
         self.__sequence_context = sequence_context
+        self.__sequence_context_weights = sequence_context_weights
         self.__nthreads = nthreads - 2
         self.__logLevel = logLevel
 
@@ -260,6 +263,7 @@ class SampComp (object):
                         ref_pos_list=ref_pos_list,
                         methods=self.__comparison_methods,
                         sequence_context=self.__sequence_context,
+                        sequence_context_weights=self.__sequence_context_weights,
                         min_coverage= self.__min_coverage,
                         logger=logger)
 

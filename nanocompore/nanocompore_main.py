@@ -53,6 +53,7 @@ def main(args=None):
     parser_testing = parser_sampComp.add_argument_group('Statistical testing')
     parser_testing.add_argument("--comparison_methods", type=str, default="GMM,KS", help="Comma separated list of comparison methods. Valid methods are: GMM,KS,TT,MW. (default: %(default)s)")
     parser_testing.add_argument("--sequence_context", type=int, default=2, choices=range(0,5), help="Sequence context for combining p-values (default: %(default)s)")
+    parser_testing.add_argument("--sequence_context_weights", type=str, default="uniform", choices=["uniform", "harmonic"], help="Type of weights to use for combining p-values")
     parser_testing.add_argument("--pvalue_thr", type=float, default=0.05, help="Adjusted p-value threshold for reporting significant sites (default: %(default)s)")
 
     parser_common = parser_sampComp.add_argument_group('Other options')
@@ -116,7 +117,8 @@ def sample_compare_main(args):
         downsample_high_coverage = args.downsample_high_coverage,
         comparison_method = args.comparison_methods,
         logLevel = args.loglevel,
-        sequence_context = args.sequence_context)
+        sequence_context = args.sequence_context,
+        sequence_context_weights = args.sequence_context_weights)
 
     sc_out = s()
 

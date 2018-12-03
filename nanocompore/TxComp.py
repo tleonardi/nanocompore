@@ -21,7 +21,10 @@ from nanocompore.common import NanocomporeError
 # Init randon seed
 np.random.seed(42)
 
-def txCompare(ref_pos_list, methods=None, sequence_context=0, min_coverage=20, logger=None, ref=None):
+def txCompare(ref_pos_list, methods=None, sequence_context=0, min_coverage=20, logger=None, ref=None, sequence_context_weights="uniform"):
+
+    if sequence_context_weights != "uniform" and sequence_context_weights != "harmonic":
+        raise NanocomporeError ("Invalid sequence_context_weights (uniform or harmonic)")
 
     n_lowcov = 0
     tests = set()
@@ -56,14 +59,17 @@ def txCompare(ref_pos_list, methods=None, sequence_context=0, min_coverage=20, l
 
             # Save results in main
             ref_pos_list[pos]['txComp'] = res
-    logger.debug ("Skipping {} positions because not present in all samples with sufficient coverage".format(n_lowcov))
+    logger.debug("Skipping {} positions because not present in all samples with sufficient coverage".format(n_lowcov))
 
     # Combine pvalue within a given sequence context
     if sequence_context > 0:
+        if sequence_context_weights == "harmonic":
+            # Generate weights as a symmetrical harmonic series
+            logger.debug ("Calculate harmonic weighs and cross correlation matrices by tests")
+            weights = harmomic_series(sequence_context)
+        else:
+            weights = [1]*(2*sequence_context+1)
 
-        logger.debug ("Calculate harmonic weighs and cross correlation matrices by tests")
-        # Generate weights as a symmetrical harmonic series
-        weights = harmomic_series (sequence_context)
         # Collect pvalue lists per tests
         pval_list_dict = defaultdict(list)
         for pos_dict in ref_pos_list:
