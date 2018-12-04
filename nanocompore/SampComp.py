@@ -86,6 +86,8 @@ class SampComp(object):
             raise NanocomporeError("2 conditions are expected. Found {}".format(len(eventalign_fn_dict)))
         for cond_lab, sample_dict in eventalign_fn_dict.items():
             if len(sample_dict) == 1:
+                if gmm_method_anova:
+                    raise NanocomporeError("The GMM/anova method can only be used if all conditions have replicates. You can use the logit method instead by setting gmm_method_anova=False.")
                 warn(NanocomporeWarning ("Only 1 replicate found for condition {}. This is not recomended".format(cond_lab)))
 
         # Check args
