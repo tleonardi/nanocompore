@@ -8,8 +8,8 @@ import warnings
 
 # Third party
 from scipy.stats import mannwhitneyu, ks_2samp, ttest_ind, chi2
-import statsmodels.discrete.discrete_model as sm
-from statsmodels.tools.sm_exceptions import ConvergenceWarning
+import statsmodels.api as sm
+from statsmodels.formula.api import ols
 from sklearn.preprocessing import StandardScaler
 from sklearn.mixture import GaussianMixture
 import numpy as np
@@ -137,39 +137,70 @@ def gmm_test(data, log_dwell=True, verbose=False):
 
     if log_dwell:
         global_dwell = np.log10(global_dwell)
-
-    Y = [ condition_labels[0] for v in data[condition_labels[0]].values() for _ in v['intensity'] ] + [ condition_labels[1] for v in data[condition_labels[1]].values() for _ in v['intensity'] ]
+        
     X = StandardScaler().fit_transform([(i, d) for i,d in zip(global_intensity, global_dwell)])
-    gmm_mod = GaussianMixture(n_components=2, covariance_type="full", random_state=146)
-    y_pred = gmm_mod.fit_predict(X)
-    # Add one to each group to avoid empty clusters
-    y_pred=np.append(y_pred, [0,0,1,1])
-    Y.extend([condition_labels[0], condition_labels[1], condition_labels[0], condition_labels[1]])
-    S1_counts = Counter(y_pred[[i==condition_labels[0] for i in Y]])
-    S2_counts = Counter(y_pred[[i==condition_labels[1] for i in Y]])
-    contingency_table = np.array([[S1_counts[0],S1_counts[1]],[S2_counts[0],S2_counts[1]]], dtype="int64")
-    Y = pd.get_dummies(Y)
-    Y['intercept']=1
-    logit = sm.Logit(y_pred,Y[['intercept',condition_labels[1]]] )
-    with warnings.catch_warnings():
-        warnings.filterwarnings('error')
-        try:
-            fitmod=logit.fit(disp=0)
-            pvalue, coef = fitmod.pvalues[1], fitmod.params[1]
-        except ConvergenceWarning:
-            fitmod, pvalue, coef = "NC", 1, "NC"
+    Y = [ k for k,v in data[condition_labels[0]].items() for _ in v['intensity'] ] + [ k for k,v in data[condition_labels[1]].items() for _ in v['intensity'] ] 
+    
+    lowest_bic = np.infty
+    bic = []
+    n_components_range = range(1, 3)
+    cv_types = ['spherical', 'tied', 'diag', 'full']
+    for cv_type in cv_types:
+        for n_components in n_components_range:
+        # Fit a Gaussian mixture with EM
+            gmm = GaussianMixture(n_components=n_components, covariance_type=cv_type)
+            gmm.fit(X)
+            bic.append(gmm.bic(X))
+            if bic[-1] < lowest_bic:
+                lowest_bic = bic[-1]
+                best_gmm = gmm
+                best_gmm_type = cv_type
+                best_gmm_ncomponents = n_components
+
+    if best_gmm_ncomponents > 1:
+        y_pred = best_gmm.predict(X)  
+        sample_labels = list(data[condition_labels[0]].keys()) + list(data[condition_labels[1]].keys())
+        sample_condition_labels = { sk:k for k,v in data.items() for sk in v.keys() }
+        counters = dict()
+        for lab in sample_labels:
+            counters[lab] = Counter(y_pred[[i==lab for i in Y]])
+        labels= []
+        logr = []
+        for sample,counter in counters.items():
+            labels.append(sample_condition_labels[sample])
+            # The Counter dictionaries in counters are not ordered
+            # We add 1 to avoid empty clusters
+            ordered_counter = [ counter[i]+1 for i in range(best_gmm_ncomponents)]
+            total = sum(ordered_counter)
+            normalised_ordered_counter = [ i/total for i in ordered_counter ]
+            # Loop through ordered_counter and divide each value by the first
+            logr.append(np.log(normalised_ordered_counter[0]/(1-normalised_ordered_counter[0])))
+        logr = np.array(logr)
+        labels = np.array([1 if i == condition_labels[0] else 0 for i in labels])
+        #r = manova.MANOVA(logr, labels).mv_test([("manova", "x1")])
+        #pvalue = r.results['manova']['stat']['Pr > F']["Pillai's trace"]
+        df = pd.DataFrame.from_dict({'condition':labels, 'logr':logr})
+        mod = ols("logr~C(condition)", data=df).fit() 
+        aov_table = sm.stats.anova_lm(mod, typ=2)
+        pvalue = aov_table['PR(>F)']['C(condition)']
+    else:
+            pvalue = np.nan
+            logr = "NC"
+            aov_table = "NC"
+            counters = "NC"
     # Return model, real_labels (w/ intercept), GMM clusters, contingency table
     if verbose:
-        return (pvalue, coef, fitmod, contingency_table, gmm_mod)
+        return (pvalue, logr, aov_table, counters, best_gmm, best_gmm_type, best_gmm_ncomponents)
     else:
-        return (pvalue, coef)
+        return (pvalue, logr)
+
 
 def cross_corr_matrix(pvalues_vector, context=2):
     """Calculate the cross correlation matrix of the
         pvalues for a given context.
     """
     matrix=[]
-    pvalues_vector = np.array(pvalues_vector)
+    pvalues_vector = np.array([ i if not np.isnan(i) else 1 for i in pvalues_vector ])
     s=pvalues_vector.size
     if all(p==1 for p in pvalues_vector):
         return(np.ones((context*2+1, context*2+1)))
