@@ -9,7 +9,9 @@ import warnings
 # Third party
 from scipy.stats import mannwhitneyu, ks_2samp, ttest_ind, chi2
 import statsmodels.api as sm
+import statsmodels.discrete.discrete_model as dm
 from statsmodels.formula.api import ols
+from statsmodels.tools.sm_exceptions import ConvergenceWarning
 from sklearn.preprocessing import StandardScaler
 from sklearn.mixture import GaussianMixture
 import numpy as np
@@ -21,7 +23,7 @@ from nanocompore.common import NanocomporeError
 # Init randon seed
 np.random.seed(42)
 
-def txCompare(ref_pos_list, methods=None, sequence_context=0, min_coverage=20, logger=None, ref=None, sequence_context_weights="uniform"):
+def txCompare(ref_pos_list, methods=None, sequence_context=0, min_coverage=20, logger=None, ref=None, sequence_context_weights="uniform", gmm_method_anova=True):
 
     if sequence_context_weights != "uniform" and sequence_context_weights != "harmonic":
         raise NanocomporeError("Invalid sequence_context_weights (uniform or harmonic)")
@@ -52,7 +54,10 @@ def txCompare(ref_pos_list, methods=None, sequence_context=0, min_coverage=20, l
                     tests.add("{}_intensity_pvalue".format(met))
                     tests.add("{}_dwell_pvalue".format(met))
                 elif met == "GMM":
-                    gmm_results = gmm_test(data, verbose=True)
+                    if gmm_method_anova:
+                        gmm_results = gmm_test_anova(data, verbose=True)
+                    else:
+                        gmm_results = gmm_test_logit(data, verbose=True)
                     res["GMM_pvalue"] = gmm_results[0]
                     res["GMM_model"] = gmm_results ################################# optional ?
                     tests.add("GMM_pvalue")
@@ -127,7 +132,7 @@ def nonparametric_test(data, method=None):
     pval_dwell = stat_test(condition1_dwell, condition2_dwell)[1]
     return(pval_intensity, pval_dwell)
 
-def gmm_test(data, log_dwell=True, verbose=False):
+def gmm_test_anova(data, log_dwell=True, verbose=False):
     condition_labels = tuple(data.keys())
     if len(condition_labels) != 2:
         raise NanocomporeError("gmm_test only supports two conditions")
@@ -194,6 +199,43 @@ def gmm_test(data, log_dwell=True, verbose=False):
     else:
         return(pvalue, logr)
 
+
+def gmm_test_logit(data, log_dwell=True, verbose=False):
+    condition_labels = tuple(data.keys())
+    if len(condition_labels) != 2:
+        raise NanocomporeError("gmm_test only supports two conditions")
+
+    global_intensity = np.concatenate(([v['intensity'] for v in data[condition_labels[0]].values()]+[v['intensity'] for v in data[condition_labels[1]].values()]), axis=None)
+    global_dwell = np.concatenate(([v['dwell'] for v in data[condition_labels[0]].values()]+[v['dwell'] for v in data[condition_labels[1]].values()]), axis=None)
+
+    if log_dwell:
+        global_dwell = np.log10(global_dwell)
+
+    Y = [ condition_labels[0] for v in data[condition_labels[0]].values() for _ in v['intensity'] ] + [ condition_labels[1] for v in data[condition_labels[1]].values() for _ in v['intensity'] ]
+    X = StandardScaler().fit_transform([(i, d) for i,d in zip(global_intensity, global_dwell)])
+    gmm_mod = GaussianMixture(n_components=2, covariance_type="full", random_state=146)
+    y_pred = gmm_mod.fit_predict(X)
+    # Add one to each group to avoid empty clusters
+    y_pred=np.append(y_pred, [0,0,1,1])
+    Y.extend([condition_labels[0], condition_labels[1], condition_labels[0], condition_labels[1]])
+    S1_counts = Counter(y_pred[[i==condition_labels[0] for i in Y]])
+    S2_counts = Counter(y_pred[[i==condition_labels[1] for i in Y]])
+    contingency_table = np.array([[S1_counts[0],S1_counts[1]],[S2_counts[0],S2_counts[1]]], dtype="int64")
+    Y = pd.get_dummies(Y)
+    Y['intercept']=1
+    logit = dm.Logit(y_pred,Y[['intercept',condition_labels[1]]] )
+    with warnings.catch_warnings():
+        warnings.filterwarnings('error')
+        try:
+            fitmod=logit.fit(disp=0)
+            pvalue, coef = fitmod.pvalues[1], fitmod.params[1]
+        except ConvergenceWarning:
+            fitmod, pvalue, coef = "NC", 1, "NC"
+    # Return model, real_labels (w/ intercept), GMM clusters, contingency table
+    if verbose:
+        return (pvalue, coef, fitmod, contingency_table, gmm_mod)
+    else:
+        return (pvalue, coef)
 
 def cross_corr_matrix(pvalues_vector, context=2):
     """Calculate the cross correlation matrix of the
