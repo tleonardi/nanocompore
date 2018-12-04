@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 logLevel_dict = {"debug":logging.DEBUG, "info":logging.INFO, "warning":logging.WARNING}
 
 #~~~~~~~~~~~~~~MAIN CLASS~~~~~~~~~~~~~~#
-class SampComp (object):
+class SampComp(object):
     """ Init analysis and check args"""
 
     #~~~~~~~~~~~~~~FUNDAMENTAL METHODS~~~~~~~~~~~~~~#
@@ -77,20 +77,20 @@ class SampComp (object):
         logLevel: Set the log level. Valid values: warning, info, debug
         """
         # Set logging level
-        logger.setLevel (logLevel_dict.get (logLevel, logging.WARNING))
-        logger.info ("Initialise SampComp and checks options")
+        logger.setLevel(logLevel_dict.get (logLevel, logging.WARNING))
+        logger.info("Initialise SampComp and checks options")
 
         # Check that the number of condition is 2 and raise a warning if there are less than 2 replicates per conditions
         if len(eventalign_fn_dict) != 2:
             raise NanocomporeError("2 conditions are expected. Found {}".format(len(eventalign_fn_dict)))
         for cond_lab, sample_dict in eventalign_fn_dict.items():
             if len(sample_dict) == 1:
-                warn (NanocomporeWarning ("Only 1 replicate found for condition {}. This is not recomended".format(cond_lab)))
+                warn(NanocomporeWarning ("Only 1 replicate found for condition {}. This is not recomended".format(cond_lab)))
 
         # Check args
         for sample_dict in eventalign_fn_dict.values():
             for fn in sample_dict.values():
-                if not access_file (fn):
+                if not access_file(fn):
                     raise NanocomporeError("Cannot access eventalign_collapse file {}".format(fn))
 
         if nthreads < 3:
@@ -98,9 +98,9 @@ class SampComp (object):
 
         # Parse comparison methods
         if comparison_method:
-            if type (comparison_method) == str:
+            if type(comparison_method) == str:
                 comparison_method = comparison_method.split(",")
-            for i, method in enumerate (comparison_method):
+            for i, method in enumerate(comparison_method):
                 method = method.upper()
                 if method in ["MANN_WHITNEY", "MW"]:
                     comparison_method[i]="MW"
@@ -114,7 +114,7 @@ class SampComp (object):
                     raise NanocomporeError("Invalid comparison method {}".format(method))
 
         if not whitelist:
-            whitelist = Whitelist (
+            whitelist = Whitelist(
                 eventalign_fn_dict = eventalign_fn_dict,
                 fasta_fn = fasta_fn,
                 min_coverage = min_coverage,
@@ -123,7 +123,7 @@ class SampComp (object):
                 select_ref_id = select_ref_id,
                 exclude_ref_id = exclude_ref_id,
                 logLevel = logLevel)
-        elif not isinstance (whitelist, Whitelist):
+        elif not isinstance(whitelist, Whitelist):
             raise NanocomporeError("Whitelist is not valid")
 
         # Set private args from whitelist args
@@ -150,7 +150,7 @@ class SampComp (object):
                 n+=1
         self.__n_samples = n
 
-    def __call__ (self):
+    def __call__(self):
         """Run analysis"""
 
         logger.info("Start data processing")
@@ -173,7 +173,7 @@ class SampComp (object):
                 ps.join()
 
         # Kill processes if early stop
-        except (BrokenPipeError, KeyboardInterrupt) as E:
+        except(BrokenPipeError, KeyboardInterrupt) as E:
             if self.verbose: stderr_print("Early stop. Kill processes\n")
             for ps in ps_list:
                 ps.terminate()
@@ -182,7 +182,7 @@ class SampComp (object):
         return SampCompDB(db_fn=self.__output_db_fn, fasta_fn=self.__fasta_fn, bed_fn=self.__bed_fn)
 
     #~~~~~~~~~~~~~~PRIVATE MULTIPROCESSING METHOD~~~~~~~~~~~~~~#
-    def __list_refid (self, in_q):
+    def __list_refid(self, in_q):
         # Add refid to inqueue to dispatch the data among the workers
         for ref_id, ref_dict in self.__whitelist:
             logger.debug("Adding {} to in_q".format(ref_id))
@@ -193,7 +193,7 @@ class SampComp (object):
             logger.debug("Adding poison pill to in_q")
             in_q.put(None)
 
-    def __process_references (self, in_q, out_q):
+    def __process_references(self, in_q, out_q):
         """
         Consume ref_id, agregate intensity and dwell time at position level and
         perform statistical analyses to find significantly different regions
@@ -209,7 +209,7 @@ class SampComp (object):
                 logger.debug("Worker thread processing new item from in_q: {}".format(ref_id))
 
                 # Create an empty dict for all positions first
-                ref_pos_list = self.__make_ref_pos_list (ref_id)
+                ref_pos_list = self.__make_ref_pos_list(ref_id)
 
                 for cond_lab, sample_dict in ref_dict.items():
                     for sample_lab, read_list in sample_dict.items():
@@ -218,14 +218,14 @@ class SampComp (object):
                         for read in read_list:
 
                             # Move to read, save read data chunk and reset file pointer
-                            fp.seek (read["byte_offset"])
-                            line_list = fp.read (read["byte_len"]).split("\n")
-                            fp.seek (0)
+                            fp.seek(read["byte_offset"])
+                            line_list = fp.read(read["byte_len"]).split("\n")
+                            fp.seek(0)
 
                             # Check read_id ref_id concordance between index and data file
                             header = numeric_cast_list(line_list[0][1:].split("\t"))
                             if not header[0] == read["read_id"] or not header[1] == read["ref_id"]:
-                                raise NanocomporeError ("Index and data files are not matching")
+                                raise NanocomporeError("Index and data files are not matching")
 
                             # Extract col names from second line
                             col_names = line_list[1].split("\t")
@@ -234,7 +234,7 @@ class SampComp (object):
                             prev_pos = None
                             for line in line_list[2:]:
                                 # Transform line to dict and cast str numbers to actual numbers
-                                kmer = dict (zip (col_names, numeric_cast_list (line.split("\t"))))
+                                kmer = dict(zip (col_names, numeric_cast_list (line.split("\t"))))
 
                                 # Check if ref position is in the whitelist valid intervals and add kmer data if so
                                 pos = kmer["ref_pos"]
@@ -269,24 +269,24 @@ class SampComp (object):
 
                 # Add the current read details to queue
                 logger.debug("Adding %s to out_q"%(ref_id))
-                out_q.put ((ref_id, ref_pos_list))
+                out_q.put((ref_id, ref_pos_list))
 
         finally:
             # Add a poison pill in queue
             logger.debug("Adding poison pill to out_q")
-            out_q.put (None)
+            out_q.put(None)
             # close all files
-            self.__eventalign_fn_close (fp_dict)
+            self.__eventalign_fn_close(fp_dict)
 
-    def __write_output (self, out_q):
+    def __write_output(self, out_q):
         # Get results out of the out queue and write in shelve
         pvalue_tests = set()
         try:
-            with shelve.open (self.__output_db_fn, flag='n') as db:
+            with shelve.open(self.__output_db_fn, flag='n') as db:
                 # Iterate over the counter queue and process items until all poison pills are found
-                pbar = tqdm (total = len(self.__whitelist), unit=" Processed References", disable=self.__logLevel in ("warning", "debug"))
-                for _ in range (self.__nthreads):
-                    for ref_id, ref_pos_list in iter (out_q.get, None):
+                pbar = tqdm(total = len(self.__whitelist), unit=" Processed References", disable=self.__logLevel in ("warning", "debug"))
+                for _ in range(self.__nthreads):
+                    for ref_id, ref_pos_list in iter(out_q.get, None):
                         logger.debug("Writer thread writing %s"%ref_id)
                         # Get pvalue fields available in analysed data before
                         for pos_dict in ref_pos_list:
@@ -296,7 +296,7 @@ class SampComp (object):
                                         pvalue_tests.add(res)
                         # Write results in a shelve db
                         db [ref_id] = ref_pos_list
-                        pbar.update ()
+                        pbar.update()
                 pbar.close()
 
                 db["__metadata"] = {
@@ -309,7 +309,7 @@ class SampComp (object):
             raise NanocomporeError("Error writing to output db")
 
     #~~~~~~~~~~~~~~PRIVATE HELPER METHODS~~~~~~~~~~~~~~#
-    def __eventalign_fn_open (self):
+    def __eventalign_fn_open(self):
         fp_dict = OrderedDict()
         for cond_lab, sample_dict in self.__eventalign_fn_dict.items():
             fp_dict[cond_lab] = OrderedDict()
@@ -317,14 +317,14 @@ class SampComp (object):
                 fp_dict[cond_lab][sample_lab] = open(fn, "r")
         return fp_dict
 
-    def __eventalign_fn_close (self, fp_dict):
+    def __eventalign_fn_close(self, fp_dict):
         for sample_dict in fp_dict.values():
             for fp in sample_dict.values():
                 fp.close()
 
-    def __make_ref_pos_list (self, ref_id):
+    def __make_ref_pos_list(self, ref_id):
         ref_pos_list = []
-        with Fasta (self.__fasta_fn) as fasta:
+        with Fasta(self.__fasta_fn) as fasta:
             ref_fasta = fasta [ref_id]
             ref_len = len(ref_fasta)
             ref_seq = str(ref_fasta)

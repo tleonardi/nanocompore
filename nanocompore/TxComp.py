@@ -24,7 +24,7 @@ np.random.seed(42)
 def txCompare(ref_pos_list, methods=None, sequence_context=0, min_coverage=20, logger=None, ref=None, sequence_context_weights="uniform"):
 
     if sequence_context_weights != "uniform" and sequence_context_weights != "harmonic":
-        raise NanocomporeError ("Invalid sequence_context_weights (uniform or harmonic)")
+        raise NanocomporeError("Invalid sequence_context_weights (uniform or harmonic)")
 
     n_lowcov = 0
     tests = set()
@@ -65,7 +65,7 @@ def txCompare(ref_pos_list, methods=None, sequence_context=0, min_coverage=20, l
     if sequence_context > 0:
         if sequence_context_weights == "harmonic":
             # Generate weights as a symmetrical harmonic series
-            logger.debug ("Calculate harmonic weighs and cross correlation matrices by tests")
+            logger.debug("Calculate harmonic weighs and cross correlation matrices by tests")
             weights = harmomic_series(sequence_context)
         else:
             weights = [1]*(2*sequence_context+1)
@@ -80,15 +80,15 @@ def txCompare(ref_pos_list, methods=None, sequence_context=0, min_coverage=20, l
         # Compute cross correlation matrix per test
         corr_matrix_dict = OrderedDict()
         for test in tests:
-            corr_matrix_dict[test] = cross_corr_matrix (pval_list_dict[test], sequence_context)
+            corr_matrix_dict[test] = cross_corr_matrix(pval_list_dict[test], sequence_context)
 
-        logger.debug ("Combine adjacent position pvalues with Hou's method positon per position")
+        logger.debug("Combine adjacent position pvalues with Hou's method positon per position")
         # Iterate over each positions in previously generated result dictionnary
-        for mid_pos in range (len(ref_pos_list)):
+        for mid_pos in range(len(ref_pos_list)):
             # Perform test only if middle pos is valid
             if not ref_pos_list[mid_pos]["lowCov"]:
                 pval_list_dict = defaultdict(list)
-                for pos in range (mid_pos-sequence_context, mid_pos+sequence_context+1):
+                for pos in range(mid_pos-sequence_context, mid_pos+sequence_context+1):
                     # If any the positions is missing or any of the pvalues in the context is lowCov or NaN, consider it 1
                     if pos < 0 or pos >= len(ref_pos_list) or ref_pos_list[pos]["lowCov"]:
                         for test in tests:
@@ -100,7 +100,7 @@ def txCompare(ref_pos_list, methods=None, sequence_context=0, min_coverage=20, l
                 # Combine collected pvalues add add to dict
                 for test in tests:
                     test_label = "{}_context_{}".format(test, sequence_context)
-                    ref_pos_list[mid_pos]['txComp'][test_label] = combine_pvalues_hou (pval_list_dict[test], weights, corr_matrix_dict[test])
+                    ref_pos_list[mid_pos]['txComp'][test_label] = combine_pvalues_hou(pval_list_dict[test], weights, corr_matrix_dict[test])
 
     return ref_pos_list
 
@@ -113,7 +113,7 @@ def nonparametric_test(data, method=None):
     elif method in ["t_test", "TT"]:
         stat_test = ttest_ind
     else:
-        raise NanocomporeError ("Invalid statistical method name (MW, KS, ttest)")
+        raise NanocomporeError("Invalid statistical method name (MW, KS, ttest)")
 
     condition_labels = tuple(data.keys())
     if len(condition_labels) != 2:
@@ -125,7 +125,7 @@ def nonparametric_test(data, method=None):
 
     pval_intensity = stat_test(condition1_intensity, condition2_intensity)[1]
     pval_dwell = stat_test(condition1_dwell, condition2_dwell)[1]
-    return (pval_intensity, pval_dwell)
+    return(pval_intensity, pval_dwell)
 
 def gmm_test(data, log_dwell=True, verbose=False):
     condition_labels = tuple(data.keys())
@@ -190,9 +190,9 @@ def gmm_test(data, log_dwell=True, verbose=False):
             counters = "NC"
     # Return model, real_labels (w/ intercept), GMM clusters, contingency table
     if verbose:
-        return (pvalue, logr, aov_table, counters, best_gmm, best_gmm_type, best_gmm_ncomponents)
+        return(pvalue, logr, aov_table, counters, best_gmm, best_gmm_type, best_gmm_ncomponents)
     else:
-        return (pvalue, logr)
+        return(pvalue, logr)
 
 
 def cross_corr_matrix(pvalues_vector, context=2):
@@ -255,7 +255,7 @@ def combine_pvalues_hou(pvalues, weights, cor_mat):
         combined_p_value = np.finfo(np.float).min
     return combined_p_value
 
-def harmomic_series (sequence_context):
+def harmomic_series(sequence_context):
     weights = []
     for i in range(-sequence_context, sequence_context+1):
         weights.append(1/(abs(i)+1))
