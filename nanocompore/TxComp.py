@@ -88,7 +88,7 @@ def txCompare(ref_pos_list, methods=None, sequence_context=0, min_coverage=20, l
             corr_matrix_dict[test] = cross_corr_matrix(pval_list_dict[test], sequence_context)
 
         logger.debug("Combine adjacent position pvalues with Hou's method positon per position")
-        # Iterate over each positions in previously generated result dictionnary
+        # Iterate over each positions in previously generated result dictionary
         for mid_pos in range(len(ref_pos_list)):
             # Perform test only if middle pos is valid
             if not ref_pos_list[mid_pos]["lowCov"]:
@@ -133,19 +133,26 @@ def nonparametric_test(data, method=None):
     return(pval_intensity, pval_dwell)
 
 def gmm_test_anova(data, log_dwell=True, verbose=False):
+
     condition_labels = tuple(data.keys())
     if len(condition_labels) != 2:
         raise NanocomporeError("gmm_test only supports two conditions")
-
+    
+    # Merge the intensities and dwell times of all samples in a single array
     global_intensity = np.concatenate(([v['intensity'] for v in data[condition_labels[0]].values()]+[v['intensity'] for v in data[condition_labels[1]].values()]), axis=None)
     global_dwell = np.concatenate(([v['dwell'] for v in data[condition_labels[0]].values()]+[v['dwell'] for v in data[condition_labels[1]].values()]), axis=None)
 
     if log_dwell:
         global_dwell = np.log10(global_dwell)
         
+    # Scale the intensity and dwell time arrays
     X = StandardScaler().fit_transform([(i, d) for i,d in zip(global_intensity, global_dwell)])
+
+    # Generate an array of of sample labels 
     Y = [ k for k,v in data[condition_labels[0]].items() for _ in v['intensity'] ] + [ k for k,v in data[condition_labels[1]].items() for _ in v['intensity'] ] 
     
+    # Loop over multiple cv_types and n_components and for each fit a GMM
+    # calculate the BIC and retain the lowest
     lowest_bic = np.infty
     bic = []
     n_components_range = range(1, 3)
@@ -162,19 +169,27 @@ def gmm_test_anova(data, log_dwell=True, verbose=False):
                 best_gmm_type = cv_type
                 best_gmm_ncomponents = n_components
 
-    if best_gmm_ncomponents > 1:
+    # If the best GMM has 2 clusters do an anova test on the log odd ratios
+    if best_gmm_ncomponents == 2:
+        # Assign data points to the clusters
         y_pred = best_gmm.predict(X)  
+
+        # List of sample labels
         sample_labels = list(data[condition_labels[0]].keys()) + list(data[condition_labels[1]].keys())
+
+        # Dictionary Sample_label:Condition_label
         sample_condition_labels = { sk:k for k,v in data.items() for sk in v.keys() }
         counters = dict()
+        # Count how many reads in each cluster for each sample
         for lab in sample_labels:
             counters[lab] = Counter(y_pred[[i==lab for i in Y]])
         labels= []
         logr = []
         for sample,counter in counters.items():
+            # Save the condition label the corresponds to the current sample
             labels.append(sample_condition_labels[sample])
             # The Counter dictionaries in counters are not ordered
-            # We add 1 to avoid empty clusters
+            # The following line enforces the order and adds 1 to avoid empty clusters
             ordered_counter = [ counter[i]+1 for i in range(best_gmm_ncomponents)]
             total = sum(ordered_counter)
             normalised_ordered_counter = [ i/total for i in ordered_counter ]
@@ -184,16 +199,21 @@ def gmm_test_anova(data, log_dwell=True, verbose=False):
         labels = np.array([1 if i == condition_labels[0] else 0 for i in labels])
         #r = manova.MANOVA(logr, labels).mv_test([("manova", "x1")])
         #pvalue = r.results['manova']['stat']['Pr > F']["Pillai's trace"]
+
+        # statsmodels ols requires the use of the formula api,
+        # therefore we convert the data to a df
         df = pd.DataFrame.from_dict({'condition':labels, 'logr':logr})
         mod = ols("logr~C(condition)", data=df).fit() 
         aov_table = sm.stats.anova_lm(mod, typ=2)
         pvalue = aov_table['PR(>F)']['C(condition)']
-    else:
+    elif best_gmm_ncomponents == 1:
             pvalue = np.nan
             logr = "NC"
             aov_table = "NC"
             counters = "NC"
-    # Return model, real_labels (w/ intercept), GMM clusters, contingency table
+    else:
+        raise NanocomporeError("GMM models with n_component>2 are not supported")
+
     if verbose:
         return(pvalue, logr, aov_table, counters, best_gmm, best_gmm_type, best_gmm_ncomponents)
     else:
