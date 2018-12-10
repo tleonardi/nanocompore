@@ -20,10 +20,10 @@ logger = logging.getLogger(__name__)
 logLevel_dict = {"debug":logging.DEBUG, "info":logging.INFO, "warning":logging.WARNING}
 
 #~~~~~~~~~~~~~~MAIN CLASS~~~~~~~~~~~~~~#
-class Whitelist (object):
+class Whitelist(object):
 
     #~~~~~~~~~~~~~~MAGIC METHODS~~~~~~~~~~~~~~#
-    def __init__ (self,
+    def __init__(self,
         eventalign_fn_dict,
         fasta_fn,
         min_coverage = 10,
@@ -52,17 +52,17 @@ class Whitelist (object):
         """
 
         # Set logging level
-        logger.setLevel (logLevel_dict.get (logLevel, logging.WARNING))
-        logger.info ("Initialise Whitelist and checks options")
+        logger.setLevel(logLevel_dict.get(logLevel, logging.WARNING))
+        logger.info("Initialise Whitelist and checks options")
         self.__logLevel = logLevel
 
         # Check index files
         for sample_dict in eventalign_fn_dict.values():
             for fn in sample_dict.values():
                 idx_fn = fn+".idx"
-                if not access_file (idx_fn):
+                if not access_file(idx_fn):
                     raise NanocomporeError("Cannot access eventalign_collapse index file {}".format(idx_fn))
-                if not file_header_contains (idx_fn, field_names=("ref_id","ref_start","ref_end","read_id","kmers","NNNNN_kmers","mismatching_kmers","missing_kmers","byte_offset","byte_len")):
+                if not file_header_contains(idx_fn, field_names=("ref_id","ref_start","ref_end","read_id","kmers","NNNNN_kmers","mismatching_kmers","missing_kmers","byte_offset","byte_len")):
                     raise NanocomporeError("The index file {} does not contain the require header fields".format(idx_fn))
         self.__eventalign_fn_dict = eventalign_fn_dict
 
@@ -75,14 +75,14 @@ class Whitelist (object):
 
         # Test is Fasta can be opened
         try:
-            with Fasta (fasta_fn):
+            with Fasta(fasta_fn):
                 self._fasta_fn = fasta_fn
         except IOError:
             raise NanocomporeError("The fasta file cannot be opened")
 
         # Create reference index for both files
-        logger.info ("Read eventalign index files")
-        ref_reads = self.__read_eventalign_index (
+        logger.info("Read eventalign index files")
+        ref_reads = self.__read_eventalign_index(
             eventalign_fn_dict = eventalign_fn_dict,
             max_invalid_kmers_freq = max_invalid_kmers_freq,
             max_NNNNN_freq = max_NNNNN_freq,
@@ -92,8 +92,8 @@ class Whitelist (object):
             exclude_ref_id = exclude_ref_id)
 
         # Filtering at transcript level
-        logger.info ("Filter out references with low coverage")
-        self.ref_reads = self.__select_ref (
+        logger.info("Filter out references with low coverage")
+        self.ref_reads = self.__select_ref(
             ref_reads = ref_reads,
             min_coverage=min_coverage,
             downsample_high_coverage=downsample_high_coverage)
@@ -102,10 +102,10 @@ class Whitelist (object):
         self.__downsample_high_coverage = downsample_high_coverage
         self.__max_invalid_kmers_freq = max_invalid_kmers_freq
 
-    def __repr__ (self):
+    def __repr__(self):
         return "Whitelist: Number of references: {}".format(len(self))
 
-    def __str__ (self):
+    def __str__(self):
         m = ""
         for ref_id, ref_dict in self.ref_reads.items():
             m += "{}\n".format(ref_id)
@@ -119,23 +119,23 @@ class Whitelist (object):
                         m += "\n"
         return m
 
-    def __len__ (self):
+    def __len__(self):
         return len(self.ref_reads)
 
-    def __iter__ (self):
+    def __iter__(self):
         for i, j in self.ref_reads.items():
-            yield (i,j)
+            yield(i,j)
 
     def __getitem__(self, items):
         return self.ref_reads.get(items, None)
 
     #~~~~~~~~~~~~~~PUBLIC METHODS AND PROPERTIES~~~~~~~~~~~~~~#
     @property
-    def ref_id_list (self):
-        return list (self.ref_reads.keys())
+    def ref_id_list(self):
+        return list(self.ref_reads.keys())
 
     #~~~~~~~~~~~~~~PRIVATE METHODS~~~~~~~~~~~~~~#
-    def __read_eventalign_index (self,
+    def __read_eventalign_index(self,
         eventalign_fn_dict,
         max_invalid_kmers_freq,
         max_NNNNN_freq,
@@ -145,16 +145,16 @@ class Whitelist (object):
         exclude_ref_id):
         """Read the 2 index files and sort by sample and ref_id in a multi level dict"""
 
-        ref_reads = OrderedDict ()
+        ref_reads = OrderedDict()
 
         for cond_lab, sample_dict in eventalign_fn_dict.items():
-            for sample_lab, fn in sample_dict.items ():
+            for sample_lab, fn in sample_dict.items():
                 idx_fn = fn+".idx"
-                with open (idx_fn) as fp:
+                with open(idx_fn) as fp:
 
                     # Get column names from header
                     col_names = fp.readline().rstrip().split()
-                    c = Counter ()
+                    c = Counter()
                     for line in fp:
                         try:
                             # Transform line to dict and cast str numbers to actual numbers
@@ -162,21 +162,21 @@ class Whitelist (object):
 
                             # Filter out ref_id if a select_ref_id list or exclude_ref_id list was provided
                             if select_ref_id and not read["ref_id"] in select_ref_id:
-                                raise NanocomporeError ("Ref_id not in select list")
+                                raise NanocomporeError("Ref_id not in select list")
                             elif exclude_ref_id and read["ref_id"] in exclude_ref_id:
-                                raise NanocomporeError ("Ref_id in exclude list")
+                                raise NanocomporeError("Ref_id in exclude list")
 
                             # Filter out reads with high number of invalid kmers
                             if max_invalid_kmers_freq:
                                 if(read["NNNNN_kmers"]+read["mismatching_kmers"]+read["missing_kmers"])/read["kmers"] > max_invalid_kmers_freq:
-                                    raise NanocomporeError ("High invalid kmers reads")
+                                    raise NanocomporeError("High invalid kmers reads")
                             else:
                                 if max_NNNNN_freq and read["NNNNN_kmers"]/read["kmers"] > max_NNNNN_freq:
-                                    raise NanocomporeError ("High NNNNN kmers reads")
+                                    raise NanocomporeError("High NNNNN kmers reads")
                                 elif max_mismatching_freq and read["mismatching_kmers"]/read["kmers"] > max_mismatching_freq:
-                                    raise NanocomporeError ("High mismatching_kmers reads")
+                                    raise NanocomporeError("High mismatching_kmers reads")
                                 elif max_missing_freq and read["missing_kmers"]/read["kmers"] > max_missing_freq:
-                                    raise NanocomporeError ("High missing_kmers reads")
+                                    raise NanocomporeError("High missing_kmers reads")
 
                             # Create dict arborescence and save valid reads
                             if not read["ref_id"] in ref_reads:
@@ -187,26 +187,26 @@ class Whitelist (object):
                                 ref_reads[read["ref_id"]][cond_lab][sample_lab] = []
 
                             # Fill in list of reads
-                            ref_reads[read["ref_id"]][cond_lab][sample_lab].append (read)
+                            ref_reads[read["ref_id"]][cond_lab][sample_lab].append(read)
                             c ["valid reads"] += 1
 
                         except NanocomporeError as E:
                             c [str(E)] += 1
 
-                logger.debug ("\tCondition:{} Sample:{} {}".format(cond_lab, sample_lab, counter_to_str(c)))
+                logger.debug("\tCondition:{} Sample:{} {}".format(cond_lab, sample_lab, counter_to_str(c)))
 
-        logger.info ("\tReferences found in index: {}".format(len(ref_reads)))
+        logger.info("\tReferences found in index: {}".format(len(ref_reads)))
         return ref_reads
 
-    def __select_ref (self,
+    def __select_ref(self,
         ref_reads,
         min_coverage,
         downsample_high_coverage):
         """Select ref_id with a minimal coverage in both sample + downsample if needed"""
 
-        valid_ref_reads = OrderedDict ()
+        valid_ref_reads = OrderedDict()
         c = Counter()
-        with Fasta (self._fasta_fn) as fasta:
+        with Fasta(self._fasta_fn) as fasta:
 
             for ref_id, ref_dict in ref_reads.items():
                 try:
@@ -218,7 +218,7 @@ class Whitelist (object):
                             assert len(read_list) >= min_coverage
                             # Downsample if coverage too high
                             if downsample_high_coverage and len(read_list) > downsample_high_coverage:
-                                read_list = random.sample (read_list, downsample_high_coverage)
+                                read_list = random.sample(read_list, downsample_high_coverage)
                             valid_dict[cond_lab][sample_lab]=read_list
 
 
@@ -237,6 +237,6 @@ class Whitelist (object):
                     if self.__logLevel == "debug":
                         c["invalid_ref_id"] += 1
 
-        logger.debug (counter_to_str(c))
-        logger.info ("\tReferences remaining after reference coverage filtering: {}".format(len(valid_ref_reads)))
+        logger.debug(counter_to_str(c))
+        logger.info("\tReferences remaining after reference coverage filtering: {}".format(len(valid_ref_reads)))
         return valid_ref_reads
