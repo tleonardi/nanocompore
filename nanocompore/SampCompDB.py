@@ -284,7 +284,6 @@ class SampCompDB(object):
                 try:
                     lor = gmm_info[record[2]][record[1]]['lor']
                     clusters = gmm_info[record[2]][record[1]]['clusters']
-                    clusters = '#'.join([ ','.join([str(x) for x in i]) for i in clusters])
                     record += [lor, clusters]
                 except KeyError:
                     record += ["nan", "nan"]

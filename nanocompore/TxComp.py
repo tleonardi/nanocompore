@@ -209,18 +209,23 @@ def gmm_test_anova(data, log_dwell=True, verbose=False):
         aov_table = sm.stats.anova_lm(mod, typ=2)
         pvalue = aov_table['PR(>F)']['C(condition)']
         # Calculate the delta log odds ratio, i.e. the difference of the means of the log odds rations between the two conditions
-        delta_logit = df.groupby('condition').mean().loc[condition_labels[1]] - df.groupby('condition').mean().loc[condition_labels[0]]
+        delta_logit = float(df.groupby('condition').mean().loc[condition_labels[1]] - df.groupby('condition').mean().loc[condition_labels[0]])
+        # Convert the counters to a string
+        cluster_counts = list()
+        for k,v in counters.items():
+            cluster_counts.append("%s:%s" % (k, "/".join([str(i) for i in v.values()])))
+        cluster_counts="__".join(cluster_counts)
     elif best_gmm_ncomponents == 1:
             pvalue = np.nan
             logr = "NC"
             aov_table = "NC"
-            counters = "NC"
+            cluster_counts = "NC"
             delta_logit = np.nan
     else:
         raise NanocomporeError("GMM models with n_component>2 are not supported")
 
     if verbose:
-        return(pvalue, delta_logit, aov_table, counters, best_gmm, best_gmm_type, best_gmm_ncomponents)
+        return(pvalue, delta_logit, aov_table, cluster_counts, best_gmm, best_gmm_type, best_gmm_ncomponents)
     else:
         return(pvalue, delta_logit)
 
