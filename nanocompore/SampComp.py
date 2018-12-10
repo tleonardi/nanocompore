@@ -86,7 +86,7 @@ class SampComp(object):
             raise NanocomporeError("2 conditions are expected. Found {}".format(len(eventalign_fn_dict)))
         for cond_lab, sample_dict in eventalign_fn_dict.items():
             if len(sample_dict) == 1:
-                logger.info("Only 1 replicate found for condition {}. This is not recomended. The statistics will be calculated with the logit method".format(cond_lab)))
+                logger.info("Only 1 replicate found for condition {}. This is not recomended. The statistics will be calculated with the logit method".format(cond_lab))
 
         # Check args
         for sample_dict in eventalign_fn_dict.values():
