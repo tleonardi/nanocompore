@@ -23,13 +23,16 @@ from nanocompore.common import NanocomporeError
 # Init randon seed
 np.random.seed(42)
 
-def txCompare(ref_pos_list, methods=None, sequence_context=0, min_coverage=20, logger=None, ref=None, sequence_context_weights="uniform", gmm_method_anova=True):
+def txCompare(ref_pos_list, methods=None, sequence_context=0, min_coverage=20, logger=None, ref=None, sequence_context_weights="uniform", force_logit=False):
 
     if sequence_context_weights != "uniform" and sequence_context_weights != "harmonic":
         raise NanocomporeError("Invalid sequence_context_weights (uniform or harmonic)")
 
     n_lowcov = 0
     tests = set()
+    # If we have less than 2 replicates in any condition force logit method
+    if not all([ len(i)>1 for i in ref_pos_list[0]['data'].values() ]):
+        force_logit=True
     for pos, pos_dict in enumerate(ref_pos_list):
 
         # Filter out low coverage positions
@@ -54,10 +57,10 @@ def txCompare(ref_pos_list, methods=None, sequence_context=0, min_coverage=20, l
                     tests.add("{}_intensity_pvalue".format(met))
                     tests.add("{}_dwell_pvalue".format(met))
                 elif met == "GMM":
-                    if gmm_method_anova:
-                        gmm_results = gmm_test_anova(data, verbose=True)
-                    else:
+                    if force_logit:
                         gmm_results = gmm_test_logit(data, verbose=True)
+                    else:
+                        gmm_results = gmm_test_anova(data, verbose=True)
                     res["GMM_pvalue"] = gmm_results[0]
                     res["GMM_model"] = gmm_results ################################# optional ?
                     tests.add("GMM_pvalue")
@@ -196,7 +199,6 @@ def gmm_test_anova(data, log_dwell=True, verbose=False):
             # Loop through ordered_counter and divide each value by the first
             logr.append(np.log(normalised_ordered_counter[0]/(1-normalised_ordered_counter[0])))
         logr = np.array(logr)
-        labels = np.array([1 if i == condition_labels[0] else 0 for i in labels])
         #r = manova.MANOVA(logr, labels).mv_test([("manova", "x1")])
         #pvalue = r.results['manova']['stat']['Pr > F']["Pillai's trace"]
 
@@ -206,18 +208,21 @@ def gmm_test_anova(data, log_dwell=True, verbose=False):
         mod = ols("logr~C(condition)", data=df).fit() 
         aov_table = sm.stats.anova_lm(mod, typ=2)
         pvalue = aov_table['PR(>F)']['C(condition)']
+        # Calculate the delta log odds ratio, i.e. the difference of the means of the log odds rations between the two conditions
+        delta_logit = df.groupby('condition').mean().loc[condition_labels[1]] - df.groupby('condition').mean().loc[condition_labels[0]]
     elif best_gmm_ncomponents == 1:
             pvalue = np.nan
             logr = "NC"
             aov_table = "NC"
             counters = "NC"
+            delta_logit = np.nan
     else:
         raise NanocomporeError("GMM models with n_component>2 are not supported")
 
     if verbose:
-        return(pvalue, logr, aov_table, counters, best_gmm, best_gmm_type, best_gmm_ncomponents)
+        return(pvalue, delta_logit, aov_table, counters, best_gmm, best_gmm_type, best_gmm_ncomponents)
     else:
-        return(pvalue, logr)
+        return(pvalue, delta_logit)
 
 
 def gmm_test_logit(data, log_dwell=True, verbose=False):

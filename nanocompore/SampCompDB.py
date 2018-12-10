@@ -666,7 +666,7 @@ class SampCompDB(object):
 
             return(fig, ax)
 
-    def plot_volcano(self, ref_id, threshold=0.01, figsize=(30,10), palette="Set2", plot_style="ggplot", method=None):
+    def plot_volcano(self, ref_id, threshold=0.01, figsize=(30,10), palette="Set2", plot_style="ggplot", method="GMM_pvalue"):
         """
         Plot pvalues per position (by default plot all fields starting by "pvalue")
         It is pointless to plot more than 50 positions at once as it becomes hard to distiguish
@@ -691,7 +691,6 @@ class SampCompDB(object):
 
         # Make a list with all methods available
         methods=list(self.results)
-
         if method not in self._pvalue_tests:
             raise NanocomporeError("Method %s is not in the results dataframe. Please chose one of %s "%(method, self._pvalue_tests))
 

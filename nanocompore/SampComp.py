@@ -46,7 +46,7 @@ class SampComp(object):
         bed_fn=None,
         whitelist=None,
         comparison_method = None,
-        gmm_method_anova = True,
+        force_logit = True,
         sequence_context = 0,
         sequence_context_weights = "uniform",
         min_coverage = 10,
@@ -86,9 +86,7 @@ class SampComp(object):
             raise NanocomporeError("2 conditions are expected. Found {}".format(len(eventalign_fn_dict)))
         for cond_lab, sample_dict in eventalign_fn_dict.items():
             if len(sample_dict) == 1:
-                if gmm_method_anova:
-                    raise NanocomporeError("The GMM/anova method can only be used if all conditions have replicates. You can use the logit method instead by setting gmm_method_anova=False.")
-                warn(NanocomporeWarning ("Only 1 replicate found for condition {}. This is not recomended".format(cond_lab)))
+                warn(NanocomporeWarning ("Only 1 replicate found for condition {}. This is not recomended. The statistics will be calculated with the logit method".format(cond_lab)))
 
         # Check args
         for sample_dict in eventalign_fn_dict.values():
@@ -141,7 +139,7 @@ class SampComp(object):
         self.__bed_fn = bed_fn
         self.__whitelist = whitelist
         self.__comparison_methods = comparison_method
-        self.__gmm_method_anova = gmm_method_anova
+        self.__force_logit = force_logit
         self.__sequence_context = sequence_context
         self.__sequence_context_weights = sequence_context_weights
         self.__nthreads = nthreads - 2
@@ -269,7 +267,7 @@ class SampComp(object):
                         sequence_context=self.__sequence_context,
                         sequence_context_weights=self.__sequence_context_weights,
                         min_coverage= self.__min_coverage,
-                        gmm_method_anova=self.__gmm_method_anova,
+                        force_logit=self.__force_logit,
                         logger=logger)
 
                 # Add the current read details to queue
