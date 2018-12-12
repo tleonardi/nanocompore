@@ -246,13 +246,13 @@ class SampComp (object):
 
                                 # And then fill dict with the current pos values
                                 ref_pos_list[pos]["data"][cond_lab][sample_lab]["intensity"].append(kmer["median"])
-                                ref_pos_list[pos]["data"][cond_lab][sample_lab]["dwell"].append(kmer["n_signals"])
+                                ref_pos_list[pos]["data"][cond_lab][sample_lab]["dwell"].append(kmer["dwell_time"])
                                 ref_pos_list[pos]["data"][cond_lab][sample_lab]["coverage"] += 1
 
                                 # Also fill in with normalised position event stats
-                                n_valid = (kmer["n_events"]-(kmer["NNNNN_events"]+kmer["mismatching_events"])) / kmer["n_events"]
-                                n_NNNNN = kmer["NNNNN_events"] / kmer["n_events"]
-                                n_mismatching = kmer["mismatching_events"] / kmer["n_events"]
+                                n_valid = (kmer["dwell_time"]-(kmer["NNNNN_dwell_time"]+kmer["mismatch_dwell_time"])) / kmer["dwell_time"]
+                                n_NNNNN = kmer["NNNNN_dwell_time"] / kmer["dwell_time"]
+                                n_mismatching = kmer["mismatch_dwell_time"] / kmer["dwell_time"]
                                 ref_pos_list[pos]["data"][cond_lab][sample_lab]["events_stats"]["valid"] += n_valid
                                 ref_pos_list[pos]["data"][cond_lab][sample_lab]["events_stats"]["NNNNN"] += n_NNNNN
                                 ref_pos_list[pos]["data"][cond_lab][sample_lab]["events_stats"]["mismatching"] += n_mismatching
