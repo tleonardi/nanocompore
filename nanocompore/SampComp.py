@@ -16,6 +16,7 @@ from collections import OrderedDict, Counter
 import shelve
 import multiprocessing as mp
 from warnings import warn
+import traceback
 
 # Third party
 from tqdm import tqdm
@@ -157,50 +158,60 @@ class SampComp (object):
         # Init Multiprocessing variables
         in_q = mp.Queue(maxsize = 100)
         out_q = mp.Queue(maxsize = 100)
+        error_q = mp.Queue ()
 
         # Define processes
         ps_list = []
-        ps_list.append(mp.Process(target=self.__list_refid, args=(in_q,)))
+        ps_list.append(mp.Process(target=self.__list_refid, args=(in_q, error_q)))
         for i in range(self.__nthreads):
-            ps_list.append(mp.Process(target=self.__process_references, args=(in_q, out_q)))
-        ps_list.append(mp.Process(target=self.__write_output, args=(out_q,)))
+            ps_list.append(mp.Process(target=self.__process_references, args=(in_q, out_q, error_q)))
+        ps_list.append(mp.Process(target=self.__write_output, args=(out_q, error_q)))
 
         # Start processes and block until done
         try:
+            # Start all processes
             for ps in ps_list:
-                ps.start()
+                ps.start ()
+            # Monitor error queue
+            for tb in iter (error_q.get, None):
+                raise NanocomporeError (tb)
+            # Join processes
             for ps in ps_list:
-                ps.join()
+                ps.join ()
 
-        # Kill processes if early stop
-        except (BrokenPipeError, KeyboardInterrupt) as E:
-            if self.verbose: stderr_print("Early stop. Kill processes\n")
+        # Kill processes if any error
+        except (BrokenPipeError, KeyboardInterrupt, NanocomporeError) as E:
             for ps in ps_list:
-                ps.terminate()
+                ps.terminate ()
+            logger.debug("An error occured. All processes were killed\n")
+            raise E
 
         # Return database wrapper object
         return SampCompDB(db_fn=self.__output_db_fn, fasta_fn=self.__fasta_fn, bed_fn=self.__bed_fn)
 
     #~~~~~~~~~~~~~~PRIVATE MULTIPROCESSING METHOD~~~~~~~~~~~~~~#
-    def __list_refid (self, in_q):
-        # Add refid to inqueue to dispatch the data among the workers
-        for ref_id, ref_dict in self.__whitelist:
-            logger.debug("Adding {} to in_q".format(ref_id))
-            in_q.put((ref_id, ref_dict))
+    def __list_refid (self, in_q, error_q):
+        """Add valid refid from whitelist to input queue to dispatch the data among the workers"""
+        try:
+            for ref_id, ref_dict in self.__whitelist:
+                logger.debug("Adding {} to in_q".format(ref_id))
+                in_q.put((ref_id, ref_dict))
 
-        # Add 1 poison pill for each worker thread
-        for i in range(self.__nthreads):
+        # Manage exceptions and deal poison pills
+        except Exception:
+            error_q.put (traceback.format_exc())
+        finally:
             logger.debug("Adding poison pill to in_q")
-            in_q.put(None)
+            for i in range (self.__nthreads):
+                in_q.put(None)
 
-    def __process_references (self, in_q, out_q):
+    def __process_references (self, in_q, out_q, error_q):
         """
         Consume ref_id, agregate intensity and dwell time at position level and
         perform statistical analyses to find significantly different regions
         """
-        logger.debug("Worker thread started")
-
         try:
+            logger.debug("Worker thread started")
             # Open all files for reading. File pointer are stored in a dict matching the ref_dict entries
             fp_dict = self.__eventalign_fn_open()
 
@@ -271,14 +282,15 @@ class SampComp (object):
                 logger.debug("Adding %s to out_q"%(ref_id))
                 out_q.put ((ref_id, ref_pos_list))
 
+        # Manage exceptions, deal poison pills and close files
+        except Exception:
+            error_q.put (traceback.format_exc())
         finally:
-            # Add a poison pill in queue
             logger.debug("Adding poison pill to out_q")
             out_q.put (None)
-            # close all files
             self.__eventalign_fn_close (fp_dict)
 
-    def __write_output (self, out_q):
+    def __write_output (self, out_q, error_q):
         # Get results out of the out queue and write in shelve
         pvalue_tests = set()
         try:
@@ -297,7 +309,6 @@ class SampComp (object):
                         # Write results in a shelve db
                         db [ref_id] = ref_pos_list
                         pbar.update ()
-                pbar.close()
 
                 db["__metadata"] = {
                     "comparison_method": self.__comparison_methods,
@@ -305,8 +316,13 @@ class SampComp (object):
                     "min_coverage": self.__min_coverage,
                     "n_samples": self.__n_samples,
                     "pvalue_tests": sorted(list(pvalue_tests))}
-        except IOError:
-            raise NanocomporeError("Error writing to output db")
+
+        # Manage exceptions, deal poison pills and close files
+        except Exception:
+            error_q.put (traceback.format_exc())
+        finally:
+            pbar.close()
+            error_q.put(None)
 
     #~~~~~~~~~~~~~~PRIVATE HELPER METHODS~~~~~~~~~~~~~~#
     def __eventalign_fn_open (self):
