@@ -63,9 +63,9 @@ def txCompare(ref_pos_list, methods=None, sequence_context=0, min_coverage=20, l
 
     # Combine pvalue within a given sequence context
     if sequence_context > 0:
+        logger.debug ("Calculate weighs and cross correlation matrices by tests")
         if sequence_context_weights == "harmonic":
             # Generate weights as a symmetrical harmonic series
-            logger.debug ("Calculate harmonic weighs and cross correlation matrices by tests")
             weights = harmomic_series(sequence_context)
         else:
             weights = [1]*(2*sequence_context+1)
@@ -82,7 +82,7 @@ def txCompare(ref_pos_list, methods=None, sequence_context=0, min_coverage=20, l
         for test in tests:
             corr_matrix_dict[test] = cross_corr_matrix (pval_list_dict[test], sequence_context)
 
-        logger.debug ("Combine adjacent position pvalues with Hou's method positon per position")
+        logger.debug ("Combine adjacent position pvalues with Hou's method position per position")
         # Iterate over each positions in previously generated result dictionnary
         for mid_pos in range (len(ref_pos_list)):
             # Perform test only if middle pos is valid
