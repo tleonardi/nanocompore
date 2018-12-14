@@ -8,6 +8,7 @@ from dbm import error as dbm_error
 from math import log
 import re
 import sys
+from pkg_resources import resource_filename
 
 # Third party
 from pyfaidx import Fasta
@@ -24,10 +25,9 @@ from sklearn.preprocessing import scale as scale
 
 # Local package
 from nanocompore.common import counter_to_str, access_file, NanocomporeError
-from nanocompore import models
 
 #~~~~~~~~~~~~~~MAIN CLASS~~~~~~~~~~~~~~#
-class SampCompDB (object):
+class SampCompDB(object):
     """ Wrapper over the result shelve SampComp """
 
     #~~~~~~~~~~~~~~FUNDAMENTAL METHODS~~~~~~~~~~~~~~#
@@ -42,7 +42,7 @@ class SampCompDB (object):
 
         # Try to get ref_id list and metadata from shelve db
         try:
-            with shelve.open (db_fn, flag='r') as db:
+            with shelve.open(db_fn, flag='r') as db:
                 # Try to get metadata from db
                 try:
                     metadata = db['__metadata']
@@ -72,36 +72,37 @@ class SampCompDB (object):
 
         # Define model depending on run_type
         if run_type == "RNA":
-            self._model_dict = models.RNA_model_dict
+            model_fn = resource_filename("nanocompore", "models/kmers_model_RNA_r9.4_180mv.tsv")
+            self._model_df = pd.read_csv(model_fn, sep="\t", comment="#", index_col=0)
         else:
-            raise NanocomporeError ("Only RNA is implemented at the moment")
+            raise NanocomporeError("Only RNA is implemented at the moment")
 
         self.bed_fn = bed_fn
 
         #Create results df with adjusted p-values
-        if self._pvalue_tests :
-            self.results = self.__calculate_results (adjust=True)
+        if self._pvalue_tests:
+            self.results = self.__calculate_results(adjust=True)
 
-    def __repr__ (self):
+    def __repr__(self):
         """readable description of the object"""
         return "[{}] Number of references: {}\n".format(self.__class__.__name__, len(self))
 
     #~~~~~~~~~~~~~~MAGIC METHODS~~~~~~~~~~~~~~#
-    def __len__ (self):
-        return len (self.ref_id_list)-1
+    def __len__(self):
+        return len(self.ref_id_list)-1
 
-    def __iter__ (self):
-        with shelve.open (self._db_fn, flag = "r") as db:
+    def __iter__(self):
+        with shelve.open(self._db_fn, flag = "r") as db:
             for k, v in db.items():
                 if not k == '__metadata':
-                    yield (k, v)
+                    yield(k, v)
 
     def __getitem__(self, items):
-        with shelve.open (self._db_fn, flag = "r") as db:
+        with shelve.open(self._db_fn, flag = "r") as db:
             if items in db:
                 return db[items]
             else:
-                raise KeyError ("Item not found in the database")
+                raise KeyError("Item not found in the database")
 
     #~~~~~~~~~~~~~~PRIVATE  METHODS~~~~~~~~~~~~~~#
 
@@ -134,10 +135,9 @@ class SampCompDB (object):
                             bed_annot[record_name]=bedline(line.split('\t'))
             except:
                 raise NanocomporeError("Can't open BED file")
-            print(bed_annot)
             if len(bed_annot) != len(self.ref_id_list):
                 raise NanocomporeError("Some references are missing from the BED file provided")
-        
+
             df['genomicPos'] = df.apply(lambda row: bed_annot[row['ref_id']].tx2genome(coord=row['pos']),axis=1)
             # This is very inefficient. We should get chr and strand only once per transcript, ideally when writing the BED file
             df['chr'] = df.apply(lambda row: bed_annot[row['ref_id']].chr,axis=1)
@@ -148,14 +148,14 @@ class SampCompDB (object):
 
         if adjust:
             for col in self._pvalue_tests:
-                df[col] = multipletests(df[col], method="fdr_bh")[1]
+                df[col] = self.__multipletests_filter_nan(df[col], method="fdr_bh")
         return df
 
-    def __get_kmer_list (self, ref_id, start, end, kmer_size=5):
+    def __get_kmer_list(self, ref_id, start, end, kmer_size=5):
         """ Extract fasta record corresponding to ref with error handling """
         try:
             with Fasta(self._fasta_fn) as fasta:
-                fasta = (fasta [ref_id])
+                fasta =(fasta [ref_id])
                 seq = str(fasta[start:end+5])
                 kmer_list = []
                 for i in range(end-start):
@@ -164,7 +164,7 @@ class SampCompDB (object):
         except KeyError:
             raise NanocomporeError("Reference id not present in fasta file")
 
-    def __get_positions (self, ref_id, start=None, end=None):
+    def __get_positions(self, ref_id, start=None, end=None):
         """ Verify start and end and if not available try to infer them"""
         try:
             with Fasta(self._fasta_fn) as fasta:
@@ -176,19 +176,36 @@ class SampCompDB (object):
         if not end or end > max_len:
             end = max_len
         if start > end:
-            raise NanocomporeError ("End coordinate has to be higher or equal to start")
-        return (start, end)
+            raise NanocomporeError("End coordinate has to be higher or equal to start")
+        return(start, end)
 
     @staticmethod
-    def __color_generator (palette, n):
+    def __color_generator(palette, n):
         pal = sns.mpl_palette(palette, n)
         for i in range(n):
-            yield (pal[i])
+            yield(pal[i])
 
+    @staticmethod
+    def __multipletests_filter_nan(pvalues, method="fdr_bh"):
+        """
+        Performs p-value correction for multiple hypothesis testing
+        using the method specified. The pvalues list can contain
+        np.nan values, which are ignored during p-value correction.
+        test: input=[0.1, 0.01, np.nan, 0.01, 0.5, 0.4, 0.01, 0.001, np.nan, np.nan, 0.01, np.nan]
+        out: array([0.13333333, 0.016     ,        nan, 0.016     , 0.5       ,
+        0.45714286, 0.016     , 0.008     ,        nan,        nan,
+        0.016     ,        nan])
+        """
+        pvalues_no_nan = [p for p in pvalues if not np.isnan(p)]
+        corrected_p_values = multipletests(pvalues_no_nan, method=method)[1]
+        for i, p in enumerate(pvalues):
+            if np.isnan(p):
+                corrected_p_values=np.insert(corrected_p_values, i, np.nan, axis=0)
+        return(corrected_p_values)
 
     #~~~~~~~~~~~~~~PUBLIC METHODS~~~~~~~~~~~~~~#
 
-    def save_to_bed (self, output_fn, bedgraph=False, pvalue_field=None, pvalue_thr=0.01, span=5, convert=None, assembly=None, title=None):
+    def save_to_bed(self, output_fn, bedgraph=False, pvalue_field=None, pvalue_thr=0.01, span=5, convert=None, assembly=None, title=None):
         """Saves the results object to BED6 format.
             bedgraph: save file in bedgraph format instead of bed
             pvalue_field: specifies what column to use as BED score (field 5, as -log10)
@@ -212,14 +229,14 @@ class SampCompDB (object):
             raise NanocomporeError("Convert value not valid")
         if convert is not None and assembly is None:
             raise NanocomporeError("The assembly argument is required in order to do the conversion. Choose one of 'hg38' or 'mm10' ")
-    
+
         with open(output_fn, "w") as bed_file:
             if title is not None:
                 if not bedgraph:
                     bed_file.write('track type=bed name="%s" description="%s"\n'%(title,pvalue_field))
                 else:
                     bed_file.write('track type=bedGraph name="%s" description="%s"\n'%(title,pvalue_field))
-    
+
             Record = namedtuple('Record', ['chr', 'genomicPos', 'ref_id','strand', 'ref_kmer', pvalue_field ])
             for record in self.results[ list(Record._fields) ].itertuples(index=False, name="Record"):
                 pvalue = getattr(record, pvalue_field)
@@ -241,7 +258,7 @@ class SampCompDB (object):
                     elif convert is "ucsc_to_ensembl":
                         line=line.translateChr(assembly=assembly, target="ens", patches=True)
                     bed_file.write("%s\t%s\t%s\t%s\n" % (line.chr, line.start, line.end, line.score))
-    
+
     def save_report(self, output_fn=None):
         """Saves an extended tabular report
         """
@@ -254,7 +271,7 @@ class SampCompDB (object):
                 raise NanocomporeError("Error opening output file %s"%output_fn)
         else:
             raise NanocomporeError("output_fn needs to be a string or None")
-    
+
         headers = ['chr', 'pos', 'ref_id','strand', 'ref_kmer']+self._pvalue_tests
         # Read extra GMM info from the shelve
         if "GMM" in self._comparison_method:
@@ -268,18 +285,20 @@ class SampCompDB (object):
                 try:
                     lor = gmm_info[record[2]][record[1]]['lor']
                     clusters = gmm_info[record[2]][record[1]]['clusters']
-                    clusters = '#'.join([ ','.join([str(x) for x in i]) for i in clusters])
                     record += [lor, clusters]
                 except KeyError:
                     record += ["nan", "nan"]
             fp.write('\t'.join([ str(i) for i in record ])+'\n')
         fp.close()
-    
-    def list_most_significant_positions (self, n=10):
+
+
+    def list_most_significant_positions(self, n=10):
         pass
-    
-    def list_most_significant_references (self, n=10):
+
+    def list_most_significant_references(self, n=10):
         pass
+
+
 
     #~~~~~~~~~~~~~~PLOTTING METHODS~~~~~~~~~~~~~~#
     def plot_pvalue( self, ref_id, start=None, end=None, kind="lineplot", threshold=0.01, figsize=(30,10), palette="Set2", plot_style="ggplot", tests=None):
@@ -303,7 +322,7 @@ class SampCompDB (object):
         pos_list = list(range(start, end))
 
         # Extract data from result dataframe
-        df = self.results.query ("ref_id==@ref_id and @start<=pos<@end")
+        df = self.results.query("ref_id==@ref_id and @start<=pos<@end")
         if df.empty:
             raise NanocomporeError("No data available for the selected interval")
 
@@ -330,7 +349,7 @@ class SampCompDB (object):
             for test in tests:
                 array[row["pos"]-start][test] = -np.log10(row[test])
         # Cast collected results to dataframe
-        df = pd.DataFrame (array, index=pos_list)
+        df = pd.DataFrame(array, index=pos_list)
 
         # Define plotting style
         with pl.style.context(plot_style):
@@ -359,8 +378,7 @@ class SampCompDB (object):
             pl.tight_layout()
             return(fig, ax)
 
-
-    def plot_signal (self, ref_id, start=None, end=None, kind="violinplot", split_samples=False, figsize=(30,10), palette="Set2", plot_style="ggplot"):
+    def plot_signal(self, ref_id, start=None, end=None, kind="violinplot", split_samples=False, figsize=(30,10), palette="Set2", plot_style="ggplot"):
         """
         Plot the dwell time and median intensity distribution position per positon in a split violin plot representation.
         It is pointless to plot more than 50 positions at once as it becomes hard to distiguish
@@ -379,23 +397,21 @@ class SampCompDB (object):
 
         # Extract data for ref_id
         ref_data = self[ref_id]
-        start, end = self.__get_positions (ref_id, start, end)
+        start, end = self.__get_positions(ref_id, start, end)
 
         # Parse line position per position
         l_intensity = []
         l_dwell = []
         x_ticks_list = []
-        model_means_list = []
+        model_intensity_list = []
+        model_dwell_list = []
 
         # Extract data from database if position in db
-        for pos in np.arange (start, end):
+        for pos in np.arange(start, end):
             ref_kmer=ref_data[pos]['ref_kmer']
             x_ticks_list.append("{}\n{}".format(pos, ref_kmer))
-
-            if ref_kmer in self._model_dict:
-                model_means_list.append(self._model_dict[ref_kmer][0])
-            else:
-                model_means_list.append(None)
+            model_intensity_list.append(self._model_df.loc[ref_kmer]["model_intensity_median"])
+            model_dwell_list.append(np.log10(self._model_df.loc[ref_kmer]["model_dwell_median"]))
 
             for cond_lab, cond_dict in ref_data[pos]['data'].items():
                 for sample_lab, sample_val in cond_dict.items():
@@ -403,48 +419,48 @@ class SampCompDB (object):
 
                     # Add intensity and dwell values to list for curent pos / lab
                     if not sample_val["intensity"]:
-                        l_intensity.append ((pos, lab, None))
+                        l_intensity.append((pos, lab, None))
                     for value in sample_val["intensity"]:
-                        l_intensity.append ((pos, lab, value))
+                        l_intensity.append((pos, lab, value))
                     if not sample_val["dwell"]:
-                        l_dwell.append ((pos, lab, None))
+                        l_dwell.append((pos, lab, None))
                     for value in sample_val["dwell"]:
-                        l_dwell.append ((pos, lab, np.log10(value)))
+                        l_dwell.append((pos, lab, np.log10(value)))
 
         # Define ploting style
-        with pl.style.context (plot_style):
+        with pl.style.context(plot_style):
             fig, (ax1, ax2) = pl.subplots(2,1, figsize=figsize, sharex=True)
 
-            for ax, l in ((ax1,l_intensity), (ax2,l_dwell)):
-                df = pd.DataFrame (l, columns=["pos", "lab", "value"])
+            for ax, l, model in ((ax1,l_intensity,model_intensity_list), (ax2,l_dwell,model_dwell_list)):
+                # Plot values
+                df = pd.DataFrame(l, columns=["pos", "lab", "value"])
                 if kind == "violinplot":
-                    _ = sns.violinplot (x="pos", y="value", hue="lab", data=df, ax=ax, split=not split_samples, inner="quartile",
+                    _ = sns.violinplot(x="pos", y="value", hue="lab", data=df, ax=ax, split=not split_samples, inner="quartile",
                                         bw=0.25, linewidth=1, scale="area", palette=palette, zorder=0)
                 elif kind == "boxenplot":
-                    _ = sns.boxenplot (x="pos", y="value", hue="lab", data=df, ax=ax, scale="area", palette=palette, zorder=0)
+                    _ = sns.boxenplot(x="pos", y="value", hue="lab", data=df, ax=ax, scale="area", palette=palette, zorder=0)
                 elif kind == "swarmplot":
-                    _ = sns.swarmplot (x="pos", y="value", hue="lab", data=df, ax=ax, dodge=True, palette=palette, zorder=0)
+                    _ = sns.swarmplot(x="pos", y="value", hue="lab", data=df, ax=ax, dodge=True, palette=palette, zorder=0)
                 else:
                     raise NanocomporeError("Not a valid plot kind {}".format(kind))
-
-            # Add model intensity
-            _ = ax1.plot (model_means_list, color="black", marker="x", label="Model Mean", linestyle="", zorder=1)
+                # Plot model
+                _ = ax.plot(model, color="black", marker="x", label="Model Median", linestyle="", zorder=1)
 
             # Adjust display
-            _ = ax1.set_xlabel ("")
-            _ = ax2.set_xlabel ("Reference position")
-            _ = ax1.set_ylabel ("Mean Intensity")
-            _ = ax2.set_ylabel ("log10 (Dwell Time)")
+            _ = ax1.set_xlabel("")
+            _ = ax2.set_xlabel("Reference position")
+            _ = ax1.set_ylabel("Mean Intensity")
+            _ = ax2.set_ylabel("log10 (Dwell Time)")
             _ = ax1.legend(bbox_to_anchor=(1, 1), loc=2, facecolor="white", frameon=False)
             _ = ax2.legend("")
-            _ = ax2.set_xlim (-1, end-start)
-            _ = ax2.set_xticklabels (x_ticks_list)
+            _ = ax2.set_xlim(-1, end-start)
+            _ = ax2.set_xticklabels(x_ticks_list)
             _ = fig.suptitle("Reference:{}  Start:{}  End:{}".format(ref_id, start, end), y=1.01, fontsize=18)
 
             pl.tight_layout()
-            return (fig, (ax1, ax2))
+            return(fig, (ax1, ax2))
 
-    def plot_coverage (self, ref_id, start=None, end=None, scale=False, split_samples=False, figsize=(30,5), palette="Set2", plot_style="ggplot"):
+    def plot_coverage(self, ref_id, start=None, end=None, scale=False, split_samples=False, figsize=(30,5), palette="Set2", plot_style="ggplot"):
         """
         ref_id: Valid reference id name in the database
         start: Start coordinate. Default=0
@@ -457,41 +473,41 @@ class SampCompDB (object):
         """
         # Extract data for ref_id
         ref_data = self[ref_id]
-        start, end = self.__get_positions (ref_id, start, end)
+        start, end = self.__get_positions(ref_id, start, end)
 
         # Parse data from database
         l = []
-        for pos in np.arange (start, end):
+        for pos in np.arange(start, end):
             for cond_lab, cond_dict in ref_data[pos]['data'].items():
                 for sample_lab, sample_val in cond_dict.items():
-                    l.append ((pos, "{}_{}".format(cond_lab, sample_lab), sample_val["coverage"]))
+                    l.append((pos, "{}_{}".format(cond_lab, sample_lab), sample_val["coverage"]))
 
         # Cast collected results to dataframe
-        df = pd.DataFrame (l, columns=["pos", "sample", "cov"])
+        df = pd.DataFrame(l, columns=["pos", "sample", "cov"])
         if scale:
             df['cov'] = df.groupby('sample')['cov'].apply(lambda x: x/max(x))
 
         # Define plotting style
-        with pl.style.context (plot_style):
-            fig, ax = pl.subplots (figsize=figsize)
-            _ = sns.lineplot ( x="pos", y="cov", hue="sample", data=df, ax=ax, palette=palette, drawstyle="steps")
+        with pl.style.context(plot_style):
+            fig, ax = pl.subplots(figsize=figsize)
+            _ = sns.lineplot( x="pos", y="cov", hue="sample", data=df, ax=ax, palette=palette, drawstyle="steps")
             if not scale:
-                _ = ax.axhline  (y=self._min_coverage, linestyle=":", color="grey", label="minimal coverage")
+                _ = ax.axhline(y=self._min_coverage, linestyle=":", color="grey", label="minimal coverage")
 
-            _ = ax.set_ylim (0, None)
-            _ = ax.set_xlim (start, end-1)
-            _ = ax.set_title ("Reference:{}  Start:{}  End:{}".format(ref_id, start, end), fontsize=18)
-            _ = ax.set_ylabel ("Coverage")
-            _ = ax.set_xlabel ("Reference position")
+            _ = ax.set_ylim(0, None)
+            _ = ax.set_xlim(start, end-1)
+            _ = ax.set_title("Reference:{}  Start:{}  End:{}".format(ref_id, start, end), fontsize=18)
+            _ = ax.set_ylabel("Coverage")
+            _ = ax.set_xlabel("Reference position")
             _ = ax.legend(bbox_to_anchor=(1, 1), loc=2, facecolor="white", frameon=False)
 
             pl.tight_layout()
-            return (fig, ax)
+            return(fig, ax)
 
-    def plot_bleeding_hulk (self, ref_id, start=None, end=None, split_samples=False, figsize=(30,10)):
+    def plot_bleeding_hulk(self, ref_id, start=None, end=None, split_samples=False, figsize=(30,10)):
         self.plot_event_stats(ref_id, start, end, split_samples, figsize, "Accent")
 
-    def plot_event_stats (self, ref_id, start=None, end=None, split_samples=False, figsize=(30,10), palette="Accent", plot_style="ggplot"):
+    def plot_event_stats(self, ref_id, start=None, end=None, split_samples=False, figsize=(30,10), palette="Accent", plot_style="ggplot"):
         """
         ref_id: Valid reference id name in the database
         start: Start coordinate. Default=0
@@ -504,11 +520,11 @@ class SampCompDB (object):
         """
         # Extract data for ref_id
         ref_data = self[ref_id]
-        start, end = self.__get_positions (ref_id, start, end)
+        start, end = self.__get_positions(ref_id, start, end)
 
         # Parse data from database
         d = OrderedDict()
-        for pos in np.arange (start, end):
+        for pos in np.arange(start, end):
             for cond_lab, cond_dict in ref_data[pos]["data"].items():
                 for samp_lab, sample_val in cond_dict.items():
                     lab = "{}_{}".format(cond_lab, samp_lab) if split_samples else cond_lab
@@ -525,22 +541,22 @@ class SampCompDB (object):
                     d[lab][pos]["mismatching"] += sample_val["events_stats"]["mismatching"]
                     d[lab][pos]["missing"] += sample_val["events_stats"]["missing"]
 
-        with pl.style.context (plot_style):
-            fig, axes = pl.subplots (len(d),1, figsize=figsize)
-            for ax, (lab, pos_dict) in zip (axes, d.items()):
+        with pl.style.context(plot_style):
+            fig, axes = pl.subplots(len(d),1, figsize=figsize)
+            for ax, (lab, pos_dict) in zip(axes, d.items()):
                 sample_df = pd.DataFrame.from_dict(pos_dict, orient="index")
 
-                _ = sample_df.plot.area (ax=ax, colormap=palette, legend=False)
-                _ = ax.set_title (lab)
-                _ = ax.set_ylabel ("Coverage")
-                _ = ax.set_xlim (start, end-1)
+                _ = sample_df.plot.area(ax=ax, colormap=palette, legend=False)
+                _ = ax.set_title(lab)
+                _ = ax.set_ylabel("Coverage")
+                _ = ax.set_xlim(start, end-1)
 
-            _ = axes[-1].set_xlabel ("Reference position")
+            _ = axes[-1].set_xlabel("Reference position")
             _ = axes[0].legend(bbox_to_anchor=(1, 1), loc=2, facecolor="white", frameon=False)
-            _ = fig.suptitle ("Reference:{}  Start:{}  End:{}".format(ref_id, start, end), y=1.02, fontsize=18)
+            _ = fig.suptitle("Reference:{}  Start:{}  End:{}".format(ref_id, start, end), y=1.02, fontsize=18)
             pl.tight_layout()
 
-        return (fig, axes)
+        return(fig, axes)
 
     def plot_position(self, ref_id, pos=None, split_samples=False, figsize=(30,10), palette="Set2",  plot_style="ggplot", xlim=(None,None), ylim=(None,None), alpha=0.3, pointSize=20, scatter=True, kde=True, model=False, gmm_levels=50):
         """
@@ -577,10 +593,10 @@ class SampCompDB (object):
         data = ref_data[pos]['data']
 
         # Sample colors in palette
-        col_gen = self.__color_generator (palette=palette, n=self._n_samples if split_samples else 2)
+        col_gen = self.__color_generator(palette=palette, n=self._n_samples if split_samples else 2)
 
         # Collect and transform data in dict
-        plot_data_dict = OrderedDict ()
+        plot_data_dict = OrderedDict()
         for cond_lab, cond_dict in ref_data[pos]["data"].items():
             if split_samples:
                 for samp_lab, sample_val in cond_dict.items():
@@ -627,7 +643,7 @@ class SampCompDB (object):
                         ax=ax,
                         clip=((min(d["intensity"]), max(d["intensity"])), (min(d["dwell"]),max(d["dwell"]))))
                 if scatter:
-                    _ = ax.scatter (
+                    _ = ax.scatter(
                         x=d["intensity"],
                         y=d["dwell"],
                         color=d["color"],
@@ -638,17 +654,17 @@ class SampCompDB (object):
                 _ = ax.contour(X, Y, Z, levels=gmm_levels, alpha=alpha, colors="black")
 
             # Adjust display
-            _ = ax.set_title ("%s\n%s (%s)"%(ref_id,pos, ref_kmer))
-            _ = ax.set_ylabel ("log10 (Dwell Time)")
-            _ = ax.set_xlabel ("Median Intensity")
+            _ = ax.set_title("%s\n%s (%s)"%(ref_id,pos, ref_kmer))
+            _ = ax.set_ylabel("log10 (Dwell Time)")
+            _ = ax.set_xlabel("Median Intensity")
             _ = ax.set_xlim(xlim)
             _ = ax.set_ylim(ylim)
             _ = ax.legend()
             pl.tight_layout()
 
-            return (fig, ax)
+            return(fig, ax)
 
-    def plot_volcano(self, ref_id, threshold=0.01, figsize=(30,10), palette="Set2", plot_style="ggplot", method=None):
+    def plot_volcano(self, ref_id, threshold=0.01, figsize=(30,10), palette="Set2", plot_style="ggplot", method="GMM_pvalue"):
         """
         Plot pvalues per position (by default plot all fields starting by "pvalue")
         It is pointless to plot more than 50 positions at once as it becomes hard to distiguish
@@ -673,18 +689,17 @@ class SampCompDB (object):
 
         # Make a list with all methods available
         methods=list(self.results)
-
         if method not in self._pvalue_tests:
             raise NanocomporeError("Method %s is not in the results dataframe. Please chose one of %s "%(method, self._pvalue_tests))
 
         # Parse line position per position
         d = OrderedDict()
-        
-            
+
+
         rp=self[ref_id]
         for pos in range(start, end+1):
             # Collect results for position
-            res_dict = OrderedDict ()
+            res_dict = OrderedDict()
             if pos in ref_pos_dict:
                 for k,v in ref_pos_dict[pos].items():
                     if k == method:
@@ -719,4 +734,3 @@ class SampCompDB (object):
             _ = ax.set_title(ref_id)
             pl.tight_layout()
             return(fig, ax)
-

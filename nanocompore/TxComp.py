@@ -8,7 +8,9 @@ import warnings
 
 # Third party
 from scipy.stats import mannwhitneyu, ks_2samp, ttest_ind, chi2
-import statsmodels.discrete.discrete_model as sm
+import statsmodels.api as sm
+import statsmodels.discrete.discrete_model as dm
+from statsmodels.formula.api import ols
 from statsmodels.tools.sm_exceptions import ConvergenceWarning
 from sklearn.preprocessing import StandardScaler
 from sklearn.mixture import GaussianMixture
@@ -21,10 +23,16 @@ from nanocompore.common import NanocomporeError
 # Init randon seed
 np.random.seed(42)
 
-def txCompare(ref_pos_list, methods=None, sequence_context=0, min_coverage=20, logger=None, ref=None):
+def txCompare(ref_pos_list, methods=None, sequence_context=0, min_coverage=20, logger=None, ref=None, sequence_context_weights="uniform", force_logit=False):
+
+    if sequence_context_weights != "uniform" and sequence_context_weights != "harmonic":
+        raise NanocomporeError("Invalid sequence_context_weights (uniform or harmonic)")
 
     n_lowcov = 0
     tests = set()
+    # If we have less than 2 replicates in any condition force logit method
+    if not all([ len(i)>1 for i in ref_pos_list[0]['data'].values() ]):
+        force_logit=True
     for pos, pos_dict in enumerate(ref_pos_list):
 
         # Filter out low coverage positions
@@ -49,21 +57,27 @@ def txCompare(ref_pos_list, methods=None, sequence_context=0, min_coverage=20, l
                     tests.add("{}_intensity_pvalue".format(met))
                     tests.add("{}_dwell_pvalue".format(met))
                 elif met == "GMM":
-                    gmm_results = gmm_test(data, verbose=True)
+                    if force_logit:
+                        gmm_results = gmm_test_logit(data, verbose=True)
+                    else:
+                        gmm_results = gmm_test_anova(data, verbose=True)
                     res["GMM_pvalue"] = gmm_results[0]
                     res["GMM_model"] = gmm_results ################################# optional ?
                     tests.add("GMM_pvalue")
 
             # Save results in main
             ref_pos_list[pos]['txComp'] = res
-    logger.debug ("Skipping {} positions because not present in all samples with sufficient coverage".format(n_lowcov))
+    logger.debug("Skipping {} positions because not present in all samples with sufficient coverage".format(n_lowcov))
 
     # Combine pvalue within a given sequence context
     if sequence_context > 0:
+        logger.debug ("Calculate weighs and cross correlation matrices by tests")
+        if sequence_context_weights == "harmonic":
+            # Generate weights as a symmetrical harmonic series
+            weights = harmomic_series(sequence_context)
+        else:
+            weights = [1]*(2*sequence_context+1)
 
-        logger.debug ("Calculate harmonic weighs and cross correlation matrices by tests")
-        # Generate weights as a symmetrical harmonic series
-        weights = harmomic_series (sequence_context)
         # Collect pvalue lists per tests
         pval_list_dict = defaultdict(list)
         for pos_dict in ref_pos_list:
@@ -74,15 +88,15 @@ def txCompare(ref_pos_list, methods=None, sequence_context=0, min_coverage=20, l
         # Compute cross correlation matrix per test
         corr_matrix_dict = OrderedDict()
         for test in tests:
-            corr_matrix_dict[test] = cross_corr_matrix (pval_list_dict[test], sequence_context)
+            corr_matrix_dict[test] = cross_corr_matrix(pval_list_dict[test], sequence_context)
 
-        logger.debug ("Combine adjacent position pvalues with Hou's method positon per position")
+        logger.debug("Combine adjacent position pvalues with Hou's method position per position")
         # Iterate over each positions in previously generated result dictionnary
-        for mid_pos in range (len(ref_pos_list)):
+        for mid_pos in range(len(ref_pos_list)):
             # Perform test only if middle pos is valid
             if not ref_pos_list[mid_pos]["lowCov"]:
                 pval_list_dict = defaultdict(list)
-                for pos in range (mid_pos-sequence_context, mid_pos+sequence_context+1):
+                for pos in range(mid_pos-sequence_context, mid_pos+sequence_context+1):
                     # If any the positions is missing or any of the pvalues in the context is lowCov or NaN, consider it 1
                     if pos < 0 or pos >= len(ref_pos_list) or ref_pos_list[pos]["lowCov"]:
                         for test in tests:
@@ -94,7 +108,7 @@ def txCompare(ref_pos_list, methods=None, sequence_context=0, min_coverage=20, l
                 # Combine collected pvalues add add to dict
                 for test in tests:
                     test_label = "{}_context_{}".format(test, sequence_context)
-                    ref_pos_list[mid_pos]['txComp'][test_label] = combine_pvalues_hou (pval_list_dict[test], weights, corr_matrix_dict[test])
+                    ref_pos_list[mid_pos]['txComp'][test_label] = combine_pvalues_hou(pval_list_dict[test], weights, corr_matrix_dict[test])
 
     return ref_pos_list
 
@@ -107,7 +121,7 @@ def nonparametric_test(data, method=None):
     elif method in ["t_test", "TT"]:
         stat_test = ttest_ind
     else:
-        raise NanocomporeError ("Invalid statistical method name (MW, KS, ttest)")
+        raise NanocomporeError("Invalid statistical method name (MW, KS, ttest)")
 
     condition_labels = tuple(data.keys())
     if len(condition_labels) != 2:
@@ -119,9 +133,104 @@ def nonparametric_test(data, method=None):
 
     pval_intensity = stat_test(condition1_intensity, condition2_intensity)[1]
     pval_dwell = stat_test(condition1_dwell, condition2_dwell)[1]
-    return (pval_intensity, pval_dwell)
+    return(pval_intensity, pval_dwell)
 
-def gmm_test(data, log_dwell=True, verbose=False):
+def gmm_test_anova(data, log_dwell=True, verbose=False):
+
+    condition_labels = tuple(data.keys())
+    if len(condition_labels) != 2:
+        raise NanocomporeError("gmm_test only supports two conditions")
+    
+    # Merge the intensities and dwell times of all samples in a single array
+    global_intensity = np.concatenate(([v['intensity'] for v in data[condition_labels[0]].values()]+[v['intensity'] for v in data[condition_labels[1]].values()]), axis=None)
+    global_dwell = np.concatenate(([v['dwell'] for v in data[condition_labels[0]].values()]+[v['dwell'] for v in data[condition_labels[1]].values()]), axis=None)
+
+    if log_dwell:
+        global_dwell = np.log10(global_dwell)
+        
+    # Scale the intensity and dwell time arrays
+    X = StandardScaler().fit_transform([(i, d) for i,d in zip(global_intensity, global_dwell)])
+
+    # Generate an array of of sample labels 
+    Y = [ k for k,v in data[condition_labels[0]].items() for _ in v['intensity'] ] + [ k for k,v in data[condition_labels[1]].items() for _ in v['intensity'] ] 
+    
+    # Loop over multiple cv_types and n_components and for each fit a GMM
+    # calculate the BIC and retain the lowest
+    lowest_bic = np.infty
+    bic = []
+    n_components_range = range(1, 3)
+    cv_types = ['spherical', 'tied', 'diag', 'full']
+    for cv_type in cv_types:
+        for n_components in n_components_range:
+        # Fit a Gaussian mixture with EM
+            gmm = GaussianMixture(n_components=n_components, covariance_type=cv_type)
+            gmm.fit(X)
+            bic.append(gmm.bic(X))
+            if bic[-1] < lowest_bic:
+                lowest_bic = bic[-1]
+                best_gmm = gmm
+                best_gmm_type = cv_type
+                best_gmm_ncomponents = n_components
+
+    # If the best GMM has 2 clusters do an anova test on the log odd ratios
+    if best_gmm_ncomponents == 2:
+        # Assign data points to the clusters
+        y_pred = best_gmm.predict(X)  
+
+        # List of sample labels
+        sample_labels = list(data[condition_labels[0]].keys()) + list(data[condition_labels[1]].keys())
+
+        # Dictionary Sample_label:Condition_label
+        sample_condition_labels = { sk:k for k,v in data.items() for sk in v.keys() }
+        counters = dict()
+        # Count how many reads in each cluster for each sample
+        for lab in sample_labels:
+            counters[lab] = Counter(y_pred[[i==lab for i in Y]])
+        labels= []
+        logr = []
+        for sample,counter in counters.items():
+            # Save the condition label the corresponds to the current sample
+            labels.append(sample_condition_labels[sample])
+            # The Counter dictionaries in counters are not ordered
+            # The following line enforces the order and adds 1 to avoid empty clusters
+            ordered_counter = [ counter[i]+1 for i in range(best_gmm_ncomponents)]
+            total = sum(ordered_counter)
+            normalised_ordered_counter = [ i/total for i in ordered_counter ]
+            # Loop through ordered_counter and divide each value by the first
+            logr.append(np.log(normalised_ordered_counter[0]/(1-normalised_ordered_counter[0])))
+        logr = np.array(logr)
+        #r = manova.MANOVA(logr, labels).mv_test([("manova", "x1")])
+        #pvalue = r.results['manova']['stat']['Pr > F']["Pillai's trace"]
+
+        # statsmodels ols requires the use of the formula api,
+        # therefore we convert the data to a df
+        df = pd.DataFrame.from_dict({'condition':labels, 'logr':logr})
+        mod = ols("logr~C(condition)", data=df).fit() 
+        aov_table = sm.stats.anova_lm(mod, typ=2)
+        pvalue = aov_table['PR(>F)']['C(condition)']
+        # Calculate the delta log odds ratio, i.e. the difference of the means of the log odds rations between the two conditions
+        delta_logit = float(df.groupby('condition').mean().loc[condition_labels[1]] - df.groupby('condition').mean().loc[condition_labels[0]])
+        # Convert the counters to a string
+        cluster_counts = list()
+        for k,v in counters.items():
+            cluster_counts.append("%s:%s/%s" % (k, v[0], v[1]))
+        cluster_counts="__".join(cluster_counts)
+    elif best_gmm_ncomponents == 1:
+            pvalue = np.nan
+            logr = "NC"
+            aov_table = "NC"
+            cluster_counts = "NC"
+            delta_logit = np.nan
+    else:
+        raise NanocomporeError("GMM models with n_component>2 are not supported")
+
+    if verbose:
+        return(pvalue, delta_logit, aov_table, cluster_counts, best_gmm, best_gmm_type, best_gmm_ncomponents)
+    else:
+        return(pvalue, delta_logit)
+
+
+def gmm_test_logit(data, log_dwell=True, verbose=False):
     condition_labels = tuple(data.keys())
     if len(condition_labels) != 2:
         raise NanocomporeError("gmm_test only supports two conditions")
@@ -141,10 +250,10 @@ def gmm_test(data, log_dwell=True, verbose=False):
     Y.extend([condition_labels[0], condition_labels[1], condition_labels[0], condition_labels[1]])
     S1_counts = Counter(y_pred[[i==condition_labels[0] for i in Y]])
     S2_counts = Counter(y_pred[[i==condition_labels[1] for i in Y]])
-    contingency_table = np.array([[S1_counts[0],S1_counts[1]],[S2_counts[0],S2_counts[1]]], dtype="int64")
+    contingency_table = "%s:%s/%s__%s:%s/%s" % (condition_labels[0], S1_counts[0], S1_counts[1], condition_labels[1], S2_counts[0], S2_counts[2])
     Y = pd.get_dummies(Y)
     Y['intercept']=1
-    logit = sm.Logit(y_pred,Y[['intercept',condition_labels[1]]] )
+    logit = dm.Logit(y_pred,Y[['intercept',condition_labels[1]]] )
     with warnings.catch_warnings():
         warnings.filterwarnings('error')
         try:
@@ -163,7 +272,7 @@ def cross_corr_matrix(pvalues_vector, context=2):
         pvalues for a given context.
     """
     matrix=[]
-    pvalues_vector = np.array(pvalues_vector)
+    pvalues_vector = np.array([ i if not np.isnan(i) else 1 for i in pvalues_vector ])
     s=pvalues_vector.size
     if all(p==1 for p in pvalues_vector):
         return(np.ones((context*2+1, context*2+1)))
@@ -218,7 +327,7 @@ def combine_pvalues_hou(pvalues, weights, cor_mat):
         combined_p_value = np.finfo(np.float).min
     return combined_p_value
 
-def harmomic_series (sequence_context):
+def harmomic_series(sequence_context):
     weights = []
     for i in range(-sequence_context, sequence_context+1):
         weights.append(1/(abs(i)+1))
