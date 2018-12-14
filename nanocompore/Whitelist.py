@@ -62,7 +62,7 @@ class Whitelist(object):
                 idx_fn = fn+".idx"
                 if not access_file(idx_fn):
                     raise NanocomporeError("Cannot access eventalign_collapse index file {}".format(idx_fn))
-                if not file_header_contains(idx_fn, field_names=("ref_id","ref_start","ref_end","read_id","kmers","NNNNN_kmers","mismatching_kmers","missing_kmers","byte_offset","byte_len")):
+                if not file_header_contains(idx_fn, field_names=("ref_id", "read_id", "kmers", "NNNNN_kmers", "mismatch_kmers", "missing_kmers", "byte_offset", "byte_len")):
                     raise NanocomporeError("The index file {} does not contain the require header fields".format(idx_fn))
         self.__eventalign_fn_dict = eventalign_fn_dict
 
@@ -168,13 +168,13 @@ class Whitelist(object):
 
                             # Filter out reads with high number of invalid kmers
                             if max_invalid_kmers_freq:
-                                if(read["NNNNN_kmers"]+read["mismatching_kmers"]+read["missing_kmers"])/read["kmers"] > max_invalid_kmers_freq:
+                                if(read["NNNNN_kmers"]+read["mismatch_kmers"]+read["missing_kmers"])/read["kmers"] > max_invalid_kmers_freq:
                                     raise NanocomporeError("High invalid kmers reads")
                             else:
                                 if max_NNNNN_freq and read["NNNNN_kmers"]/read["kmers"] > max_NNNNN_freq:
                                     raise NanocomporeError("High NNNNN kmers reads")
-                                elif max_mismatching_freq and read["mismatching_kmers"]/read["kmers"] > max_mismatching_freq:
-                                    raise NanocomporeError("High mismatching_kmers reads")
+                                elif max_mismatching_freq and read["mismatch_kmers"]/read["kmers"] > max_mismatching_freq:
+                                    raise NanocomporeError("High mismatch_kmers reads")
                                 elif max_missing_freq and read["missing_kmers"]/read["kmers"] > max_missing_freq:
                                     raise NanocomporeError("High missing_kmers reads")
 

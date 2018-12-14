@@ -8,6 +8,7 @@ from dbm import error as dbm_error
 from math import log
 import re
 import sys
+from pkg_resources import resource_filename
 
 # Third party
 from pyfaidx import Fasta
@@ -24,7 +25,6 @@ from sklearn.preprocessing import scale as scale
 
 # Local package
 from nanocompore.common import counter_to_str, access_file, NanocomporeError
-from nanocompore import models
 
 #~~~~~~~~~~~~~~MAIN CLASS~~~~~~~~~~~~~~#
 class SampCompDB(object):
@@ -72,7 +72,8 @@ class SampCompDB(object):
 
         # Define model depending on run_type
         if run_type == "RNA":
-            self._model_dict = models.RNA_model_dict
+            model_fn = resource_filename("nanocompore", "models/kmers_model_RNA_r9.4_180mv.tsv")
+            self._model_df = pd.read_csv(model_fn, sep="\t", comment="#", index_col=0)
         else:
             raise NanocomporeError("Only RNA is implemented at the moment")
 
@@ -136,7 +137,7 @@ class SampCompDB(object):
                 raise NanocomporeError("Can't open BED file")
             if len(bed_annot) != len(self.ref_id_list):
                 raise NanocomporeError("Some references are missing from the BED file provided")
-        
+
             df['genomicPos'] = df.apply(lambda row: bed_annot[row['ref_id']].tx2genome(coord=row['pos']),axis=1)
             # This is very inefficient. We should get chr and strand only once per transcript, ideally when writing the BED file
             df['chr'] = df.apply(lambda row: bed_annot[row['ref_id']].chr,axis=1)
@@ -228,14 +229,14 @@ class SampCompDB(object):
             raise NanocomporeError("Convert value not valid")
         if convert is not None and assembly is None:
             raise NanocomporeError("The assembly argument is required in order to do the conversion. Choose one of 'hg38' or 'mm10' ")
-    
+
         with open(output_fn, "w") as bed_file:
             if title is not None:
                 if not bedgraph:
                     bed_file.write('track type=bed name="%s" description="%s"\n'%(title,pvalue_field))
                 else:
                     bed_file.write('track type=bedGraph name="%s" description="%s"\n'%(title,pvalue_field))
-    
+
             Record = namedtuple('Record', ['chr', 'genomicPos', 'ref_id','strand', 'ref_kmer', pvalue_field ])
             for record in self.results[ list(Record._fields) ].itertuples(index=False, name="Record"):
                 pvalue = getattr(record, pvalue_field)
@@ -257,7 +258,7 @@ class SampCompDB(object):
                     elif convert is "ucsc_to_ensembl":
                         line=line.translateChr(assembly=assembly, target="ens", patches=True)
                     bed_file.write("%s\t%s\t%s\t%s\n" % (line.chr, line.start, line.end, line.score))
-    
+
     def save_report(self, output_fn=None):
         """Saves an extended tabular report
         """
@@ -270,7 +271,7 @@ class SampCompDB(object):
                 raise NanocomporeError("Error opening output file %s"%output_fn)
         else:
             raise NanocomporeError("output_fn needs to be a string or None")
-    
+
         headers = ['chr', 'pos', 'ref_id','strand', 'ref_kmer']+self._pvalue_tests
         # Read extra GMM info from the shelve
         if "GMM" in self._comparison_method:
@@ -289,10 +290,11 @@ class SampCompDB(object):
                     record += ["nan", "nan"]
             fp.write('\t'.join([ str(i) for i in record ])+'\n')
         fp.close()
-    
+
+
     def list_most_significant_positions(self, n=10):
         pass
-    
+
     def list_most_significant_references(self, n=10):
         pass
 
@@ -376,7 +378,6 @@ class SampCompDB(object):
             pl.tight_layout()
             return(fig, ax)
 
-
     def plot_signal(self, ref_id, start=None, end=None, kind="violinplot", split_samples=False, figsize=(30,10), palette="Set2", plot_style="ggplot"):
         """
         Plot the dwell time and median intensity distribution position per positon in a split violin plot representation.
@@ -402,17 +403,15 @@ class SampCompDB(object):
         l_intensity = []
         l_dwell = []
         x_ticks_list = []
-        model_means_list = []
+        model_intensity_list = []
+        model_dwell_list = []
 
         # Extract data from database if position in db
         for pos in np.arange(start, end):
             ref_kmer=ref_data[pos]['ref_kmer']
             x_ticks_list.append("{}\n{}".format(pos, ref_kmer))
-
-            if ref_kmer in self._model_dict:
-                model_means_list.append(self._model_dict[ref_kmer][0])
-            else:
-                model_means_list.append(None)
+            model_intensity_list.append(self._model_df.loc[ref_kmer]["model_intensity_median"])
+            model_dwell_list.append(np.log10(self._model_df.loc[ref_kmer]["model_dwell_median"]))
 
             for cond_lab, cond_dict in ref_data[pos]['data'].items():
                 for sample_lab, sample_val in cond_dict.items():
@@ -432,7 +431,8 @@ class SampCompDB(object):
         with pl.style.context(plot_style):
             fig, (ax1, ax2) = pl.subplots(2,1, figsize=figsize, sharex=True)
 
-            for ax, l in ((ax1,l_intensity), (ax2,l_dwell)):
+            for ax, l, model in ((ax1,l_intensity,model_intensity_list), (ax2,l_dwell,model_dwell_list)):
+                # Plot values
                 df = pd.DataFrame(l, columns=["pos", "lab", "value"])
                 if kind == "violinplot":
                     _ = sns.violinplot(x="pos", y="value", hue="lab", data=df, ax=ax, split=not split_samples, inner="quartile",
@@ -443,9 +443,8 @@ class SampCompDB(object):
                     _ = sns.swarmplot(x="pos", y="value", hue="lab", data=df, ax=ax, dodge=True, palette=palette, zorder=0)
                 else:
                     raise NanocomporeError("Not a valid plot kind {}".format(kind))
-
-            # Add model intensity
-            _ = ax1.plot(model_means_list, color="black", marker="x", label="Model Mean", linestyle="", zorder=1)
+                # Plot model
+                _ = ax.plot(model, color="black", marker="x", label="Model Median", linestyle="", zorder=1)
 
             # Adjust display
             _ = ax1.set_xlabel("")
@@ -695,8 +694,8 @@ class SampCompDB(object):
 
         # Parse line position per position
         d = OrderedDict()
-        
-            
+
+
         rp=self[ref_id]
         for pos in range(start, end+1):
             # Collect results for position
@@ -735,4 +734,3 @@ class SampCompDB(object):
             _ = ax.set_title(ref_id)
             pl.tight_layout()
             return(fig, ax)
-
