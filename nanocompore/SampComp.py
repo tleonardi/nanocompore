@@ -12,7 +12,7 @@ os.environ['OPENBLAS_NUM_THREADS'] = '1'
 
 # Std lib
 import logging
-from collections import OrderedDict, Counter
+from collections import *
 import shelve
 import multiprocessing as mp
 from warnings import warn
@@ -24,7 +24,7 @@ import numpy as np
 from pyfaidx import Fasta
 
 # Local package
-from nanocompore.common import counter_to_str, access_file, NanocomporeError, NanocomporeWarning, numeric_cast_list
+from nanocompore.common import *
 from nanocompore.Whitelist import Whitelist
 from nanocompore.TxComp import txCompare
 from nanocompore.SampCompDB import SampCompDB

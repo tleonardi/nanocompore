@@ -2,7 +2,7 @@
 
 #~~~~~~~~~~~~~~IMPORTS~~~~~~~~~~~~~~#
 # Std lib
-from collections import OrderedDict, namedtuple
+from collections import *
 import shelve
 from dbm import error as dbm_error
 from math import log
@@ -22,9 +22,8 @@ from statsmodels.stats.multitest import multipletests
 from sklearn.mixture.gaussian_mixture import GaussianMixture
 from sklearn.preprocessing import scale as scale
 
-
 # Local package
-from nanocompore.common import counter_to_str, access_file, NanocomporeError
+from nanocompore.common import *
 
 #~~~~~~~~~~~~~~MAIN CLASS~~~~~~~~~~~~~~#
 class SampCompDB(object):

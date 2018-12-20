@@ -2,7 +2,7 @@
 
 #~~~~~~~~~~~~~~IMPORTS~~~~~~~~~~~~~~#
 # Std lib
-from collections import namedtuple, Counter, OrderedDict, defaultdict
+from collections import *
 import logging
 import random
 
@@ -12,7 +12,7 @@ from tqdm import tqdm
 from pyfaidx import Fasta
 
 # Local package
-from nanocompore.common import counter_to_str, access_file, NanocomporeError, file_header_contains, numeric_cast_list
+from nanocompore.common import *
 
 # Logger setup
 logging.basicConfig(level=logging.INFO, format='%(message)s')
