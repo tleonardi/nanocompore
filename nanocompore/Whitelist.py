@@ -57,13 +57,21 @@ class Whitelist(object):
         self.__logLevel = logLevel
 
         # Check index files
+        self.__filter_invalid_kmers = True
         for sample_dict in eventalign_fn_dict.values():
             for fn in sample_dict.values():
                 idx_fn = fn+".idx"
                 if not access_file(idx_fn):
                     raise NanocomporeError("Cannot access eventalign_collapse index file {}".format(idx_fn))
-                if not file_header_contains(idx_fn, field_names=("ref_id", "read_id", "kmers", "NNNNN_kmers", "mismatch_kmers", "missing_kmers", "byte_offset", "byte_len")):
+                # Check header line and set a flag to skip filter if the index file does not contain kmer status information
+                with open (idx_fn, "r") as fp:
+                    header = fp.readline().rstrip().split("\t")
+                if not all_values_in (("ref_id", "read_id", "byte_offset", "byte_len"), header):
                     raise NanocomporeError("The index file {} does not contain the require header fields".format(idx_fn))
+                if not all_values_in (("kmers", "NNNNN_kmers", "mismatch_kmers", "missing_kmers"), header):
+                    self.__filter_invalid_kmers = False
+                    logger.info("Invalid kmer information not available in index file")
+
         self.__eventalign_fn_dict = eventalign_fn_dict
 
         # Get number of samples
@@ -158,7 +166,7 @@ class Whitelist(object):
                     for line in fp:
                         try:
                             # Transform line to dict and cast str numbers to actual numbers
-                            read = dict(zip(col_names, numeric_cast_list(line.rstrip().split())))
+                            read = numeric_cast_dict (keys=col_names, values=line.rstrip().split("\t"))
 
                             # Filter out ref_id if a select_ref_id list or exclude_ref_id list was provided
                             if select_ref_id and not read["ref_id"] in select_ref_id:
@@ -166,17 +174,18 @@ class Whitelist(object):
                             elif exclude_ref_id and read["ref_id"] in exclude_ref_id:
                                 raise NanocomporeError("Ref_id in exclude list")
 
-                            # Filter out reads with high number of invalid kmers
-                            if max_invalid_kmers_freq:
-                                if(read["NNNNN_kmers"]+read["mismatch_kmers"]+read["missing_kmers"])/read["kmers"] > max_invalid_kmers_freq:
-                                    raise NanocomporeError("High invalid kmers reads")
-                            else:
-                                if max_NNNNN_freq and read["NNNNN_kmers"]/read["kmers"] > max_NNNNN_freq:
-                                    raise NanocomporeError("High NNNNN kmers reads")
-                                elif max_mismatching_freq and read["mismatch_kmers"]/read["kmers"] > max_mismatching_freq:
-                                    raise NanocomporeError("High mismatch_kmers reads")
-                                elif max_missing_freq and read["missing_kmers"]/read["kmers"] > max_missing_freq:
-                                    raise NanocomporeError("High missing_kmers reads")
+                            # Filter out reads with high number of invalid kmers if information available
+                            if self.__filter_invalid_kmers:
+                                if max_invalid_kmers_freq:
+                                    if(read["NNNNN_kmers"]+read["mismatch_kmers"]+read["missing_kmers"])/read["kmers"] > max_invalid_kmers_freq:
+                                        raise NanocomporeError("High invalid kmers reads")
+                                else:
+                                    if max_NNNNN_freq and read["NNNNN_kmers"]/read["kmers"] > max_NNNNN_freq:
+                                        raise NanocomporeError("High NNNNN kmers reads")
+                                    elif max_mismatching_freq and read["mismatch_kmers"]/read["kmers"] > max_mismatching_freq:
+                                        raise NanocomporeError("High mismatch_kmers reads")
+                                    elif max_missing_freq and read["missing_kmers"]/read["kmers"] > max_missing_freq:
+                                        raise NanocomporeError("High missing_kmers reads")
 
                             # Create dict arborescence and save valid reads
                             if not read["ref_id"] in ref_reads:
