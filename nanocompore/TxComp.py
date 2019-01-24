@@ -140,20 +140,20 @@ def gmm_test_anova(data, log_dwell=True, verbose=False):
     condition_labels = tuple(data.keys())
     if len(condition_labels) != 2:
         raise NanocomporeError("gmm_test only supports two conditions")
-    
+
     # Merge the intensities and dwell times of all samples in a single array
     global_intensity = np.concatenate(([v['intensity'] for v in data[condition_labels[0]].values()]+[v['intensity'] for v in data[condition_labels[1]].values()]), axis=None)
     global_dwell = np.concatenate(([v['dwell'] for v in data[condition_labels[0]].values()]+[v['dwell'] for v in data[condition_labels[1]].values()]), axis=None)
 
     if log_dwell:
         global_dwell = np.log10(global_dwell)
-        
+
     # Scale the intensity and dwell time arrays
     X = StandardScaler().fit_transform([(i, d) for i,d in zip(global_intensity, global_dwell)])
 
-    # Generate an array of of sample labels 
-    Y = [ k for k,v in data[condition_labels[0]].items() for _ in v['intensity'] ] + [ k for k,v in data[condition_labels[1]].items() for _ in v['intensity'] ] 
-    
+    # Generate an array of of sample labels
+    Y = [ k for k,v in data[condition_labels[0]].items() for _ in v['intensity'] ] + [ k for k,v in data[condition_labels[1]].items() for _ in v['intensity'] ]
+
     # Loop over multiple cv_types and n_components and for each fit a GMM
     # calculate the BIC and retain the lowest
     lowest_bic = np.infty
@@ -175,7 +175,7 @@ def gmm_test_anova(data, log_dwell=True, verbose=False):
     # If the best GMM has 2 clusters do an anova test on the log odd ratios
     if best_gmm_ncomponents == 2:
         # Assign data points to the clusters
-        y_pred = best_gmm.predict(X)  
+        y_pred = best_gmm.predict(X)
 
         # List of sample labels
         sample_labels = list(data[condition_labels[0]].keys()) + list(data[condition_labels[1]].keys())
@@ -205,7 +205,7 @@ def gmm_test_anova(data, log_dwell=True, verbose=False):
         # statsmodels ols requires the use of the formula api,
         # therefore we convert the data to a df
         df = pd.DataFrame.from_dict({'condition':labels, 'logr':logr})
-        mod = ols("logr~C(condition)", data=df).fit() 
+        mod = ols("logr~C(condition)", data=df).fit()
         aov_table = sm.stats.anova_lm(mod, typ=2)
         pvalue = aov_table['PR(>F)']['C(condition)']
         # Calculate the delta log odds ratio, i.e. the difference of the means of the log odds rations between the two conditions

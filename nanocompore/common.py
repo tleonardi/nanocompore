@@ -31,30 +31,34 @@ def access_file (fn, **kwargs):
     """
     return os.path.isfile (fn) and os.access (fn, os.R_OK)
 
-def file_header_contains (fn, field_names, sep="\t"):
-    with open (fn, "r") as fp:
-        header = fp.readline().rstrip().split (sep)
-    for f in field_names:
-        if not f in header:
-            return False
-    return True
-
 def numeric_cast_list (l):
     """
     Cast str values to integer or float from a list
     """
     l2 = []
-    for i in l:
-        if type(i)== str:
-            try:
-                i = int(i)
-            except ValueError:
-                try:
-                    i = float(i)
-                except ValueError:
-                    pass
-        l2.append(i)
+    for v in l:
+        l2.append(numeric_cast(v))
     return l2
+
+def numeric_cast_dict (keys, values):
+    """
+    Cast str values to integer or float from a list
+    """
+    d = OrderedDict()
+    for k, v in zip(keys, values):
+        d[k] = numeric_cast(v)
+    return d
+
+def numeric_cast (v):
+    if type(v)== str:
+        try:
+            v = int(v)
+        except ValueError:
+            try:
+                v = float(v)
+            except ValueError:
+                pass
+    return v
 
 def counter_to_str (c):
     """Transform a counter dict to a tabulated str"""
@@ -62,3 +66,10 @@ def counter_to_str (c):
     for i, j in c.most_common():
         m += "\t{}: {:,}".format(i, j)
     return m
+
+def all_values_in (required_val_list, all_val_list):
+    """"""
+    for v in required_val_list:
+        if not v in all_val_list:
+            return False
+    return True

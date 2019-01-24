@@ -2,7 +2,7 @@
 
 #~~~~~~~~~~~~~~IMPORTS~~~~~~~~~~~~~~#
 # Std lib
-from collections import OrderedDict, namedtuple
+from collections import *
 import shelve
 from dbm import error as dbm_error
 from math import log
@@ -22,9 +22,8 @@ from statsmodels.stats.multitest import multipletests
 from sklearn.mixture.gaussian_mixture import GaussianMixture
 from sklearn.preprocessing import scale as scale
 
-
 # Local package
-from nanocompore.common import counter_to_str, access_file, NanocomporeError
+from nanocompore.common import *
 
 #~~~~~~~~~~~~~~MAIN CLASS~~~~~~~~~~~~~~#
 class SampCompDB(object):
@@ -298,8 +297,6 @@ class SampCompDB(object):
     def list_most_significant_references(self, n=10):
         pass
 
-
-
     #~~~~~~~~~~~~~~PLOTTING METHODS~~~~~~~~~~~~~~#
     def plot_pvalue( self, ref_id, start=None, end=None, kind="lineplot", threshold=0.01, figsize=(30,10), palette="Set2", plot_style="ggplot", tests=None):
         """
@@ -505,9 +502,9 @@ class SampCompDB(object):
             return(fig, ax)
 
     def plot_bleeding_hulk(self, ref_id, start=None, end=None, split_samples=False, figsize=(30,10)):
-        self.plot_event_stats(ref_id, start, end, split_samples, figsize, "Accent")
+        self.plot_kmers_stats(ref_id, start, end, split_samples, figsize, "Accent")
 
-    def plot_event_stats(self, ref_id, start=None, end=None, split_samples=False, figsize=(30,10), palette="Accent", plot_style="ggplot"):
+    def plot_kmers_stats(self, ref_id, start=None, end=None, split_samples=False, figsize=(30,10), palette="Accent", plot_style="ggplot"):
         """
         ref_id: Valid reference id name in the database
         start: Start coordinate. Default=0
@@ -536,10 +533,10 @@ class SampCompDB(object):
                         d[lab][pos] = {"valid":0,"NNNNN":0,"mismatching":0,"missing":0}
 
                     # Fill-in with values
-                    d[lab][pos]["valid"] += sample_val["events_stats"]["valid"]
-                    d[lab][pos]["NNNNN"] += sample_val["events_stats"]["NNNNN"]
-                    d[lab][pos]["mismatching"] += sample_val["events_stats"]["mismatching"]
-                    d[lab][pos]["missing"] += sample_val["events_stats"]["missing"]
+                    d[lab][pos]["valid"] += sample_val["kmers_stats"]["valid"]
+                    d[lab][pos]["NNNNN"] += sample_val["kmers_stats"]["NNNNN"]
+                    d[lab][pos]["mismatching"] += sample_val["kmers_stats"]["mismatching"]
+                    d[lab][pos]["missing"] += sample_val["kmers_stats"]["missing"]
 
         with pl.style.context(plot_style):
             fig, axes = pl.subplots(len(d),1, figsize=figsize)

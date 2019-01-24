@@ -22,6 +22,7 @@ setup_dict = {
         'Programming Language :: Python :: 3'],
     "install_requires": [
         'numpy>=1.14.0',
+        'scipy>=1.1.0'
         'tqdm>=4.23.4',
         "pyfaidx>=0.5.4.1",
         "matplotlib>=2.2.2",

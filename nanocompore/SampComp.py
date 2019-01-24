@@ -12,7 +12,7 @@ os.environ['OPENBLAS_NUM_THREADS'] = '1'
 
 # Std lib
 import logging
-from collections import OrderedDict, Counter
+from collections import *
 import shelve
 import multiprocessing as mp
 from warnings import warn
@@ -24,7 +24,7 @@ import numpy as np
 from pyfaidx import Fasta
 
 # Local package
-from nanocompore.common import counter_to_str, access_file, NanocomporeError, NanocomporeWarning, numeric_cast_list
+from nanocompore.common import *
 from nanocompore.Whitelist import Whitelist
 from nanocompore.TxComp import txCompare
 from nanocompore.SampCompDB import SampCompDB
@@ -238,38 +238,46 @@ class SampComp(object):
                             # Check read_id ref_id concordance between index and data file
                             header = numeric_cast_list(line_list[0][1:].split("\t"))
                             if not header[0] == read["read_id"] or not header[1] == read["ref_id"]:
-                                raise NanocomporeError("Index and data files are not matching")
+                                raise NanocomporeError("Index and data files are not matching:\n{}\n{}".format(header, read))
 
                             # Extract col names from second line
                             col_names = line_list[1].split("\t")
+                            # Check that all required fields are present
+                            if not all_values_in (["ref_pos", "ref_kmer", "median", "dwell_time"], col_names):
+                                raise NanocomporeError("Required fields not found in the data file: {}".format(col_names))
+                            # Verify if kmers events stats values are present or not
+                            kmers_stats = all_values_in (["NNNNN_dwell_time", "mismatch_dwell_time"], col_names)
 
                             # Parse data files kmers per kmers
                             prev_pos = None
                             for line in line_list[2:]:
                                 # Transform line to dict and cast str numbers to actual numbers
-                                kmer = dict(zip (col_names, numeric_cast_list (line.split("\t"))))
-
-                                # Check if ref position is in the whitelist valid intervals and add kmer data if so
+                                kmer = numeric_cast_dict (keys=col_names, values=line.split("\t"))
                                 pos = kmer["ref_pos"]
 
-                                # Fill in the missing positions
-                                if prev_pos and pos-prev_pos > 1:
-                                    for missing_pos in range(prev_pos+1, pos):
-                                        ref_pos_list[missing_pos]["data"][cond_lab][sample_lab]["events_stats"]["missing"] += 1
+                                # Check consistance between eventalign data and reference sequence
+                                if kmer["ref_kmer"] != ref_pos_list[pos]["ref_kmer"]:
+                                    raise NanocomporeError ("Data reference kmer({}) doesn't correspond to the reference sequence ({})")
 
-                                # And then fill dict with the current pos values
+                                # Fill dict with the current pos values
                                 ref_pos_list[pos]["data"][cond_lab][sample_lab]["intensity"].append(kmer["median"])
                                 ref_pos_list[pos]["data"][cond_lab][sample_lab]["dwell"].append(kmer["dwell_time"])
                                 ref_pos_list[pos]["data"][cond_lab][sample_lab]["coverage"] += 1
 
-                                # Also fill in with normalised position event stats
-                                n_valid = (kmer["dwell_time"]-(kmer["NNNNN_dwell_time"]+kmer["mismatch_dwell_time"])) / kmer["dwell_time"]
-                                n_NNNNN = kmer["NNNNN_dwell_time"] / kmer["dwell_time"]
-                                n_mismatching = kmer["mismatch_dwell_time"] / kmer["dwell_time"]
-                                ref_pos_list[pos]["data"][cond_lab][sample_lab]["events_stats"]["valid"] += n_valid
-                                ref_pos_list[pos]["data"][cond_lab][sample_lab]["events_stats"]["NNNNN"] += n_NNNNN
-                                ref_pos_list[pos]["data"][cond_lab][sample_lab]["events_stats"]["mismatching"] += n_mismatching
-                                prev_pos = pos
+                                if kmers_stats:
+                                    # Fill in the missing positions
+                                    if prev_pos and pos-prev_pos > 1:
+                                        for missing_pos in range(prev_pos+1, pos):
+                                            ref_pos_list[missing_pos]["data"][cond_lab][sample_lab]["kmers_stats"]["missing"] += 1
+                                    # Also fill in with normalised position event stats
+                                    n_valid = (kmer["dwell_time"]-(kmer["NNNNN_dwell_time"]+kmer["mismatch_dwell_time"])) / kmer["dwell_time"]
+                                    n_NNNNN = kmer["NNNNN_dwell_time"] / kmer["dwell_time"]
+                                    n_mismatching = kmer["mismatch_dwell_time"] / kmer["dwell_time"]
+                                    ref_pos_list[pos]["data"][cond_lab][sample_lab]["kmers_stats"]["valid"] += n_valid
+                                    ref_pos_list[pos]["data"][cond_lab][sample_lab]["kmers_stats"]["NNNNN"] += n_NNNNN
+                                    ref_pos_list[pos]["data"][cond_lab][sample_lab]["kmers_stats"]["mismatching"] += n_mismatching
+                                    # Save previous position
+                                    prev_pos = pos
 
                 if self.__comparison_methods:
                     ref_pos_list = txCompare(
@@ -355,10 +363,11 @@ class SampComp(object):
                 for cond_lab, s_dict in self.__eventalign_fn_dict.items():
                     pos_dict["data"][cond_lab] = OrderedDict()
                     for sample_lab in s_dict.keys():
+
                         pos_dict["data"][cond_lab][sample_lab] = {
                             "intensity":[],
                             "dwell":[],
                             "coverage":0,
-                            "events_stats":{"missing":0,"valid":0,"NNNNN":0,"mismatching":0}}
+                            "kmers_stats":{"missing":0,"valid":0,"NNNNN":0,"mismatching":0}}
                 ref_pos_list.append(pos_dict)
         return ref_pos_list
