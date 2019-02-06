@@ -129,7 +129,7 @@ def sample_compare_main(args):
 
     # Save bed and bedg files for each method used
     if args.bed:
-        r = re.compile("adjusted_*")
+        r = re.compile(".*_pvalue.*")
         methods = list(filter(r.match, list(sc_out.results)))
         out_bedpath = outpath / "bed_files"
         out_bedpath.mkdir(exist_ok=True)
