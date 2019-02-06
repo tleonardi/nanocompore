@@ -250,7 +250,7 @@ def gmm_test_logit(data, log_dwell=True, verbose=False):
     Y.extend([condition_labels[0], condition_labels[1], condition_labels[0], condition_labels[1]])
     S1_counts = Counter(y_pred[[i==condition_labels[0] for i in Y]])
     S2_counts = Counter(y_pred[[i==condition_labels[1] for i in Y]])
-    contingency_table = "%s:%s/%s__%s:%s/%s" % (condition_labels[0], S1_counts[0], S1_counts[1], condition_labels[1], S2_counts[0], S2_counts[2])
+    contingency_table = "%s:%s/%s__%s:%s/%s" % (condition_labels[0], S1_counts[0], S1_counts[1], condition_labels[1], S2_counts[0], S2_counts[1])
     Y = pd.get_dummies(Y)
     Y['intercept']=1
     logit = dm.Logit(y_pred,Y[['intercept',condition_labels[1]]] )
