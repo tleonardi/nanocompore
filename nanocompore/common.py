@@ -4,6 +4,7 @@
 # Standard library imports
 import os
 from warnings import warn
+from collections import *
 
 #~~~~~~~~~~~~~~CUSTOM EXCEPTION CLASS~~~~~~~~~~~~~~#
 class NanocomporeError (Exception):
