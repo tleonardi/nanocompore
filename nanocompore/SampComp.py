@@ -257,7 +257,8 @@ class SampComp(object):
 
                                 # Check consistance between eventalign data and reference sequence
                                 if kmer["ref_kmer"] != ref_pos_list[pos]["ref_kmer"]:
-                                    raise NanocomporeError ("Data reference kmer({}) doesn't correspond to the reference sequence ({})")
+                                    ref_pos_list[pos]["ref_kmer"] = ref_pos_list[pos]["ref_kmer"]+"!!!!"
+                                    #raise NanocomporeError ("Data reference kmer({}) doesn't correspond to the reference sequence ({})".format(ref_pos_list[pos]["ref_kmer"], kmer["ref_kmer"]))
 
                                 # Fill dict with the current pos values
                                 ref_pos_list[pos]["data"][cond_lab][sample_lab]["intensity"].append(kmer["median"])
