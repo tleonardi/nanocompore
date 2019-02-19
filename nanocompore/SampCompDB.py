@@ -241,7 +241,7 @@ class SampCompDB(object):
                 pvalue = getattr(record, pvalue_field)
                 if np.isnan(pvalue):
                     pvalue=0
-                elif pvalue == float("-inf"):
+                elif pvalue < sys.float_info.min:
                     pvalue = -log(sys.float_info.min, 10)
                 else:
                     pvalue=-log(pvalue, 10)
