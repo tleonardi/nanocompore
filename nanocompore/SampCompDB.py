@@ -137,7 +137,7 @@ class SampCompDB(object):
             if len(bed_annot) != len(self.ref_id_list):
                 raise NanocomporeError("Some references are missing from the BED file provided")
 
-            df['genomicPos'] = df.apply(lambda row: bed_annot[row['ref_id']].tx2genome(coord=row['pos']),axis=1)
+            df['genomicPos'] = df.apply(lambda row: bed_annot[row['ref_id']].tx2genome(coord=row['pos'], stranded=True),axis=1)
             # This is very inefficient. We should get chr and strand only once per transcript, ideally when writing the BED file
             df['chr'] = df.apply(lambda row: bed_annot[row['ref_id']].chr,axis=1)
             df['strand'] = df.apply(lambda row: bed_annot[row['ref_id']].strand,axis=1)
@@ -246,14 +246,21 @@ class SampCompDB(object):
                 else:
                     pvalue=-log(pvalue, 10)
                 if not bedgraph and pvalue >= -log(pvalue_thr, 10):
-                    line=bedline([record.chr, record.genomicPos, record.genomicPos+span, f"{record.ref_id}_{record.ref_kmer}", pvalue, record.strand])
+                    if record.strand == "+":
+                        line=bedline([record.chr, record.genomicPos, record.genomicPos+span, f"{record.ref_id}_{record.ref_kmer}", pvalue, record.strand])
+                    else:
+                        line=bedline([record.chr, record.genomicPos-(span-1), record.genomicPos+1, f"{record.ref_id}_{record.ref_kmer}", pvalue, record.strand])
+
                     if convert is "ensembl_to_ucsc":
                         line=line.translateChr(assembly=assembly, target="ucsc", patches=True)
                     elif convert is "ucsc_to_ensembl":
                         line=line.translateChr(assembly=assembly, target="ens", patches=True)
                     bed_file.write("%s\t%s\t%s\t%s\t%s\t%s\n" % (line.chr, line.start, line.end, line.name, line.score, line.strand))
                 elif bedgraph:
-                    line=bedline([record.chr, record.genomicPos+2, record.genomicPos+3, f"{record.ref_id}_{record.ref_kmer}", pvalue, record.strand])
+                    if record.strand == "+":
+                        line=bedline([record.chr, record.genomicPos+2, record.genomicPos+3, f"{record.ref_id}_{record.ref_kmer}", pvalue, record.strand])
+                    else:
+                        line=bedline([record.chr, record.genomicPos-2, record.genomicPos-1, f"{record.ref_id}_{record.ref_kmer}", pvalue, record.strand])
                     if convert is "ensembl_to_ucsc":
                         line=line.translateChr(assembly=assembly, target="ucsc", patches=True)
                     elif convert is "ucsc_to_ensembl":
