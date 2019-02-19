@@ -324,7 +324,7 @@ def combine_pvalues_hou(pvalues, weights, cor_mat):
     combined_p_value = chi2.sf(tau/c,f)
     # Return a very small number if pvalue =0
     if combined_p_value == 0:
-        combined_p_value = np.finfo(np.float).min
+        combined_p_value = np.finfo(np.float).tiny
     return combined_p_value
 
 def harmomic_series(sequence_context):
