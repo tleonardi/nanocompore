@@ -143,7 +143,7 @@ class SampCompDB(object):
             df['strand'] = df.apply(lambda row: bed_annot[row['ref_id']].strand,axis=1)
             df=df[['ref_id', 'pos', 'chr', 'strand', 'genomicPos', 'ref_kmer']+self._pvalue_tests]
         else:
-            df=df[['ref_id', 'pos', 'ref_kmer']+tests]
+            df=df[['ref_id', 'pos', 'ref_kmer']+self._pvalue_tests]
 
         if adjust:
             for col in self._pvalue_tests:
