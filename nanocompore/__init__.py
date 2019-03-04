@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 # Define self package variable
-__version__ = "1.0.0b5"
+__version__ = "1.0.0b6"
 description = 'Software package that identifies raw signal changes between two conditions from https://github.com/jts/nanopolish resquiggled dRNA-Seq data.'
 
 # Collect info in a dictionary for setup.py
