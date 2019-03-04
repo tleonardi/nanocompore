@@ -183,10 +183,14 @@ class SampComp(object):
 
         # Kill processes if any error
         except(BrokenPipeError, KeyboardInterrupt, NanocomporeError) as E:
-            for ps in ps_list:
-                ps.terminate ()
-            logger.debug("An error occured. All processes were killed\n")
+            logger.debug("An error occured. Killing all processes\n")
             raise E
+
+        # Make sure all processes are killed
+        finally:
+            for ps in ps_list:
+                if ps.exitcode == None:
+                    ps.terminate ()
 
         # Return database wrapper object
         return SampCompDB(db_fn=self.__output_db_fn, fasta_fn=self.__fasta_fn, bed_fn=self.__bed_fn)
