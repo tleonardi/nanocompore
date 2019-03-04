@@ -19,7 +19,7 @@ from nanocompore.common import *
 # Logger setup
 logging.basicConfig(level=logging.INFO, format='%(message)s')
 logger = logging.getLogger(__name__)
-logLevel_dict = {"debug":logging.DEBUG, "info":logging.INFO, "warning":logging.WARNING}
+log_level_dict = {"debug":logging.DEBUG, "info":logging.INFO, "warning":logging.WARNING}
 
 #~~~~~~~~~~~~~~MAIN CLASS~~~~~~~~~~~~~~#
 
@@ -41,16 +41,15 @@ def simulate_reads_from_fasta (
     mod_extend_context=0,
     min_mod_dist=6,
     rand_seed=42,
-    logLevel="info"):
+    log_level="info"):
     """
-    logLevel: Set the log level. Valid values: warning, info, debug
     """
 
     # Saved args with wich the function was called in dict
     kwargs = locals()
 
     # Set logging level
-    logger.setLevel(logLevel_dict.get(logLevel, logging.WARNING))
+    logger.setLevel(log_level_dict.get(log_level, logging.WARNING))
 
     # Import model file
     logger.info("Import model file")

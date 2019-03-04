@@ -121,6 +121,7 @@ def sample_compare_main(args):
         logLevel = args.loglevel,
         sequence_context = args.sequence_context,
         sequence_context_weights = args.sequence_context_weights)
+        log_level = args.log_level)
 
     sc_out = s()
 
