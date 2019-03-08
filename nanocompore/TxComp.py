@@ -49,9 +49,17 @@ def txCompare(ref_pos_list, methods=None, sequence_context=0, min_coverage=20, l
         else:
             res = dict()
             data = pos_dict['data']
+            condition_labels = tuple(data.keys())
+            if len(condition_labels) != 2:
+                raise NanocomporeError("The %s method only supports two conditions" % method)
+            condition1_intensity = np.concatenate([ rep['intensity'] for rep in data[condition_labels[0]].values() ])
+            condition2_intensity = np.concatenate([ rep['intensity'] for rep in data[condition_labels[1]].values() ])
+            condition1_dwell = np.concatenate([ rep['dwell'] for rep in data[condition_labels[0]].values() ])
+            condition2_dwell = np.concatenate([ rep['dwell'] for rep in data[condition_labels[1]].values() ])
+
             for met in methods:
                 if met in ["MW", "KS", "TT"] :
-                    pvalues = nonparametric_test(data, method=met)
+                    pvalues = nonparametric_test(condition1_intensity, condition2_intensity, condition1_dwell, condition2_dwell, method=met)
                     res["{}_intensity_pvalue".format(met)]=pvalues[0]
                     res["{}_dwell_pvalue".format(met)]=pvalues[1]
                     tests.add("{}_intensity_pvalue".format(met))
@@ -112,7 +120,7 @@ def txCompare(ref_pos_list, methods=None, sequence_context=0, min_coverage=20, l
 
     return ref_pos_list
 
-def nonparametric_test(data, method=None):
+def nonparametric_test(condition1_intensity, condition2_intensity, condition1_dwell, condition2_dwell, method=None):
 
     if method in ["mann_whitney", "MW"]:
         stat_test = mannwhitneyu
@@ -122,14 +130,6 @@ def nonparametric_test(data, method=None):
         stat_test = ttest_ind
     else:
         raise NanocomporeError("Invalid statistical method name (MW, KS, ttest)")
-
-    condition_labels = tuple(data.keys())
-    if len(condition_labels) != 2:
-        raise NanocomporeError("The %s method only supports two conditions" % method)
-    condition1_intensity = np.concatenate([ rep['intensity'] for rep in data[condition_labels[0]].values() ])
-    condition2_intensity = np.concatenate([ rep['intensity'] for rep in data[condition_labels[1]].values() ])
-    condition1_dwell = np.concatenate([ rep['dwell'] for rep in data[condition_labels[0]].values() ])
-    condition2_dwell = np.concatenate([ rep['dwell'] for rep in data[condition_labels[1]].values() ])
 
     pval_intensity = stat_test(condition1_intensity, condition2_intensity)[1]
     pval_dwell = stat_test(condition1_dwell, condition2_dwell)[1]
@@ -151,7 +151,7 @@ def gmm_test_anova(data, log_dwell=True, verbose=False):
     # Scale the intensity and dwell time arrays
     X = StandardScaler().fit_transform([(i, d) for i,d in zip(global_intensity, global_dwell)])
 
-    # Generate an array of of sample labels
+    # Generate an array of sample labels
     Y = [ k for k,v in data[condition_labels[0]].items() for _ in v['intensity'] ] + [ k for k,v in data[condition_labels[1]].items() for _ in v['intensity'] ]
 
     # Loop over multiple cv_types and n_components and for each fit a GMM
