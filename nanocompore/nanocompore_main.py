@@ -126,6 +126,7 @@ def sample_compare_main(args):
 
     #Save main report
     sc_out.save_report(output_fn=f"{outpath}/nanocompore_results.txt")
+    sc_out.save_shift_stats(output_fn=f"{outpath}/nanocompore_shift_stats.txt")
 
     # Save bed and bedg files for each method used
     if args.bed:
