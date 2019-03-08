@@ -299,6 +299,29 @@ class SampCompDB(object):
             fp.write('\t'.join([ str(i) for i in record ])+'\n')
         fp.close()
 
+    def save_shift_stats(self,  output_fn=None):
+        if output_fn is None:
+            fp = sys.stdout
+        elif isinstance(output_fn, str):
+            try:
+                fp = open(output_fn, "w")
+            except:
+                raise NanocomporeError("Error opening output file %s"%output_fn)
+        else:
+            raise NanocomporeError("output_fn needs to be a string or None")
+
+
+        headers = ['c1_mean_intensity', 'c2_mean_intensity', 'c1_median_intensity', 'c2_median_intensity', 'c1_sd_intensity', 'c2_sd_intensity', 'c1_mean_dwell', 'c2_mean_dwell', 'c1_median_dwell', 'c2_median_dwell', 'c1_sd_dwell', 'c2_sd_dwell']
+        fp.write('\t'.join([ str(i) for i in ["red_if", "pos"]+headers ])+'\n')
+        for tx, refpos in self:
+            for pos, refpos_list in enumerate(refpos):
+                if "txComp" in refpos_list:
+                    ss = refpos_list['txComp']['shift_stats']
+                    if list(ss.keys()) != headers:
+                        raise NanocomporeError("Mismatch in shift_stats headers")
+                    line = [tx, pos, *ss.values()]
+                    fp.write('\t'.join([ str(i) for i in line ])+'\n')
+        fp.close()
 
     def list_most_significant_positions(self, n=10):
         pass
