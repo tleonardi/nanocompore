@@ -73,6 +73,8 @@ def txCompare(ref_pos_list, methods=None, sequence_context=0, min_coverage=20, l
                     res["GMM_model"] = gmm_results ################################# optional ?
                     tests.add("GMM_pvalue")
 
+            # Calculate shift statistics
+            res['shift_stats'] = shift_stats(condition1_intensity, condition2_intensity, condition1_dwell, condition2_dwell)
             # Save results in main
             ref_pos_list[pos]['txComp'] = res
     logger.debug("Skipping {} positions because not present in all samples with sufficient coverage".format(n_lowcov))
@@ -266,6 +268,26 @@ def gmm_test_logit(data, log_dwell=True, verbose=False):
         return (pvalue, coef, fitmod, contingency_table, gmm_mod)
     else:
         return (pvalue, coef)
+
+
+def shift_stats(condition1_intensity, condition2_intensity, condition1_dwell, condition2_dwell):
+    """Calculate shift statistics"""
+    shift_stats = OrderedDict([
+        ('c1_mean_intensity', np.mean(condition1_intensity)),
+        ('c2_mean_intensity', np.mean(condition2_intensity)),
+        ('c1_median_intensity', np.median(condition1_intensity)),
+        ('c2_median_intensity', np.median(condition2_intensity)),
+        ('c1_sd_intensity', np.std(condition1_intensity)),
+        ('c2_sd_intensity', np.std(condition2_intensity)),
+        ('c1_mean_dwell', np.mean(condition1_dwell)),
+        ('c2_mean_dwell', np.mean(condition2_dwell)),
+        ('c1_median_dwell', np.median(condition1_dwell)),
+        ('c2_median_dwell', np.median(condition2_dwell)),
+        ('c1_sd_dwell', np.std(condition1_dwell)),
+        ('c2_sd_dwell', np.std(condition2_dwell))
+    ])
+    return(shift_stats)
+
 
 def cross_corr_matrix(pvalues_vector, context=2):
     """Calculate the cross correlation matrix of the
