@@ -17,7 +17,7 @@ from nanocompore.common import *
 # Logger setup
 logging.basicConfig(level=logging.INFO, format='%(message)s')
 logger = logging.getLogger(__name__)
-logLevel_dict = {"debug":logging.DEBUG, "info":logging.INFO, "warning":logging.WARNING}
+log_level_dict = {"debug":logging.DEBUG, "info":logging.INFO, "warning":logging.WARNING}
 
 #~~~~~~~~~~~~~~MAIN CLASS~~~~~~~~~~~~~~#
 class Whitelist(object):
@@ -34,7 +34,7 @@ class Whitelist(object):
         max_missing_freq = 0.1,
         select_ref_id = [],
         exclude_ref_id = [],
-        logLevel="info"):
+        log_level="info"):
         """
         eventalign_fn_dict: Multilevel dictionnary indicating the condition_label, sample_label and file name of the eventalign_collapse output
             example d = {"S1": {"R1":"path1.tsv", "R2":"path2.tsv"}, "S2": {"R1":"path3.tsv", "R2":"path4.tsv"}}
@@ -48,13 +48,13 @@ class Whitelist(object):
         max_missing_freq: maximum frequency of missing kmers in reads (1 to deactivate)
         select_ref_id: if given, only reference ids in the list will be selected for the analysis
         exclude_ref_id: if given, refid in the list will be excluded from the analysis
-        logLevel: Set the log level. Valid values: warning, info, debug
+        log_level: Set the log level. Valid values: warning, info, debug
         """
 
         # Set logging level
-        logger.setLevel(logLevel_dict.get(logLevel, logging.WARNING))
+        logger.setLevel(log_level_dict.get(log_level, logging.WARNING))
         logger.info("Initialise Whitelist and checks options")
-        self.__logLevel = logLevel
+        self.__log_level = log_level
 
         # Check index files
         self.__filter_invalid_kmers = True
@@ -235,7 +235,7 @@ class Whitelist(object):
                     valid_ref_reads [ref_id] = valid_dict
 
                     # Save extra info for debug
-                    if self.__logLevel == "debug":
+                    if self.__log_level == "debug":
                         c["valid_ref_id"] += 1
                         for cond_lab, cond_dict in valid_dict.items():
                             for sample_lab, read_list in cond_dict.items():
@@ -243,7 +243,7 @@ class Whitelist(object):
                                 c[lab] += len(read_list)
 
                 except AssertionError:
-                    if self.__logLevel == "debug":
+                    if self.__log_level == "debug":
                         c["invalid_ref_id"] += 1
 
         logger.debug(counter_to_str(c))

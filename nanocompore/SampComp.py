@@ -32,7 +32,7 @@ from nanocompore.SampCompDB import SampCompDB
 # Logger setup
 logging.basicConfig(level=logging.INFO, format='%(message)s')
 logger = logging.getLogger(__name__)
-logLevel_dict = {"debug":logging.DEBUG, "info":logging.INFO, "warning":logging.WARNING}
+log_level_dict = {"debug":logging.DEBUG, "info":logging.INFO, "warning":logging.WARNING}
 
 #~~~~~~~~~~~~~~MAIN CLASS~~~~~~~~~~~~~~#
 class SampComp(object):
@@ -56,7 +56,7 @@ class SampComp(object):
         select_ref_id = [],
         exclude_ref_id = [],
         nthreads = 4,
-        logLevel = "info"):
+        log_level = "info"):
 
         """
         eventalign_fn_dict: Multilevel dictionnary indicating the condition_label, sample_label and file name of the eventalign_collapse output
@@ -76,10 +76,10 @@ class SampComp(object):
         select_ref_id: if given, only reference ids in the list will be selected for the analysis
         exclude_ref_id: if given, refid in the list will be excluded from the analysis
         nthreads: Number of threads (two are used for reading and writing, all the others for processing in parallel).
-        logLevel: Set the log level. Valid values: warning, info, debug
+        log_level: Set the log level. Valid values: warning, info, debug
         """
         # Set logging level
-        logger.setLevel(logLevel_dict.get (logLevel, logging.WARNING))
+        logger.setLevel(log_level_dict.get (log_level, logging.WARNING))
         logger.info("Initialise SampComp and checks options")
 
         # Check that the number of condition is 2 and raise a warning if there are less than 2 replicates per conditions
@@ -124,7 +124,7 @@ class SampComp(object):
                 max_invalid_kmers_freq = max_invalid_kmers_freq,
                 select_ref_id = select_ref_id,
                 exclude_ref_id = exclude_ref_id,
-                logLevel = logLevel)
+                log_level = log_level)
         elif not isinstance(whitelist, Whitelist):
             raise NanocomporeError("Whitelist is not valid")
 
@@ -144,7 +144,7 @@ class SampComp(object):
         self.__sequence_context = sequence_context
         self.__sequence_context_weights = sequence_context_weights
         self.__nthreads = nthreads - 2
-        self.__logLevel = logLevel
+        self.__log_level = log_level
 
         # Get number of samples
         n = 0
@@ -183,10 +183,14 @@ class SampComp(object):
 
         # Kill processes if any error
         except(BrokenPipeError, KeyboardInterrupt, NanocomporeError) as E:
-            for ps in ps_list:
-                ps.terminate ()
-            logger.debug("An error occured. All processes were killed\n")
+            logger.debug("An error occured. Killing all processes\n")
             raise E
+
+        # Make sure all processes are killed
+        finally:
+            for ps in ps_list:
+                if ps.exitcode == None:
+                    ps.terminate ()
 
         # Return database wrapper object
         return SampCompDB(db_fn=self.__output_db_fn, fasta_fn=self.__fasta_fn, bed_fn=self.__bed_fn)
@@ -308,7 +312,7 @@ class SampComp(object):
         try:
             with shelve.open(self.__output_db_fn, flag='n') as db:
                 # Iterate over the counter queue and process items until all poison pills are found
-                pbar = tqdm(total = len(self.__whitelist), unit=" Processed References", disable=self.__logLevel in ("warning", "debug"))
+                pbar = tqdm(total = len(self.__whitelist), unit=" Processed References", disable=self.__log_level in ("warning", "debug"))
                 for _ in range(self.__nthreads):
                     for ref_id, ref_pos_list in iter(out_q.get, None):
                         logger.debug("Writer thread writing %s"%ref_id)

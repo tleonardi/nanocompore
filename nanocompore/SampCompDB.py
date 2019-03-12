@@ -37,6 +37,7 @@ class SampCompDB(object):
         db_fn: Path where to write the result database
         fasta_fn: Path to a fasta file corresponding to the reference used for read alignemnt
         bed_fn: Path to a BED file containing the annotation of the transcriptome used as reference when mapping
+        run_type: Define the run type model to import (RNA or DNA)
         """
 
         # Try to get ref_id list and metadata from shelve db
