@@ -248,9 +248,9 @@ class SampCompDB(object):
                     pvalue=-log(pvalue, 10)
                 if not bedgraph and pvalue >= -log(pvalue_thr, 10):
                     if record.strand == "+":
-                        line=bedline([record.chr, record.genomicPos, record.genomicPos+span, f"{record.ref_id}_{record.ref_kmer}", pvalue, record.strand])
+                        line=bedline([record.chr, record.genomicPos, record.genomicPos+span, "%s_%s" % (record.ref_id, record.ref_kmer), pvalue, record.strand])
                     else:
-                        line=bedline([record.chr, record.genomicPos-(span-1), record.genomicPos+1, f"{record.ref_id}_{record.ref_kmer}", pvalue, record.strand])
+                        line=bedline([record.chr, record.genomicPos-(span-1), record.genomicPos+1, "%s_%s" % (record.ref_id, record.ref_kmer), pvalue, record.strand])
 
                     if convert is "ensembl_to_ucsc":
                         line=line.translateChr(assembly=assembly, target="ucsc", patches=True)
@@ -259,9 +259,9 @@ class SampCompDB(object):
                     bed_file.write("%s\t%s\t%s\t%s\t%s\t%s\n" % (line.chr, line.start, line.end, line.name, line.score, line.strand))
                 elif bedgraph:
                     if record.strand == "+":
-                        line=bedline([record.chr, record.genomicPos+2, record.genomicPos+3, f"{record.ref_id}_{record.ref_kmer}", pvalue, record.strand])
+                        line=bedline([record.chr, record.genomicPos+2, record.genomicPos+3, "%s_%s" % (record.ref_id, record.ref_kmer), pvalue, record.strand])
                     else:
-                        line=bedline([record.chr, record.genomicPos-2, record.genomicPos-1, f"{record.ref_id}_{record.ref_kmer}", pvalue, record.strand])
+                        line=bedline([record.chr, record.genomicPos-2, record.genomicPos-1, "%s_%s" % (record.ref_id, record.ref_kmer), pvalue, record.strand])
                     if convert is "ensembl_to_ucsc":
                         line=line.translateChr(assembly=assembly, target="ucsc", patches=True)
                     elif convert is "ucsc_to_ensembl":

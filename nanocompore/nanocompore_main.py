@@ -96,9 +96,9 @@ def sample_compare_main(args):
     outpath=Path(args.outpath)
     if outpath.exists():
         if not args.overwrite:
-            raise NanocomporeError(f"{args.outpath} already exists and --overwrite not specified")
+            raise NanocomporeError("%s already exists and --overwrite not specified" % args.outpath)
         elif not outpath.is_dir():
-            raise NanocomporeError(f"{args.outpath} is not a folder")
+            raise NanocomporeError("%s is not a folder" % args.outpath )
     else:
         outpath.mkdir(parents=True, exist_ok=False)
 
@@ -113,13 +113,13 @@ def sample_compare_main(args):
     # Check if fasta file exists
     fasta_fn=Path(args.fasta)
     if not fasta_fn.is_file():
-        raise NanocomporeError(f"{args.fasta} is not a valid file")
+        raise NanocomporeError("%s is not a valid file" % args.fasta )
 
     # Check if BED file exists
     if args.bed:
         bed_fn=Path(args.bed)
         if not bed_fn.is_file():
-            raise NanocomporeError(f"{args.bed} is not a valid file")
+            raise NanocomporeError("%s is not a valid file" % args.bed )
 
     # Check at least 3 threads
     if args.nthreads < 3:
@@ -143,8 +143,8 @@ def sample_compare_main(args):
     sc_out = s()
 
     #Save main report
-    sc_out.save_report(output_fn=f"{outpath}/nanocompore_results.txt")
-    sc_out.save_shift_stats(output_fn=f"{outpath}/nanocompore_shift_stats.txt")
+    sc_out.save_report(output_fn="%s/nanocompore_results.txt" % outpath)
+    sc_out.save_shift_stats(output_fn="%s/nanocompore_shift_stats.txt" % outpath)
 
     # Save bed and bedgraph files for each method used
     if args.bed:
@@ -155,8 +155,8 @@ def sample_compare_main(args):
         out_bedgpath = outpath / "bedgraph_files"
         out_bedgpath.mkdir(exist_ok=True)
         for m in methods:
-            sc_out.save_to_bed(output_fn=f"{out_bedpath}/sig_sites_{m}_thr{args.pvalue_thr}.bed", bedgraph=False, pvalue_field=m, pvalue_thr=args.pvalue_thr, span=5, title="Nanocompore Significant Sites")
-            sc_out.save_to_bed(output_fn=f"{out_bedgpath}/sig_sites_{m}_thr{args.pvalue_thr}.bedg", bedgraph=True, pvalue_field=m, title="Nanocompore Significant Sites")
+            sc_out.save_to_bed(output_fn="%s/sig_sites_%s_thr%s.bed" %(out_bedpath, m, args.pvalue_thr), bedgraph=False, pvalue_field=m, pvalue_thr=args.pvalue_thr, span=5, title="Nanocompore Significant Sites")
+            sc_out.save_to_bed(output_fn="%s/sig_sites_%s_thr.bedg" %(out_bedgpath, m, args.pvalue_thr), bedgraph=True, pvalue_field=m, title="Nanocompore Significant Sites")
 
 def simulate_reads(args):
 
@@ -170,7 +170,7 @@ def simulate_reads(args):
     # Check if fasta file exists
     fasta_fn=Path(args.fasta)
     if not fasta_fn.is_file():
-        raise NanocomporeError(f"{args.fasta} is not a valid file")
+        raise NanocomporeError("%s is not a valid file" % args.fasta)
 
     simulate_reads_from_fasta (
         fasta_fn=args.fasta,
@@ -200,7 +200,7 @@ def build_eventalign_fn_dict(labels, files):
     """
     eventalign_fn_dict = dict()
     for cond in range(2):
-        eventalign_fn_dict[ labels[cond] ] = { f"{labels[cond]}{i}": v for i,v in enumerate(files[cond].split(","), 1) }
+        eventalign_fn_dict[ labels[cond] ] = { "%s%s" % (labels[cond], i): v for i,v in enumerate(files[cond].split(","), 1) }
     return(eventalign_fn_dict)
 
 
