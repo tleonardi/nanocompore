@@ -160,13 +160,6 @@ def sample_compare_main(args):
 
 def simulate_reads(args):
 
-    # Check if output folder already exists
-    outpath=Path(args.outpath)
-    if outpath.exists() and outpath.is_dir():
-        pass
-    else:
-        outpath.mkdir()
-
     # Check if fasta file exists
     fasta_fn=Path(args.fasta)
     if not fasta_fn.is_file():
