@@ -156,7 +156,7 @@ def sample_compare_main(args):
         out_bedgpath.mkdir(exist_ok=True)
         for m in methods:
             sc_out.save_to_bed(output_fn="%s/sig_sites_%s_thr%s.bed" %(out_bedpath, m, args.pvalue_thr), bedgraph=False, pvalue_field=m, pvalue_thr=args.pvalue_thr, span=5, title="Nanocompore Significant Sites")
-            sc_out.save_to_bed(output_fn="%s/sig_sites_%s_thr.bedg" %(out_bedgpath, m, args.pvalue_thr), bedgraph=True, pvalue_field=m, title="Nanocompore Significant Sites")
+            sc_out.save_to_bed(output_fn="%s/sig_sites_%s_thr%s.bedg" %(out_bedgpath, m, args.pvalue_thr), bedgraph=True, pvalue_field=m, title="Nanocompore Significant Sites")
 
 def simulate_reads(args):
 
@@ -170,7 +170,7 @@ def simulate_reads(args):
     # Check if fasta file exists
     fasta_fn=Path(args.fasta)
     if not fasta_fn.is_file():
-        raise NanocomporeError(f"{args.fasta} is not a valid file")
+        raise NanocomporeError("%s is not a valid file" % args.fasta)
 
     simulate_reads_from_fasta (
         fasta_fn=args.fasta,

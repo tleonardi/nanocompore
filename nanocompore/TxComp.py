@@ -7,7 +7,8 @@ import warnings
 
 
 # Third party
-from scipy.stats import mannwhitneyu, ks_2samp, ttest_ind, chi2
+from scipy.stats import mannwhitneyu, ttest_ind, chi2
+from scipy.stats.mstats import ks_twosamp
 import statsmodels.api as sm
 import statsmodels.discrete.discrete_model as dm
 from statsmodels.formula.api import ols
@@ -125,11 +126,11 @@ def txCompare(ref_pos_list, methods=None, sequence_context=0, min_coverage=20, l
 def nonparametric_test(condition1_intensity, condition2_intensity, condition1_dwell, condition2_dwell, method=None):
 
     if method in ["mann_whitney", "MW"]:
-        stat_test = mannwhitneyu
+        stat_test = lambda x,y: mannwhitneyu(x, y, alternative='two-sided')
     elif method in ["kolmogorov_smirnov", "KS"]:
-        stat_test = ks_2samp
+        stat_test = ks_twosamp
     elif method in ["t_test", "TT"]:
-        stat_test = ttest_ind
+        stat_test = lambda x,y: ttest_ind(x, y, equal_var=False)
     else:
         raise NanocomporeError("Invalid statistical method name (MW, KS, ttest)")
 
@@ -290,9 +291,13 @@ def shift_stats(condition1_intensity, condition2_intensity, condition1_dwell, co
 
 
 def cross_corr_matrix(pvalues_vector, context=2):
-    """Calculate the cross correlation matrix of the
+    """ Calculate the cross correlation matrix of the
         pvalues for a given context.
     """
+    if len(pvalues_vector)<(context*3)+3:
+        raise NancomporeError("Not enough p-values for a context of order %s"%context)
+    if any(pvalues==0) or any(np.isinf(pvalues)) or any(pvalues>1):
+        raise NanocomporeError("At least one p-value is invalid")
     matrix=[]
     pvalues_vector = np.array([ i if not np.isnan(i) else 1 for i in pvalues_vector ])
     s=pvalues_vector.size
@@ -323,6 +328,9 @@ def combine_pvalues_hou(pvalues, weights, cor_mat):
         raise NanocomporeError("The correlation matrix needs to be squared, with each dimension equal to the length of the pvalued vector.")
     if all(p==1 for p in pvalues):
         return 1
+    if any(pvalues==0) or any(np.isinf(pvalues)) or any(pvalues>1):
+        raise NanocomporeError("At least one p-value is invalid")
+
     # Covariance estimation as in Kost and McDermott (eq:8)
     # https://doi.org/10.1016/S0167-7152(02)00310-3
     cov = lambda r: (3.263*r)+(0.710*r**2)+(0.027*r**3)
