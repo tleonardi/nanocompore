@@ -83,7 +83,7 @@ def simulate_reads_from_fasta (
 
     if not os.path.exists(outpath):
         logger.debug("Create output dir: {}".format(outpath))
-        mkdir(outpath)
+        mkdir (outpath)
 
     with open ("{}/{}.log".format(outpath, prefix), "w") as log_fp:
         logger.debug("Write log file")

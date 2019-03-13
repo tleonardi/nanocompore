@@ -10,7 +10,6 @@ from collections import OrderedDict
 import re
 import json
 
-
 # Local imports
 from nanocompore import __version__ as package_version
 from nanocompore import __name__ as package_name
