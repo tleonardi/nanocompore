@@ -290,9 +290,13 @@ def shift_stats(condition1_intensity, condition2_intensity, condition1_dwell, co
 
 
 def cross_corr_matrix(pvalues_vector, context=2):
-    """Calculate the cross correlation matrix of the
+    """ Calculate the cross correlation matrix of the
         pvalues for a given context.
     """
+    if len(pvalues_vector)<(context*3)+3:
+        raise NancomporeError("Not enough p-values for a context of order %s"%context)
+    if any(pvalues==0) or any(np.isinf(pvalues)) or any(pvalues>1):
+        raise NanocomporeError("At least one p-value is invalid")
     matrix=[]
     pvalues_vector = np.array([ i if not np.isnan(i) else 1 for i in pvalues_vector ])
     s=pvalues_vector.size
@@ -323,6 +327,9 @@ def combine_pvalues_hou(pvalues, weights, cor_mat):
         raise NanocomporeError("The correlation matrix needs to be squared, with each dimension equal to the length of the pvalued vector.")
     if all(p==1 for p in pvalues):
         return 1
+    if any(pvalues==0) or any(np.isinf(pvalues)) or any(pvalues>1):
+        raise NanocomporeError("At least one p-value is invalid")
+
     # Covariance estimation as in Kost and McDermott (eq:8)
     # https://doi.org/10.1016/S0167-7152(02)00310-3
     cov = lambda r: (3.263*r)+(0.710*r**2)+(0.027*r**3)
