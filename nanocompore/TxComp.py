@@ -7,7 +7,8 @@ import warnings
 
 
 # Third party
-from scipy.stats import mannwhitneyu, ks_2samp, ttest_ind, chi2
+from scipy.stats import mannwhitneyu, ttest_ind, chi2
+from scipy.stats.mstats import ks_twosamp
 import statsmodels.api as sm
 import statsmodels.discrete.discrete_model as dm
 from statsmodels.formula.api import ols
@@ -127,7 +128,7 @@ def nonparametric_test(condition1_intensity, condition2_intensity, condition1_dw
     if method in ["mann_whitney", "MW"]:
         stat_test = lambda x,y: mannwhitneyu(x, y, alternative='two-sided')
     elif method in ["kolmogorov_smirnov", "KS"]:
-        stat_test = ks_2samp
+        stat_test = ks_twosamp
     elif method in ["t_test", "TT"]:
         stat_test = lambda x,y: ttest_ind(x, y, equal_var=False)
     else:
