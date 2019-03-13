@@ -129,7 +129,7 @@ def nonparametric_test(condition1_intensity, condition2_intensity, condition1_dw
     elif method in ["kolmogorov_smirnov", "KS"]:
         stat_test = ks_2samp
     elif method in ["t_test", "TT"]:
-        stat_test = ttest_ind
+        stat_test = lambda x,y: ttest_ind(x, y, equal_var=False)
     else:
         raise NanocomporeError("Invalid statistical method name (MW, KS, ttest)")
 
