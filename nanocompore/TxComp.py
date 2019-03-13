@@ -125,7 +125,7 @@ def txCompare(ref_pos_list, methods=None, sequence_context=0, min_coverage=20, l
 def nonparametric_test(condition1_intensity, condition2_intensity, condition1_dwell, condition2_dwell, method=None):
 
     if method in ["mann_whitney", "MW"]:
-        stat_test = mannwhitneyu
+        stat_test = lambda x,y: mannwhitneyu(x, y, alternative='two-sided')
     elif method in ["kolmogorov_smirnov", "KS"]:
         stat_test = ks_2samp
     elif method in ["t_test", "TT"]:
