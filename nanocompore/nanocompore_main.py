@@ -10,7 +10,6 @@ from collections import OrderedDict
 import re
 import json
 
-
 # Local imports
 from nanocompore import __version__ as package_version
 from nanocompore import __name__ as package_name
@@ -159,13 +158,6 @@ def sample_compare_main(args):
             sc_out.save_to_bed(output_fn="%s/sig_sites_%s_thr%s.bedg" %(out_bedgpath, m, args.pvalue_thr), bedgraph=True, pvalue_field=m, title="Nanocompore Significant Sites")
 
 def simulate_reads(args):
-
-    # Check if output folder already exists
-    outpath=Path(args.outpath)
-    if outpath.exists() and outpath.is_dir():
-        pass
-    else:
-        outpath.mkdir()
 
     # Check if fasta file exists
     fasta_fn=Path(args.fasta)

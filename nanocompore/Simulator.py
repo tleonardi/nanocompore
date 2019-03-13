@@ -77,11 +77,17 @@ def simulate_reads_from_fasta (
     option_d["timestamp"] = str(datetime.datetime.now())
     for i, j in kwargs.items():
         option_d[i]=j
-    with open ("{}/{}.log".format(outpath, prefix), "w") as log_fp:
-        json.dump (option_d, log_fp, indent=2)
 
     # Set logging level
     logger.setLevel(log_level_dict.get(log_level, logging.WARNING))
+
+    if not os.path.exists(outpath):
+        logger.debug("Create output dir: {}".format(outpath))
+        mkdir (outpath)
+
+    with open ("{}/{}.log".format(outpath, prefix), "w") as log_fp:
+        logger.debug("Write log file")
+        json.dump (option_d, log_fp, indent=2)
 
     # Define model depending on run_type
     if run_type == "RNA":
