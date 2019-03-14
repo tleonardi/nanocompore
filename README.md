@@ -1,7 +1,7 @@
 # Nanocompore
 
-[![GitHub license](https://img.shields.io/github/license/a-slide/pycoQC.svg)](https://github.com/a-slide/pycoQC/blob/master/LICENSE)
-[![Language](./pictures/language-Python3-brightgreen.svg)](https://www.python.org/)
+[![MIT license](https://img.shields.io/badge/License-MIT-blue.svg)](https://lbesson.mit-license.org/)
+[![made-with-python](https://img.shields.io/badge/Made%20with-Python-1f425f.svg)](https://www.python.org/)
 
 ---
 
@@ -52,7 +52,7 @@ pip3 install git+https://github.com/tleonardi/nanocompore.git
 
 ## Option 2: Clone the repository and install locally in develop mode
 
-With this option, the package will be locally installed in “editable” or “develop” mode. This allows the package to be both installed and editable in project form. This is the recommended option if you wish to modify the code and/or participate to the development of the package (see [contribution guidelines](XXXXXXXXX)).
+With this option, the package will be locally installed in “editable” or “develop” mode. This allows the package to be both installed and editable in project form. This is the recommended option if you wish to modify the code and/or participate to the development of the package (see [contribution guidelines](https://github.com/tleonardi/nanocompore/blob/master/CONTRIBUTING.md)).
 
 `git clone https://github.com/tleonardi/nanocompore.git` or bleeding edge `git clone --branch devel https://github.com/tleonardi/nanocompore.git`
 
@@ -94,9 +94,8 @@ Here is a non-exhaustive list of alternative/complementary packages that could a
 
 Thanks for considering contributing to our_package!
 
-Please see [contribution guidelines](https://github.com/a-slide/pycoQC/blob/master/CONTRIBUTING.md) as well as the [code of conduct](https://github.com/a-slide/pycoQC/blob/master/CODE_OF_CONDUCT.md) for more information.
+Please see [contribution guidelines](https://github.com/tleonardi/nanocompore/blob/master/CONTRIBUTING.md) as well as the [code of conduct](https://github.com/tleonardi/nanocompore/blob/master/CODE_OF_CONDUCT.md) for more information.
 
-In addition, If you need a bit of help to use the package or if you just want to chat with the developers we also have a [pycoQC gitter chat room](https://gitter.im/pycoQC/community?utm_source=share-link&utm_medium=link&utm_campaign=share-link) for more informal discussions.
 
 ## Authors
 
