@@ -7,11 +7,9 @@ import warnings
 
 
 # Third party
-from scipy.stats import mannwhitneyu, ttest_ind, chi2
+from scipy.stats import mannwhitneyu, ttest_ind, chi2, f_oneway
 from scipy.stats.mstats import ks_twosamp
-import statsmodels.api as sm
 import statsmodels.discrete.discrete_model as dm
-from statsmodels.formula.api import ols
 from statsmodels.tools.sm_exceptions import ConvergenceWarning
 from sklearn.preprocessing import StandardScaler
 from sklearn.mixture import GaussianMixture
@@ -202,17 +200,17 @@ def gmm_test_anova(data, log_dwell=True, verbose=False):
             # Loop through ordered_counter and divide each value by the first
             logr.append(np.log(normalised_ordered_counter[0]/(1-normalised_ordered_counter[0])))
         logr = np.array(logr)
-        #r = manova.MANOVA(logr, labels).mv_test([("manova", "x1")])
-        #pvalue = r.results['manova']['stat']['Pr > F']["Pillai's trace"]
-
-        # statsmodels ols requires the use of the formula api,
-        # therefore we convert the data to a df
-        df = pd.DataFrame.from_dict({'condition':labels, 'logr':logr})
-        mod = ols("logr~C(condition)", data=df).fit()
-        aov_table = sm.stats.anova_lm(mod, typ=2)
-        pvalue = aov_table['PR(>F)']['C(condition)']
-        # Calculate the delta log odds ratio, i.e. the difference of the means of the log odds rations between the two conditions
-        delta_logit = float(df.groupby('condition').mean().loc[condition_labels[1]] - df.groupby('condition').mean().loc[condition_labels[0]])
+        logr_s1 = [logr[i] for i,l in enumerate(labels) if l==condition_labels[0]]
+        logr_s2 = [logr[i] for i,l in enumerate(labels) if l==condition_labels[1]]
+        aov_table = f_oneway(logr_s1, logr_s2)
+        pvalue = aov_table.pvalue
+        # When the within variance is 0, the p-value is 0
+        # If this happends it means that the replicates have exactly the same number of points in each cluster
+        # In these cases we force the p-value to a very small number
+        if pvalue == 0:
+            pvalue = np.finfo(np.float).tiny
+        # Calculate the delta log odds ratio, i.e. the difference of the means of the log odds ratios between the two conditions
+        delta_logit=float(np.mean(logr_s1)-np.mean(logr_s2))
         # Convert the counters to a string
         cluster_counts = list()
         for k,v in counters.items():
@@ -354,7 +352,7 @@ def combine_pvalues_hou(pvalues, weights, cor_mat):
     f = (4*w_sum**2) / (2*sw_sum+cov_sum)
     # chi2.sf is the same as 1-chi2.cdf but is more accurate
     combined_p_value = chi2.sf(tau/c,f)
-    # Return a very small number if pvalue =0
+    # Return a very small number if pvalue = 0
     if combined_p_value == 0:
         combined_p_value = np.finfo(np.float).tiny
     return combined_p_value
