@@ -2,6 +2,8 @@ import pytest
 from nanocompore.TxComp import *
 from scipy.stats import combine_pvalues
 import numpy as np
+from unittest import mock
+
 
 @pytest.mark.parametrize("pvalues", [
     np.array([0.1,0.2,0.3,0.5]),
@@ -41,3 +43,52 @@ def test_nonparametric_test(v1, v2, expected):
     assert nonparametric_test(v1, v2, v1, v2, method="MW") == (pytest.approx(expected[0], abs=tol), pytest.approx(expected[0], abs=tol))
     assert nonparametric_test(v1, v2, v1, v2, method="TT") == (pytest.approx(expected[1], abs=tol), pytest.approx(expected[1], abs=tol))
     assert nonparametric_test(v1, v2, v1, v2, method="KS") == (pytest.approx(expected[2], abs=tol), pytest.approx(expected[2], abs=tol))
+
+@pytest.fixture
+def test_ref_pos_list():
+    test_ref_pos_list=[None]*10
+    np.random.seed(seed=6354565)
+    for pos in range(0,10):
+        test_ref_pos_list[pos] = {'data':{
+                                      'WT':{
+                                          'WT1':{
+                                             'intensity': np.random.normal(loc=100, scale=10.0, size=100),
+                                             'dwell': np.random.normal(loc=100, scale=10.0, size=100),
+                                             'coverage': 100
+                                          },
+                                          'WT2':{
+                                             'intensity':np.random.normal(loc=100, scale=10.0, size=100),
+                                             'dwell':np.random.normal(loc=100, scale=10.0, size=100),
+                                             'coverage': 100
+                                          }
+                                      },
+                                      'KD':{
+                                          'KD1':{
+                                             'intensity':np.random.normal(loc=120, scale=10.0, size=100),
+                                             'dwell':np.random.normal(loc=120, scale=10.0, size=100),
+                                             'coverage': 100
+                                          },
+                                          'KD2':{
+                                             'intensity':np.random.normal(loc=120, scale=10.0, size=100),
+                                             'dwell':np.random.normal(loc=120, scale=10.0, size=100),
+                                             'coverage': 100
+                                          }
+                                      }
+                                  }
+                                 }
+    expected = {'GMM_anova': [0.009294583692737432, 0.0007186082196801213, 0.0073120479947770415, 0.0006747727949872362, 0.00607648353543618, 0.004730678594686069, 0.004780377368257902, 0.0032067424187288665, 0.00040586223756605407, 0.0009465280405188231],
+		'GMM_logit': [1.2742453287653416e-39, 3.3968653938213694e-40, 1.9321679678622595e-36, 8.482777798354296e-40, 6.928304506982671e-39, 7.065038671811672e-40, 1.8392720921153275e-40, 4.6826664356268694e-32, 5.922884891638699e-34, 3.1972432623454785e-40]
+		}
+    return((test_ref_pos_list, expected))
+
+
+def test_txComp_GMM_anova(test_ref_pos_list):
+    ml = mock.Mock()
+    res = txCompare(test_ref_pos_list[0], methods=['GMM'], logit=False, sequence_context=2, min_coverage=3, logger=ml)
+    GMM_pvalues = [pos['txComp']['GMM_pvalue'] for pos in res ]
+    assert GMM_pvalues == test_ref_pos_list[1]['GMM_anova']
+
+def test_txComp_GMM_logit(test_ref_pos_list):
+    ml = mock.Mock()
+    res = txCompare(test_ref_pos_list[0], methods=['GMM'], logit=True, sequence_context=2, min_coverage=3, logger=ml)
+    GMM_pvalues = [pos['txComp']['GMM_logit_pvalue'] for pos in res ]
