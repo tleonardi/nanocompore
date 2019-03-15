@@ -42,7 +42,7 @@ def main(args=None):
     parser_sc_output = parser_sc.add_argument_group('Output options')
     parser_sc_output.add_argument("--outpath", "-o", type=str, required=True, help="Path to the output folder (required)")
     parser_sc_output.add_argument("--overwrite", action='store_true', default=False, help="Use --outpath even if it exists already (default: %(default)s)")
-    parser_sc_output.add_argument("--force_logit", action='store_true', help="Use logistic regression testing even if all conditions have replicates (default: %(default)s)")
+    parser_sc_output.add_argument("--logit", action='store_true', help="Use logistic regression testing also when all conditions have replicates (default: %(default)s)")
     parser_sc_filtering = parser_sc.add_argument_group('Transcript filtering options')
     parser_sc_filtering.add_argument("--max_invalid_kmers_freq", type=float, default=0.1, help="Max fequency of invalid kmers (default: %(default)s)")
     parser_sc_filtering.add_argument("--min_coverage", type=int, default=50, help="Minimum coverage required in each condition to do the comparison (default: %(default)s)")
@@ -134,7 +134,7 @@ def sample_compare_main(args):
         min_coverage = args.min_coverage,
         downsample_high_coverage = args.downsample_high_coverage,
         comparison_method = args.comparison_methods,
-        force_logit = args.force_logit,
+        logit = args.logit,
         sequence_context = args.sequence_context,
         sequence_context_weights = args.sequence_context_weights,
         log_level = args.log_level)

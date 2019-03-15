@@ -47,7 +47,7 @@ class SampComp(object):
         bed_fn=None,
         whitelist=None,
         comparison_method = None,
-        force_logit = True,
+        logit = True,
         sequence_context = 0,
         sequence_context_weights = "uniform",
         min_coverage = 10,
@@ -140,7 +140,7 @@ class SampComp(object):
         self.__bed_fn = bed_fn
         self.__whitelist = whitelist
         self.__comparison_methods = comparison_method
-        self.__force_logit = force_logit
+        self.__logit = logit
         self.__sequence_context = sequence_context
         self.__sequence_context_weights = sequence_context_weights
         self.__nthreads = nthreads - 2
@@ -291,7 +291,7 @@ class SampComp(object):
                         sequence_context=self.__sequence_context,
                         sequence_context_weights=self.__sequence_context_weights,
                         min_coverage= self.__min_coverage,
-                        force_logit=self.__force_logit,
+                        logit=self.__logit,
                         logger=logger)
 
                 # Add the current read details to queue
