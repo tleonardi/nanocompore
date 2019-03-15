@@ -295,11 +295,13 @@ def cross_corr_matrix(pvalues_vector, context=2):
         pvalues for a given context.
     """
     if len(pvalues_vector)<(context*3)+3:
-        raise NancomporeError("Not enough p-values for a context of order %s"%context)
-    if any(pvalues==0) or any(np.isinf(pvalues)) or any(pvalues>1):
-        raise NanocomporeError("At least one p-value is invalid")
-    matrix=[]
+        raise NanocomporeError("Not enough p-values for a context of order %s"%context)
+
     pvalues_vector = np.array([ i if not np.isnan(i) else 1 for i in pvalues_vector ])
+    if any(pvalues_vector==0) or any(np.isinf(pvalues_vector)) or any(pvalues_vector>1):
+        raise NanocomporeError("At least one p-value is invalid")
+
+    matrix=[]
     s=pvalues_vector.size
     if all(p==1 for p in pvalues_vector):
         return(np.ones((context*2+1, context*2+1)))
@@ -328,7 +330,7 @@ def combine_pvalues_hou(pvalues, weights, cor_mat):
         raise NanocomporeError("The correlation matrix needs to be squared, with each dimension equal to the length of the pvalued vector.")
     if all(p==1 for p in pvalues):
         return 1
-    if any(pvalues==0) or any(np.isinf(pvalues)) or any(pvalues>1):
+    if any((p==0 or np.isinf(p) or p>1) for p in pvalues):
         raise NanocomporeError("At least one p-value is invalid")
 
     # Covariance estimation as in Kost and McDermott (eq:8)
