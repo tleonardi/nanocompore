@@ -68,9 +68,10 @@ class SampComp(object):
         whitelist: Whitelist object previously generated with nanocompore Whitelist. If not given, will be automatically generated
         comparison_method: Statistical method to compare the 2 samples (mann_whitney, kolmogorov_smirnov, t_test, gmm).
             This can be a list or a comma separated string
+        force_logit: Force logistic regression even if we have less than 2 replicates in any condition
         sequence_context: Extend statistical analysis to contigous adjacent base if available
-        sequence_context_weights: type of weights to used for combining p-values
-        min_cov: minimal coverage required in all sample
+        sequence_context_weights: type of weights to used for combining p-values. Choose between uniform and harmonic
+        min_cov: minimal read coverage required in all sample
         downsample_high_coverage: For reference with higher coverage, downsample by randomly selecting reads.
         max_invalid_kmers_freq: maximum frequency of NNNNN, mismatching and missing kmers in reads
         select_ref_id: if given, only reference ids in the list will be selected for the analysis

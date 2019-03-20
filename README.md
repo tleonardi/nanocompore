@@ -1,11 +1,13 @@
-# Nanocompore
+![Nanocompore](pictures/(Nanocompore_logo.svg)
 
 [![MIT license](https://img.shields.io/badge/License-MIT-blue.svg)](https://lbesson.mit-license.org/)
 [![made-with-python](https://img.shields.io/badge/Made%20with-Python-1f425f.svg)](https://www.python.org/)
 
 ---
 
-**Software package that identifies differences in nanopore raw signal corresponding to RNA modifications by comparing  2 samples**
+**Nanocompore identifies differences in ONT nanopore sequencing raw signal corresponding to RNA modifications by comparing 2 samples**
+
+Nanocompore compares 2 ONT nanopore direct RNA sequencing datasets from different experimental conditions expected to have a significant impact on RNA modifications. It is recommended to have at least 2 replicates per condition. For example one can use a control condition with a significantly reduced number of modifications such as a cell line for which a modification writing enzyme was knocked-down or knocked-out. Alternatively, on a smaller scale transcripts of interests could be synthesized in-vitro.
 
 ---
 
@@ -62,16 +64,36 @@ With this option, the package will be locally installed in “editable” or “
 
 `pip3 install -e ./`
 
-##########################################################################################
+# Data preparation
 
-# Usage
+Before using nanocompore, sequencing data have to be basecalled (Albacore or Guppy), aligned on a transcriptome reference and resquiggled with Nanopolish. To simplify the data preprocessing we wrote a Nextflow pipeline that automatise all these steps as well as extra quality control steps: https://github.com/tleonardi/nanocompore_pipeline
 
-Nanocompore compares 2 ONT nanopore direct RNA sequencing datasets from different experimental conditions expected to have a significant impact on RNA modifications.
-It is recommended to have at least 2 replicates per condition.
+### Basecalling with Guppy (https://community.nanoporetech.com/downloads)
 
-## Data preparation
+```
 
-To use nanocompore raw nanopore sequencing data have to be prepared using a basecaller (Albacore or MInKNOW. Ask ONT), your favourite long read aligner such as [Minimap2](https://github.com/lh3/minimap2) and resquiggled using [Nanopolish](https://github.com/jts/nanopolish). Finally eventalign data have to be collapsed per kmer using [NanopolishComp Eventalign_collapse](https://github.com/a-slide/NanopolishComp)
+```
+
+### Alignment with [Minimap2](https://github.com/lh3/minimap2) v...
+
+```
+
+```
+
+### Read indexing and resquiggling with [Nanopolish](https://github.com/jts/nanopolish) v...
+
+```
+
+```
+
+### Kmer level event align data collapsing with [NanopolishComp Eventalign_collapse](https://github.com/a-slide/NanopolishComp)
+
+```
+
+```
+
+# Nanocompore usage
+
 
 The preparation of data and the package usage are detailed in the [usage jupyter notebook](https://github.com/a-slide/nanocompore/blob/master/tests/nanocompore_usage.ipynb)
 
