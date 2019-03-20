@@ -1,4 +1,4 @@
-![Nanocompore](pictures/(Nanocompore_logo.svg)
+![Nanocompore](pictures/(Nanocompore_logo.png)
 
 [![MIT license](https://img.shields.io/badge/License-MIT-blue.svg)](https://lbesson.mit-license.org/)
 [![made-with-python](https://img.shields.io/badge/Made%20with-Python-1f425f.svg)](https://www.python.org/)
