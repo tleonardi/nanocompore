@@ -48,6 +48,7 @@ class SampComp(object):
         whitelist=None,
         comparison_method = None,
         logit = True,
+        strict=True,
         sequence_context = 0,
         sequence_context_weights = "uniform",
         min_coverage = 10,
@@ -141,6 +142,7 @@ class SampComp(object):
         self.__whitelist = whitelist
         self.__comparison_methods = comparison_method
         self.__logit = logit
+        self.__strict = strict
         self.__sequence_context = sequence_context
         self.__sequence_context_weights = sequence_context_weights
         self.__nthreads = nthreads - 2
@@ -291,6 +293,7 @@ class SampComp(object):
                         sequence_context=self.__sequence_context,
                         sequence_context_weights=self.__sequence_context_weights,
                         min_coverage= self.__min_coverage,
+                        strict=self.__strict,
                         logit=self.__logit,
                         logger=logger)
 
