@@ -231,13 +231,13 @@ def gmm_anova_test(counters, sample_condition_labels, condition_labels, gmm_ncom
     aov_table = f_oneway(logr_s1, logr_s2)
     aov_pvalue = aov_table.pvalue
     # When the within variance is 0, the p-value is 0
-    # If this happends it means that the replicates have exactly the same number of points in each cluster
+    # If this happens it means that the replicates have exactly the same number of points in each cluster
     # In these cases we force the p-value to a very small number
     if aov_pvalue == 0: aov_pvalue = np.finfo(np.float).tiny
     # Calculate the delta log odds ratio, i.e. the difference of the means of the log odds ratios between the two conditions
     aov_delta_logit=float(np.mean(logr_s1)-np.mean(logr_s2))
     cluster_counts = count_reads_in_cluster(counters)
-    aov_results = {'pvalue': aov_pvalue, 'delta_logit': aov_delta_logit, 'table': aov_table, 'cluster_counts': cluster_counts}
+    aov_results = {'pvalue': aov_pvalue, 'delta_logit': aov_delta_logit, 'table': aov_table, 'cluster_counts': cluster_counts, 'log_ratios':logr}
     return(aov_results)
 
 def gmm_logit_test(Y, y_pred, sample_condition_labels, condition_labels):
