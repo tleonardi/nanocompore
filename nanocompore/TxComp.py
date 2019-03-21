@@ -174,7 +174,7 @@ def gmm_test(data, anova=True, logit=False, log_dwell=True, verbose=True, strict
         # Count how many reads in each cluster for each sample
         for lab in sample_labels:
             counters[lab] = Counter(y_pred[[i==lab for i in Y]])
-        
+        cluster_counts = count_reads_in_cluster(counters)
         if anova:
             aov_results = gmm_anova_test(counters, sample_condition_labels, condition_labels, gmm_ncomponents, strict=strict)
         else:
@@ -188,10 +188,11 @@ def gmm_test(data, anova=True, logit=False, log_dwell=True, verbose=True, strict
     elif gmm_ncomponents == 1:
         aov_results = {'pvalue': np.nan, 'delta_logit': np.nan, 'table': "NC", 'cluster_counts': "NC"}
         logit_results = {'pvalue': np.nan, 'coef': "NC", 'model': "NC"}
+        cluster_counts = "NC"
     else:
         raise NanocomporeError("GMM models with n_component>2 are not supported")
 
-    return({'anova':aov_results, 'logit': logit_results, 'gmm':gmm_fit})
+    return({'anova':aov_results, 'logit': logit_results, 'gmm':{'model': gmm_mod, 'cluster_counts': cluster_counts}})
 
 def fit_best_gmm(X, max_components=2, cv_types=['spherical', 'tied', 'diag', 'full']):
    # Loop over multiple cv_types and n_components and for each fit a GMM
@@ -253,8 +254,7 @@ def gmm_anova_test(counters, sample_condition_labels, condition_labels, gmm_ncom
         raise NanocomporeError("The Anova test returned a p-value of 0. This is most likely an error somewhere")
     # Calculate the delta log odds ratio, i.e. the difference of the means of the log odds ratios between the two conditions
     aov_delta_logit=float(np.mean(logr_s1)-np.mean(logr_s2))
-    cluster_counts = count_reads_in_cluster(counters)
-    aov_results = {'pvalue': aov_pvalue, 'delta_logit': aov_delta_logit, 'table': aov_table, 'cluster_counts': cluster_counts, 'log_ratios':logr}
+    aov_results = {'pvalue': aov_pvalue, 'delta_logit': aov_delta_logit, 'table': aov_table, 'log_ratios':logr}
     return(aov_results)
 
 def gmm_logit_test(Y, y_pred, sample_condition_labels, condition_labels):
