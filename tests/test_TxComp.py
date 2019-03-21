@@ -44,6 +44,14 @@ def test_nonparametric_test(v1, v2, expected):
     assert nonparametric_test(v1, v2, v1, v2, method="TT") == (pytest.approx(expected[1], abs=tol), pytest.approx(expected[1], abs=tol))
     assert nonparametric_test(v1, v2, v1, v2, method="KS") == (pytest.approx(expected[2], abs=tol), pytest.approx(expected[2], abs=tol))
 
+@pytest.mark.parametrize("x, expected", [
+        ( (1, 2, 7, 33, 10), 1243 ),
+        ((2), 4 ),
+        ( (10, -10, 0, 1), 201)
+])
+def test_sum_of_squares(x, expected):
+    assert sum_of_squares(x) == expected
+
 @pytest.fixture
 def test_ref_pos_list():
     test_ref_pos_list=[None]*10
@@ -85,13 +93,13 @@ def test_ref_pos_list():
 def test_txComp_GMM_anova(test_ref_pos_list):
     ml = mock.Mock()
     tol=0.000000001
-    res = txCompare(test_ref_pos_list[0], methods=['GMM'], logit=False, sequence_context=2, min_coverage=3, logger=ml)
+    res = txCompare(test_ref_pos_list[0], methods=['GMM'], logit=False, sequence_context=2, min_coverage=3, logger=ml, strict=True)
     GMM_pvalues = [pos['txComp']['GMM_pvalue'] for pos in res ]
     assert GMM_pvalues == [pytest.approx(i, abs=tol) for i in test_ref_pos_list[1]['GMM_anova']] 
 
 def test_txComp_GMM_logit(test_ref_pos_list):
     ml = mock.Mock()
     tol=0.000000001
-    res = txCompare(test_ref_pos_list[0], methods=['GMM'], logit=True, sequence_context=2, min_coverage=3, logger=ml)
+    res = txCompare(test_ref_pos_list[0], methods=['GMM'], logit=True, anova=False, sequence_context=2, min_coverage=3, logger=ml)
     GMM_logit = [pos['txComp']['GMM_logit_pvalue'] for pos in res ]
     assert GMM_logit == [pytest.approx(i, abs=tol) for i in test_ref_pos_list[1]['GMM_logit']] 

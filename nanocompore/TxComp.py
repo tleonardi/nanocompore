@@ -178,7 +178,7 @@ def gmm_test(data, anova=True, logit=False, log_dwell=True, verbose=True, strict
         if anova:
             aov_results = gmm_anova_test(counters, sample_condition_labels, condition_labels, gmm_ncomponents, strict=strict)
         else:
-            anova_results=None
+            aov_results=None
 
         if logit:
             logit_results = gmm_logit_test(Y, y_pred, sample_condition_labels, condition_labels)
@@ -229,7 +229,7 @@ def gmm_anova_test(counters, sample_condition_labels, condition_labels, gmm_ncom
     logr_s1 = [logr[i] for i,l in enumerate(labels) if l==condition_labels[0]]
     logr_s2 = [logr[i] for i,l in enumerate(labels) if l==condition_labels[1]]
     # If the SS for either array is 0, skip the anova test
-    if np.sum(logr_s1-np.mean(logr_s1)) == 0 or np.sum(logr_s2-np.mean(logr_s2)):
+    if np.sum(logr_s1-np.mean(logr_s1)) == 0 and np.sum(logr_s2-np.mean(logr_s2)):
         if strict: 
             raise NanocomporeError("While doing the Annova test we found a sample with within variance = 0. Use strict=False to ignore.")
         else:
@@ -374,3 +374,11 @@ def harmomic_series(sequence_context):
     for i in range(-sequence_context, sequence_context+1):
         weights.append(1/(abs(i)+1))
     return weights
+
+def sum_of_squares(x):
+    """
+    Square each element of the input array and return the sum
+    """
+    x = np.atleast_1d(x)
+    return np.sum(x*x)
+
