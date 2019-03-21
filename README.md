@@ -80,7 +80,7 @@ guppy_basecaller -i {raw_fast5_dir} -s {dest_dir} --flowcell {flowcell_id} --kit
 ```
 Then the output fastq files should be concatenated in a single one.
 ```
-cat {dir_to guppy output}/*.fastq > {dir_to guppy output}/reads.fastq
+cat {dir_to guppy output}/*.fastq > {basecalled_fastq}
 ```
 
 ### Transcriptome alignment
@@ -91,25 +91,22 @@ Basecalled reads have to be aligned to a reference. For dRNA-Seq, reads should b
 
 Example with [Minimap2 v2.16](https://github.com/lh3/minimap2)
 ```
-minimap2 -ax map-ont -L {transcriptome_fasta} {reads_fastq} | samtools view -bh -F 2324 -q 10 | samtools sort -O bam > {reads_bam}
-samtools index minimap.filt.sort.bam minimap.filt.sort.bam.bai
+minimap2 -ax map-ont -L {transcriptome_fasta} {basecalled_fastq} | samtools view -bh -F 2324 -q 10 | samtools sort -O bam > {aligned_reads_bam}
+samtools index {aligned_reads_bam}
 ```
 
 ### Read indexing and resquiggling with
 
 Nanopolish is required to realign raw signal to the expected reference sequence. Reads have to be indexed first with nanopolish index, realigned with nanopolish eventalign and finally the data has to be collapsed per kmer and indexed by NanopolishComp Eventalign_collapse.
 
-Example with [Nanopolish v0.10.1](https://github.com/jts/nanopolish) and NanopolishComp v0.4.3
+Example with [Nanopolish v0.10.1](https://github.com/jts/nanopolish) and [NanopolishComp v0.4.3](https://github.com/a-slide/NanopolishComp)
 
 ```
-nanopolish index -s ${albacore_results}/sequencing_summary.txt -d 'raw_data' ${albacore_results}/workspace/*.fastq
-nanopolish eventalign -t ${cpus_each} --reads ${albacore_results}/workspace/*.fastq --bam ${bam_file} --genome ${transcriptome_fasta} --samples --print-read-names --scale-events
+nanopolish index -s {sequencing_summary.txt} -d {raw_fast5_dir} {basecalled_fastq}
 
-nanopolish index -d ./raw/ ./basecall/workspace/reads.fastq
+nanopolish eventalign --reads {basecalled_fastq} --bam {aligned_reads_bam} --genome {transcriptome_fasta} --samples --print-read-names --scale-events --samples > {eventalign_reads_tsv}
 
-nanopolish eventalign --reads ./basecall/workspace/reads.fastq --bam ./alignment/reads.bam --genome ./reference/transcriptome.fa --samples > ./eventalign/reads.tsv
-
-NanopolishComp Eventalign_collapse -i ./eventalign/reads.tsv -o ./eventalign/reads_collapsed.tsv
+NanopolishComp Eventalign_collapse -i {eventalign_reads_tsv} -o {eventalign_collapsed_reads_tsv}
 
 ```
 
