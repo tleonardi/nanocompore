@@ -247,7 +247,7 @@ def gmm_anova_test(counters, sample_condition_labels, condition_labels, gmm_ncom
                 if strict:
                     raise NanocomporeError("While doing the Anova test a runtime warning was raised. Use strict=False to ignore.")
                 else:
-                    warnings.filterwarnings('ignore')
+                    warnings.filterwarnings('default')
                     aov_table = f_oneway(logr_s1, logr_s2)
                     aov_pvalue = np.finfo(np.float).tiny
     if aov_pvalue == 0: 
