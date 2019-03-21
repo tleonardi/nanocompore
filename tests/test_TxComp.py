@@ -97,6 +97,50 @@ def test_txComp_GMM_anova(test_ref_pos_list):
     GMM_pvalues = [pos['txComp']['GMM_pvalue'] for pos in res ]
     assert GMM_pvalues == [pytest.approx(i, abs=tol) for i in test_ref_pos_list[1]['GMM_anova']] 
 
+@pytest.fixture
+def test_ref_pos_list_0_var():
+    test_ref_pos_list=[None]*10
+    np.random.seed(seed=6354565)
+    for pos in range(0,10):
+        int_1 = np.random.normal(loc=100, scale=10.0, size=100)
+        dwell_1 = np.random.normal(loc=100, scale=10.0, size=100)
+        int_2 = np.random.normal(loc=500, scale=10.0, size=100)
+        dwell_2 = np.random.normal(loc=500, scale=10.0, size=100)
+        test_ref_pos_list[pos] = {'data':{
+                                      'WT':{
+                                          'WT1':{
+                                             'intensity': int_1,
+                                             'dwell': dwell_1,
+                                             'coverage': 100
+                                          },
+                                          'WT2':{
+                                             'intensity': int_1,
+                                             'dwell': dwell_1,
+                                             'coverage': 100
+                                          }
+                                      },
+                                      'KD':{
+                                          'KD1':{
+                                             'intensity': int_2,
+                                             'dwell': dwell_2,
+                                             'coverage': 100
+                                          },
+                                          'KD2':{
+                                             'intensity': int_2,
+                                             'dwell': dwell_2,
+                                             'coverage': 100
+                                          }
+                                      }
+                                  }
+                                 }
+    return(test_ref_pos_list)
+
+def test_txComp_GMM_anova_0_var(test_ref_pos_list_0_var):
+    ml = mock.Mock()
+    tol=0.000000001
+    with pytest.raises(NanocomporeError):
+        txCompare(test_ref_pos_list_0_var, methods=['GMM'], logit=False, sequence_context=2, min_coverage=3, logger=ml, strict=True)
+
 def test_txComp_GMM_logit(test_ref_pos_list):
     ml = mock.Mock()
     tol=0.000000001
