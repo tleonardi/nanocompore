@@ -281,23 +281,39 @@ class SampCompDB(object):
         else:
             raise NanocomporeError("output_fn needs to be a string or None")
 
-        headers = ['chr', 'pos', 'ref_id','strand', 'ref_kmer']+self._pvalue_tests
-        # Read extra GMM info from the shelve
+        headers = ['pos', 'chr', 'genomicPos', 'ref_id', 'strand', 'ref_kmer']+self._pvalue_tests
         if "GMM" in self._comparison_method:
+            headers += ["GMM_cov_type", "GMM_n_clust", "Anova_delta_logit", "Logit_LOR", "cluster_counts"]
+        # Read extra GMM info from the shelve
+        if "" in self._comparison_method:
             headers += ['LOR', 'clusters']
             gmm_info=OrderedDict()
-            for tx, refpos in self:
-                gmm_info[tx] = {k:{'lor': v['txComp']['GMM_model'][1], 'clusters':v['txComp']['GMM_model'][3]} for k,v in enumerate(refpos) if "txComp" in v and "GMM_model" in v['txComp']}
+
+        # Write headers to file
         fp.write('\t'.join([ str(i) for i in headers ])+'\n')
-        for record in self.results[['chr', 'pos', 'ref_id','strand', 'ref_kmer']+self._pvalue_tests].values.tolist():
-            if "GMM" in self._comparison_method:
-                try:
-                    lor = gmm_info[record[2]][record[1]]['lor']
-                    clusters = gmm_info[record[2]][record[1]]['clusters']
-                    record += [lor, clusters]
-                except KeyError:
-                    record += ["nan", "nan"]
-            fp.write('\t'.join([ str(i) for i in record ])+'\n')
+
+        # We loop over the IDs so that ref_pos_list can be prefetched for each transcript
+        for cur_id in self.ref_id_list:
+            cur_ref_pos_list = self[cur_id]
+            for record in self.results[self.results.ref_id == cur_id ].itertuples():
+                if "GMM" in self._comparison_method:
+                    record_txComp = cur_ref_pos_list[record.pos]['txComp']
+                line = []
+                for f in headers:
+                    if f in record._fields:
+                        line.append(getattr(record, f))
+                    elif f == "GMM_cov_type":
+                        line.append(record_txComp['GMM_model']['model'].covariance_type)
+                    elif f == "GMM_n_clust":
+                        line.append(record_txComp['GMM_model']['model'].n_components)
+                    elif f == "Anova_delta_logit":
+                        line.append(record_txComp['GMM_anova_model']['delta_logit'])
+                    elif f == "Logit_LOR":
+                        line.append(record_txComp['GMM_logit_model']['coef'])
+                    elif f == "cluster_counts":
+                        line.append(record_txComp['GMM_model']['cluster_counts'])
+                    else: line.append("NA")
+                fp.write('\t'.join([ str(i) for i in line ])+'\n')
         fp.close()
 
     def save_shift_stats(self,  output_fn=None):
