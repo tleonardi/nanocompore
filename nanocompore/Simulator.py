@@ -45,7 +45,8 @@ def simulate_reads_from_fasta (
     mod_bases_type="A",
     mod_extend_context=2,
     min_mod_dist=6,
-    rand_seed=42,
+    pos_rand_seed=42,
+    distr_rand_seed=42,
     log_level="info"):
     """
     fasta_fn: Fasta file containing references to use to generate artificial reads
@@ -64,7 +65,8 @@ def simulate_reads_from_fasta (
     mod_bases_type: Base for which to modify the signal
     mod_extend_context: number of adjacent base affected by the signal modification following an harmonic serries
     min_mod_dist: Minimal distance between to bases to modify
-    rand_seed: Define a seed for randon functions to get a deterministic behaviour
+    pos_rand_seed:Define a seed for randon position picking to get a deterministic behaviour
+    distr_rand_seed:Define a seed for randon distribution sampling to get a deterministic behaviour
     log_level: Set the log level. Valid values: warning, info, debug
     """
 
@@ -134,7 +136,8 @@ def simulate_reads_from_fasta (
                     mod_bases_type = mod_bases_type,
                     mod_extend_context = mod_extend_context,
                     min_mod_dist = min_mod_dist,
-                    rand_seed = rand_seed)
+                    pos_rand_seed=pos_rand_seed,
+                    distr_rand_seed=distr_rand_seed)
 
                 # Plot traces if required
                 if plot:
@@ -202,7 +205,8 @@ def simulate_ref_mod_context (
     mod_bases_type="A",
     mod_extend_context=0,
     min_mod_dist=6,
-    rand_seed=42):
+    pos_rand_seed=42,
+    distr_rand_seed=42):
     """"""
 
     # Extra parameters if signal modification required
@@ -210,7 +214,7 @@ def simulate_ref_mod_context (
         # Define number of reads to modify and number not to modify
         nreads_mod = int(np.rint(nreads*mod_reads_freq))
         # Define positions to modify base on mod_base_freq and mod_base_type
-        mod_pos_list = find_valid_pos_list(ref_seq, mod_bases_type, mod_bases_freq, min_mod_dist, rand_seed)
+        mod_pos_list = find_valid_pos_list (ref_seq, mod_bases_type, mod_bases_freq, min_mod_dist, pos_rand_seed)
         # if the modification context has to be extended
         mod_dict = make_mod_dict (intensity_mod_loc, intensity_mod_scale, dwell_mod_loc, dwell_mod_scale, mod_extend_context)
     else:
@@ -222,6 +226,7 @@ def simulate_ref_mod_context (
     intensity_array = np.empty(shape=(n_kmers, nreads), dtype=np.float)
     dwell_array = np.empty(shape=(n_kmers, nreads), dtype=np.float)
 
+    np.random.seed(distr_rand_seed)
     # Fill in arrays with non modified data per position
     for pos in range(n_kmers):
         kmer_seq =  ref_seq[pos:pos+5]
@@ -252,7 +257,7 @@ def simulate_ref_mod_context (
 
     return (intensity_array, dwell_array, mod_pos_list, nreads_mod)
 
-def find_valid_pos_list (ref_seq, mod_bases_type, mod_bases_freq, min_mod_dist, rand_seed=42):
+def find_valid_pos_list (ref_seq, mod_bases_type, mod_bases_freq, min_mod_dist, pos_rand_seed=42):
     """"""
     pos_list = []
     for i in range(len(ref_seq)-4):
@@ -263,7 +268,7 @@ def find_valid_pos_list (ref_seq, mod_bases_type, mod_bases_freq, min_mod_dist, 
 
     i = 0
     while True:
-        np.random.seed(rand_seed*i)
+        np.random.seed(pos_rand_seed*i)
         a = np.random.choice(pos_list, n_samples, replace=False)
         a.sort()
         if np.ediff1d(a).min() >= min_mod_dist :

@@ -77,7 +77,8 @@ def main(args=None):
     parser_sr_modify.add_argument("--mod_extend_context", type=int, default=2, help="number of adjacent base affected by the signal modification following an harmonic serries (default: %(default)s)")
     parser_sr_modify.add_argument("--min_mod_dist", type=int, default=6, help="Minimal distance between to bases to modify (default: %(default)s)")
     parser_sr_common = parser_sr.add_argument_group('Other options')
-    parser_sr_common.add_argument("--rand_seed", type=int, default=42 , help="Define a seed for randon functions to get a deterministic behaviour (default: %(default)s)")
+    parser_sr_common.add_argument("--pos_rand_seed", type=int, default=42 , help="Define a seed for randon position picking to get a deterministic behaviour (default: %(default)s)")
+    parser_sr_common.add_argument("--distr_rand_seed", type=int, default=42 , help="Define a seed for randon distribution sampling to get a deterministic behaviour (default: %(default)s)")
     parser_sr_common.add_argument("--log_level", type=str, default="info", choices=["warning", "info", "debug"], help="log level (default: %(default)s)")
 
     # Downstream plot subparser
@@ -179,7 +180,8 @@ def simulate_reads(args):
         mod_bases_type=args.mod_bases_type,
         mod_extend_context=args.mod_extend_context,
         min_mod_dist=args.min_mod_dist,
-        rand_seed=args.rand_seed,
+        pos_rand_seed=args.pos_rand_seed,
+        distr_rand_seed=args.distr_rand_seed,
         log_level=args.log_level)
 
 def plot(args):
