@@ -100,6 +100,6 @@ def test_txComp_GMM_anova(test_ref_pos_list):
 def test_txComp_GMM_logit(test_ref_pos_list):
     ml = mock.Mock()
     tol=0.000000001
-    res = txCompare(test_ref_pos_list[0], methods=['GMM'], logit=True, anova=False, sequence_context=2, min_coverage=3, logger=ml)
+    res = txCompare(test_ref_pos_list[0], methods=['GMM'], logit=True, anova=False, sequence_context=2, min_coverage=3, logger=ml, strict=True)
     GMM_logit = [pos['txComp']['GMM_logit_pvalue'] for pos in res ]
     assert GMM_logit == [pytest.approx(i, abs=tol) for i in test_ref_pos_list[1]['GMM_logit']] 
