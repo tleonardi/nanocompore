@@ -102,6 +102,8 @@ venv.bak/
 
 # data
 tests
+.docs
 
 # mypy
 .mypy_cache/
+site/
