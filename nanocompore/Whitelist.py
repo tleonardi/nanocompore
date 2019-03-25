@@ -70,7 +70,7 @@ class Whitelist(object):
                     raise NanocomporeError("The index file {} does not contain the require header fields".format(idx_fn))
                 if not all_values_in (("kmers", "NNNNN_kmers", "mismatch_kmers", "missing_kmers"), header):
                     self.__filter_invalid_kmers = False
-                    logger.info("Invalid kmer information not available in index file")
+                    logger.debug("Invalid kmer information not available in index file")
 
         self.__eventalign_fn_dict = eventalign_fn_dict
 
