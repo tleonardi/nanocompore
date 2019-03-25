@@ -30,7 +30,8 @@ setup_dict = {
         "pandas>=0.23.3",
         "statsmodels>=0.9.0",
         "scikit-learn>=0.20",
-        "bedparse>=0.1.2"],
+        "bedparse>=0.1.2",
+        "pyyaml>=5.0"],
     "packages": [__name__],
     "package_data":{__name__: ["models/kmers_model_RNA_r9.4_180mv.tsv"]},
     "entry_points":{'console_scripts': ['nanocompore=nanocompore.nanocompore_main:main']}}
