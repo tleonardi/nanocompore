@@ -19,6 +19,7 @@ from warnings import warn
 import traceback
 
 # Third party
+import yaml
 from tqdm import tqdm
 import numpy as np
 from pyfaidx import Fasta
@@ -46,11 +47,11 @@ class SampComp(object):
         fasta_fn,
         bed_fn=None,
         whitelist=None,
-        comparison_method = None,
+        comparison_method = ["GMM", "KS"],
         force_logit = True,
         sequence_context = 0,
         sequence_context_weights = "uniform",
-        min_coverage = 10,
+        min_coverage = 50,
         downsample_high_coverage = None,
         max_invalid_kmers_freq = 0.1,
         select_ref_id = [],
@@ -61,6 +62,7 @@ class SampComp(object):
         """
         eventalign_fn_dict: Multilevel dictionnary indicating the condition_label, sample_label and file name of the eventalign_collapse output
             example d = {"S1": {"R1":"path1.tsv", "R2":"path2.tsv"}, "S2": {"R1":"path3.tsv", "R2":"path4.tsv"}}
+            eventalign_fn_dict can also ba a path to a YAML file
             2 conditions are expected, and at least 2 sample replicates are highly recomended per condition
         output_db_fn: Path where to write the result database
         fasta_fn: Path to a fasta file corresponding to the reference used for read alignemnt
@@ -82,6 +84,11 @@ class SampComp(object):
         # Set logging level
         logger.setLevel(log_level_dict.get (log_level, logging.WARNING))
         logger.info("Initialise SampComp and checks options")
+
+        # If eventalign_fn_dict is not a dict try to load a YAML file instead
+        if not type(eventalign_fn_dict) == dict:
+            with open (eventalign_fn_dict, "r") as fp:
+                eventalign_fn_dict = yaml.load(fp, Loader=yaml.SafeLoader)
 
         # Check that the number of condition is 2 and raise a warning if there are less than 2 replicates per conditions
         if len(eventalign_fn_dict) != 2:
