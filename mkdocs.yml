@@ -27,15 +27,15 @@ nav:
     - Installation instructions: installation.md
     - Data preparation: data_preparation.md
     - Usage:
-        - General nanocompore usage: usage.md
-        - Sample Comparison usage: sampcomp_usage.md
-        - Generate plots and tables: plot_usage.md
+        - How to use Nanocompore: usage.md
+        - Compare samples with SampComp: sampcomp_usage.md
+        - Generate plots and tables with SampCompDB: sampcompdb_usage.md
         - Read Simulator Usage: simulate_reads_usage.md
     - Alternative and complementary packages: alternative.md
     - Getting involved and finding help:
         - Contributing: contributing.md
         - Code of conduct: code_of_conduct.md
-    - Licence: licence.md
+        - Licence: licence.md
 
 # Theme customization
 theme:
