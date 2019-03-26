@@ -232,7 +232,7 @@ def gmm_anova_test(counters, sample_condition_labels, condition_labels, gmm_ncom
     # If the SS for either array is 0, skip the anova test
     if sum_of_squares(logr_s1-np.mean(logr_s1)) == 0 and sum_of_squares(logr_s2-np.mean(logr_s2)) == 0:
         if strict: 
-            raise NanocomporeError("While doing the Annova test we found a sample with within variance = 0. Use strict=False to ignore.")
+            raise NanocomporeError("While doing the Annova test we found a sample with within variance = 0. Use --allow_warnings to ignore.")
         else:
             aov_table = "Within variance is 0"
             aov_pvalue = np.finfo(np.float).tiny
@@ -245,7 +245,7 @@ def gmm_anova_test(counters, sample_condition_labels, condition_labels, gmm_ncom
                 aov_pvalue = aov_table.pvalue
             except RuntimeWarning:
                 if strict:
-                    raise NanocomporeError("While doing the Anova test a runtime warning was raised. Use strict=False to ignore.")
+                    raise NanocomporeError("While doing the Anova test a runtime warning was raised. Use --allow_warnings to ignore.")
                 else:
                     warnings.filterwarnings('default')
                     aov_table = f_oneway(logr_s1, logr_s2)
