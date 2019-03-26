@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 log_level_dict = {"debug":logging.DEBUG, "info":logging.INFO, "warning":logging.WARNING}
 
 #~~~~~~~~~~~~~~MAIN CLASS~~~~~~~~~~~~~~#
-def simulate_reads_from_fasta (
+def SimReads (
     fasta_fn,
     outpath="./",
     prefix="reads",

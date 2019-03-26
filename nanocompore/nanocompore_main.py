@@ -15,8 +15,8 @@ from nanocompore import __version__ as package_version
 from nanocompore import __name__ as package_name
 from nanocompore.SampComp import SampComp
 from nanocompore.Whitelist import Whitelist
+from nanocompore.SimReads import SimReads
 from nanocompore.common import NanocomporeError
-from nanocompore.Simulator import simulate_reads_from_fasta
 
 # Main entry point
 def main(args=None):
@@ -31,7 +31,7 @@ def main(args=None):
 
     # Sampcomp subparser
     parser_sc = subparsers.add_parser('sampcomp', description="Compare 2 samples and find significant signal ")
-    parser_sc.set_defaults(func=sample_compare_main)
+    parser_sc.set_defaults(func=sampcomp_main)
     parser_sc_input = parser_sc.add_argument_group('Input options')
     parser_sc_input.add_argument("--file_list1", type=str, required=True, metavar="/path/to/Condition1_rep1,/path/to/Codition1_rep2", help="Comma separated list of NanopolishComp files for label 1 (required)")
     parser_sc_input.add_argument("--file_list2", type=str, required=True, metavar="/path/to/Condition2_rep1,/path/to/Codition2_rep2", help="Comma separated list of NanopolishComp files for label 2 (required)")
@@ -57,8 +57,8 @@ def main(args=None):
     parser_sc_common.add_argument("--log_level", type=str, default="info", choices=["warning", "info", "debug"], help="log level (default: %(default)s)")
 
     # Simulate_reads subparser
-    parser_sr = subparsers.add_parser('simulate_reads', description="Simulate a NanopolishComp like file based on a fasta file and an inbuild model")
-    parser_sr.set_defaults(func=simulate_reads)
+    parser_sr = subparsers.add_parser('simreads', description="Simulate reads in a NanopolishComp like file from a fasta file and an inbuild model")
+    parser_sr.set_defaults(func=simreads_main)
     parser_sr_input = parser_sr.add_argument_group('Input options')
     parser_sr_input.add_argument("--fasta", "-f", type=str, required=True, help="Fasta file containing references to use to generate artificial reads (required)")
     parser_sr_input.add_argument("--run_type", type=str, default="RNA", help="Define the run type model to import (RNA or DNA) (default: %(default)s)")
@@ -90,7 +90,7 @@ def main(args=None):
     args = parser.parse_args()
     args.func(args)
 
-def sample_compare_main(args):
+def sampcomp_main(args):
 
     # Check if output folder already exists
     outpath=Path(args.outpath)
@@ -158,14 +158,14 @@ def sample_compare_main(args):
             sc_out.save_to_bed(output_fn="%s/sig_sites_%s_thr%s.bed" %(out_bedpath, m, args.pvalue_thr), bedgraph=False, pvalue_field=m, pvalue_thr=args.pvalue_thr, span=5, title="Nanocompore Significant Sites")
             sc_out.save_to_bed(output_fn="%s/sig_sites_%s_thr%s.bedg" %(out_bedgpath, m, args.pvalue_thr), bedgraph=True, pvalue_field=m, title="Nanocompore Significant Sites")
 
-def simulate_reads(args):
+def simreads_main(args):
 
     # Check if fasta file exists
     fasta_fn=Path(args.fasta)
     if not fasta_fn.is_file():
         raise NanocomporeError("%s is not a valid file" % args.fasta)
 
-    simulate_reads_from_fasta (
+    SimReads (
         fasta_fn=args.fasta,
         outpath=args.outpath,
         prefix=args.prefix,
