@@ -48,7 +48,8 @@ class SampComp(object):
         bed_fn=None,
         whitelist=None,
         comparison_method = ["GMM", "KS"],
-        force_logit = True,
+        logit = True,
+        strict=True,
         sequence_context = 0,
         sequence_context_weights = "uniform",
         min_coverage = 50,
@@ -63,7 +64,7 @@ class SampComp(object):
         * eventalign_fn_dict: Multilevel dictionnary indicating the condition_label, sample_label and file name of the eventalign_collapse output
             example d = {"S1": {"R1":"path1.tsv", "R2":"path2.tsv"}, "S2": {"R1":"path3.tsv", "R2":"path4.tsv"}}
             eventalign_fn_dict can also be a path to a YAML file
-            2 conditions are expected and at least 2 sample replicates per condition are highly recommended 
+            2 conditions are expected and at least 2 sample replicates per condition are highly recommended
         * output_db_fn: Path where to write the result database
         * fasta_fn: Path to a fasta file corresponding to the reference used for read alignemnt
         * bed_fn: Path to a BED file containing the annotation of the transcriptome used as reference when mapping
@@ -148,7 +149,8 @@ class SampComp(object):
         self.__bed_fn = bed_fn
         self.__whitelist = whitelist
         self.__comparison_methods = comparison_method
-        self.__force_logit = force_logit
+        self.__logit = logit
+        self.__strict = strict
         self.__sequence_context = sequence_context
         self.__sequence_context_weights = sequence_context_weights
         self.__nthreads = nthreads - 2
@@ -299,7 +301,8 @@ class SampComp(object):
                         sequence_context=self.__sequence_context,
                         sequence_context_weights=self.__sequence_context_weights,
                         min_coverage= self.__min_coverage,
-                        force_logit=self.__force_logit,
+                        strict=self.__strict,
+                        logit=self.__logit,
                         logger=logger)
 
                 # Add the current read details to queue

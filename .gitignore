@@ -100,7 +100,7 @@ venv.bak/
 # mkdocs documentation
 /site
 
-# data
+data
 tests
 .docs
 
