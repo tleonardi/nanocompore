@@ -230,7 +230,7 @@ def gmm_anova_test(counters, sample_condition_labels, condition_labels, gmm_ncom
     logr_s1 = [logr[i] for i,l in enumerate(labels) if l==condition_labels[0]]
     logr_s2 = [logr[i] for i,l in enumerate(labels) if l==condition_labels[1]]
     # If the SS for either array is 0, skip the anova test
-    if sum_of_squares(logr_s1-np.mean(logr_s1)) == 0 and sum_of_squares(logr_s2-np.mean(logr_s2)):
+    if sum_of_squares(logr_s1-np.mean(logr_s1)) == 0 and sum_of_squares(logr_s2-np.mean(logr_s2)) == 0:
         if strict: 
             raise NanocomporeError("While doing the Annova test we found a sample with within variance = 0. Use strict=False to ignore.")
         else:
