@@ -61,26 +61,45 @@ class SampComp(object):
         log_level = "info"):
 
         """
-        * eventalign_fn_dict: Multilevel dictionnary indicating the condition_label, sample_label and file name of the eventalign_collapse output
-            example d = {"S1": {"R1":"path1.tsv", "R2":"path2.tsv"}, "S2": {"R1":"path3.tsv", "R2":"path4.tsv"}}
-            eventalign_fn_dict can also be a path to a YAML file
+        #########################################################
+        * eventalign_fn_dict
+            Multilevel dictionnary indicating the condition_label, sample_label and file name of the eventalign_collapse output.
+            One can also pass YAML file describing the samples instead
+            Example `d = {"S1": {"R1":"path1.tsv", "R2":"path2.tsv"}, "S2": {"R1":"path3.tsv", "R2":"path4.tsv"}}`
             2 conditions are expected and at least 2 sample replicates per condition are highly recommended
-        * output_db_fn: Path where to write the result database
-        * fasta_fn: Path to a fasta file corresponding to the reference used for read alignemnt
-        * bed_fn: Path to a BED file containing the annotation of the transcriptome used as reference when mapping
-        * whitelist: Whitelist object previously generated with nanocompore Whitelist. If not given, will be automatically generated
-        * comparison_method: Statistical method to compare the 2 samples (mann_whitney, kolmogorov_smirnov, t_test, gmm).
+        * output_db_fn
+            Path where to write the result database
+        * fasta_fn
+            Path to a fasta file corresponding to the reference used for read alignemnt
+        * bed_fn
+            Path to a BED file containing the annotation of the transcriptome used as reference when mapping
+        * whitelist
+            Whitelist object previously generated with nanocompore Whitelist. If not given, will be automatically generated
+        * comparison_method
+            Statistical method to compare the 2 samples (mann_whitney, kolmogorov_smirnov, t_test, gmm).
             This can be a list or a comma separated string
-        * force_logit: Force logistic regression even if we have less than 2 replicates in any condition
-        * sequence_context: Extend statistical analysis to contigous adjacent base if available
-        * sequence_context_weights: type of weights to used for combining p-values. Choose between uniform and harmonic
-        * min_cov: minimal read coverage required in all sample
-        * downsample_high_coverage: For reference with higher coverage, downsample by randomly selecting reads.
-        * max_invalid_kmers_freq: maximum frequency of NNNNN, mismatching and missing kmers in reads
-        * select_ref_id: if given, only reference ids in the list will be selected for the analysis
-        * exclude_ref_id: if given, refid in the list will be excluded from the analysis
-        * nthreads: Number of threads (two are used for reading and writing, all the others for processing in parallel).
-        * log_level: Set the log level. Valid values: warning, info, debug
+        * logit
+            Force logistic regression even if we have less than 2 replicates in any condition
+        * strict
+            if True an exception is raised if a warning is thrown by the Anova test in case a sample has a null variance
+        * sequence_context
+            Extend statistical analysis to contigous adjacent base if available
+        * sequence_context_weights
+            type of weights to used for combining p-values. Choose between uniform and harmonic
+        * min_cov
+            minimal read coverage required in all sample
+        * downsample_high_coverage
+            For reference with higher coverage, downsample by randomly selecting reads.
+        * max_invalid_kmers_freq
+            maximum frequency of NNNNN, mismatching and missing kmers in reads
+        * select_ref_id
+            if given, only reference ids in the list will be selected for the analysis
+        * exclude_ref_id
+            if given, refid in the list will be excluded from the analysis
+        * nthreads
+            Number of threads (two are used for reading and writing, all the others for processing in parallel).
+        * log_level
+            Set the log level. Valid values: warning, info, debug
         """
         # Set logging level
         logger.setLevel(log_level_dict.get (log_level, logging.WARNING))

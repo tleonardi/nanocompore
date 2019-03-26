@@ -34,10 +34,14 @@ class SampCompDB(object):
         """
         Import a shelve db and a fasta reference file. Automatically returned by SampComp
         Can also be manually created from an existing shelve db output
-        db_fn: Path where to write the result database
-        fasta_fn: Path to a fasta file corresponding to the reference used for read alignemnt
-        bed_fn: Path to a BED file containing the annotation of the transcriptome used as reference when mapping
-        run_type: Define the run type model to import (RNA or DNA)
+        * db_fn
+            Path where to write the result database
+        * fasta_fn
+            Path to a fasta file corresponding to the reference used for read alignemnt
+        * bed_fn
+            Path to a BED file containing the annotation of the transcriptome used as reference when mapping
+        * run_type
+            Define the run type model to import (RNA or DNA)
         """
 
         # Try to get ref_id list and metadata from shelve db
@@ -206,14 +210,22 @@ class SampCompDB(object):
     #~~~~~~~~~~~~~~PUBLIC METHODS~~~~~~~~~~~~~~#
 
     def save_to_bed(self, output_fn, bedgraph=False, pvalue_field=None, pvalue_thr=0.01, span=5, convert=None, assembly=None, title=None):
-        """Saves the results object to BED6 format.
-            bedgraph: save file in bedgraph format instead of bed
-            pvalue_field: specifies what column to use as BED score (field 5, as -log10)
-            pvalue_thr: only report positions with pvalue<=thr
-            span: The size of each BED feature.
-                  If size=5 (default) features correspond to kmers. If size=1 features correspond to the first base of each kmer.
-            convert: one of 'ensembl_to_ucsc' or 'ucsc_to_ensembl". Convert chromosome named between Ensembl and Ucsc conventions
-            assembly: required if convert is used. One of "hg38" or "mm10"
+        """
+        Saves the results object to BED6 format.
+        * bedgraph
+            save file in bedgraph format instead of bed
+        * pvalue_field
+            specifies what column to use as BED score (field 5, as -log10)
+        * pvalue_thr
+            only report positions with pvalue<=thr
+        * span
+            The size of each BED feature.
+            If size=5 (default) features correspond to kmers.
+            If size=1 features correspond to the first base of each kmer.
+        * convert
+            one of 'ensembl_to_ucsc' or 'ucsc_to_ensembl". Convert chromosome named between Ensembl and Ucsc conventions
+        * assembly
+            required if convert is used. One of "hg38" or "mm10"
         """
         if self.bed_fn is None:
             raise NanocomporeError("In order to generate a BED file SampCompDB needs to be initialised with a transcriptome BED")
@@ -269,7 +281,8 @@ class SampCompDB(object):
                     bed_file.write("%s\t%s\t%s\t%s\n" % (line.chr, line.start, line.end, line.score))
 
     def save_report(self, output_fn=None):
-        """Saves an extended tabular report
+        """
+        Saves an extended tabular report
         """
         if output_fn is None:
             fp = sys.stdout
@@ -351,16 +364,24 @@ class SampCompDB(object):
         """
         Plot pvalues per position (by default plot all fields starting by "pvalue")
         It is pointless to plot more than 50 positions at once as it becomes hard to distiguish
-        ref_id: Valid reference id name in the database
-        start: Start coordinate. Default=0
-        end: End coordinate (included). Default=reference length
-        kind: kind of plot to represent the data (lineplot or barplot)
-        figsize: length and heigh of the output plot. Default=(30,10)
-        palette: Colormap. Default="Set2"
+        * ref_id
+            Valid reference id name in the database
+        * start
+            Start coordinate. Default=0
+        * end
+            End coordinate (included). Default=reference length
+        * kind
+            kind of plot to represent the data (lineplot or barplot)
+        * figsize
+            length and heigh of the output plot. Default=(30,10)
+        * palette
+            Colormap. Default="Set2"
             see https://matplotlib.org/users/colormaps.html, https://matplotlib.org/examples/color/named_colors.html
-        plot_style: Matplotlib plotting style. Default="ggplot"
-            . See https://matplotlib.org/users/style_sheets.html
-        tests: Limit the pvalue methods shown in the plot. Either a list of methods or a string coresponding to a part of the name
+        * plot_style
+            Matplotlib plotting style. Default="ggplot"
+            See https://matplotlib.org/users/style_sheets.html
+        * tests
+            Limit the pvalue methods shown in the plot. Either a list of methods or a string coresponding to a part of the name
         """
         # Extract fasta and positions
         start, end = self.__get_positions(ref_id, start, end)
@@ -428,17 +449,26 @@ class SampCompDB(object):
         """
         Plot the dwell time and median intensity distribution position per positon in a split violin plot representation.
         It is pointless to plot more than 50 positions at once as it becomes hard to distiguish
-        ref_id: Valid reference id name in the database
-        start: Start coordinate (Must be higher or equal to 0)
-        end: End coordinate (included) (must be lower or equal to the reference length)
-        kind: Kind of plot. Can be violinplot, boxenplot or swarmplot
-        split_samples: If samples for a same condition are represented separatly. If false they are merged per condition
-        figsize: length and heigh of the output plot. Default=(30,10)
-        palette: Colormap. Default="Set2"
+        * ref_id
+            Valid reference id name in the database
+        * start
+            Start coordinate (Must be higher or equal to 0)
+        * end
+            End coordinate (included) (must be lower or equal to the reference length)
+        * kind
+            Kind of plot. Can be violinplot, boxenplot or swarmplot
+        * split_samples
+            If samples for a same condition are represented separatly. If false they are merged per condition
+        * figsize
+            length and heigh of the output plot. Default=(30,10)
+        * palette
+            Colormap. Default="Set2"
             see https://matplotlib.org/users/colormaps.html, https://matplotlib.org/examples/color/named_colors.html
-        plot_style: Matplotlib plotting style
+        * plot_style
+            Matplotlib plotting style
             . See https://matplotlib.org/users/style_sheets.html
-        bw: Scale factor to use when computing the kernel bandwidth
+        * bw
+            Scale factor to use when computing the kernel bandwidth
         """
 
         # Extract data for ref_id
@@ -508,14 +538,21 @@ class SampCompDB(object):
 
     def plot_coverage(self, ref_id, start=None, end=None, scale=False, split_samples=False, figsize=(30,5), palette="Set2", plot_style="ggplot"):
         """
-        ref_id: Valid reference id name in the database
-        start: Start coordinate. Default=0
-        end: End coordinate (included). Default=reference length
-        figsize: length and heigh of the output plot. Default=(30,10)
-        palette: Colormap. Default="Set2"
+        #########################################################
+        * ref_id
+            Valid reference id name in the database
+        * start
+            Start coordinate. Default=0
+        * end
+            End coordinate (included). Default=reference length
+        * figsize
+            length and heigh of the output plot. Default=(30,10)
+        * palette
+            Colormap. Default="Set2"
             see https://matplotlib.org/users/colormaps.html, https://matplotlib.org/examples/color/named_colors.html
-        plot_style: Matplotlib plotting style. Default="ggplot"
-            . See https://matplotlib.org/users/style_sheets.html
+        * plot_style
+            Matplotlib plotting style. Default="ggplot"
+            See https://matplotlib.org/users/style_sheets.html
         """
         # Extract data for ref_id
         ref_data = self[ref_id]
@@ -555,14 +592,21 @@ class SampCompDB(object):
 
     def plot_kmers_stats(self, ref_id, start=None, end=None, split_samples=False, figsize=(30,10), palette="Accent", plot_style="ggplot"):
         """
-        ref_id: Valid reference id name in the database
-        start: Start coordinate. Default=0
-        end: End coordinate (included). Default=reference length
-        figsize: length and heigh of the output plot. Default=(30,10)
-        palette: Colormap. Default="Set2"
+        #########################################################
+        * ref_id
+            Valid reference id name in the database
+        * start
+            Start coordinate. Default=0
+        * end
+            End coordinate (included). Default=reference length
+        * figsize
+            length and heigh of the output plot. Default=(30,10)
+        * palette
+            Colormap. Default="Set2"
             see https://matplotlib.org/users/colormaps.html, https://matplotlib.org/examples/color/named_colors.html
-        plot_style: Matplotlib plotting style. Default="ggplot"
-            . See https://matplotlib.org/users/style_sheets.html
+        * plot_style
+            Matplotlib plotting style. Default="ggplot"
+            See https://matplotlib.org/users/style_sheets.html
         """
         # Extract data for ref_id
         ref_data = self[ref_id]
@@ -607,21 +651,34 @@ class SampCompDB(object):
     def plot_position(self, ref_id, pos=None, split_samples=False, figsize=(30,10), palette="Set2",  plot_style="ggplot", xlim=(None,None), ylim=(None,None), alpha=0.3, pointSize=20, scatter=True, kde=True, model=False, gmm_levels=50):
         """
         Plot the dwell time and median intensity at the given position as a scatter plot.
-        ref_id: Valid reference id name in the database
-        pos: Position of interest
-        split_samples: If True, samples for a same condition are represented separately. If False, they are merged per condition
-        figsize: length and heigh of the output plot. Default=(30,10)
-        palette: Colormap. Default="Set2"
+        * ref_id
+            Valid reference id name in the database
+        * pos
+            Position of interest
+        * split_samples
+            If True, samples for a same condition are represented separately. If False, they are merged per condition
+        * figsize
+            length and heigh of the output plot. Default=(30,10)
+        * palette
+            Colormap. Default="Set2"
             see https://matplotlib.org/users/colormaps.html, https://matplotlib.org/examples/color/named_colors.html
-        plot_style: Matplotlib plotting style.
+        * plot_style
+            Matplotlib plotting style.
             See https://matplotlib.org/users/style_sheets.html
-        xlim: A tuple of explicit limits for the x axis
-        ylim: A tuple of explicit limits for the y axis
-        kde: plot the KDE of the intensity/dwell bivarariate distributions in the two samples
-        scatter: if True, plot the individual data points
-        pointSize: int specifying the point size for the scatter plot
-        model: If true, plot the GMM density estimate
-        gmm_levels: number of contour lines to use for the GMM countour plot
+        * xlim
+            A tuple of explicit limits for the x axis
+        * ylim
+            A tuple of explicit limits for the y axis
+        * kde
+            plot the KDE of the intensity/dwell bivarariate distributions in the two samples
+        * scatter
+            if True, plot the individual data points
+        * pointSize
+            int specifying the point size for the scatter plot
+        * model
+            If true, plot the GMM density estimate
+        * gmm_levels
+            number of contour lines to use for the GMM countour plot
         """
         # Extract data for ref_id
         ref_data = self[ref_id]
@@ -714,16 +771,24 @@ class SampCompDB(object):
         """
         Plot pvalues per position (by default plot all fields starting by "pvalue")
         It is pointless to plot more than 50 positions at once as it becomes hard to distiguish
-        ref_id: Valid reference id name in the database
-        start: Start coordinate. Default=0
-        end: End coordinate (included). Default=reference length
-        figsize: length and heigh of the output plot. Default=(30,10)
-        palette: Colormap. Default="Set2"
+        * ref_id
+            Valid reference id name in the database
+        * start
+            Start coordinate. Default=0
+        * end
+            End coordinate (included). Default=reference length
+        * figsize
+            length and heigh of the output plot. Default=(30,10)
+        * palette
+            Colormap. Default="Set2"
             see https://matplotlib.org/users/colormaps.html, https://matplotlib.org/examples/color/named_colors.html
-        plot_style: Matplotlib plotting style. Default="ggplot"
-            . See https://matplotlib.org/users/style_sheets.html
-        method: Limit the pvalue methods shown in the plot. Either a list of methods or a regular expression as a string.
-        barplot: plot p-value bars instead of lines
+        * plot_style
+            Matplotlib plotting style. Default="ggplot"
+            See https://matplotlib.org/users/style_sheets.html
+        * method
+            Limit the pvalue methods shown in the plot. Either a list of methods or a regular expression as a string.
+        * barplot
+            plot p-value bars instead of lines
         """
         # Extract fasta and positions
         start, end = self.__get_positions(ref_id)

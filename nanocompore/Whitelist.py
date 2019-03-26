@@ -36,19 +36,31 @@ class Whitelist(object):
         exclude_ref_id = [],
         log_level="info"):
         """
-        eventalign_fn_dict: Multilevel dictionnary indicating the condition_label, sample_label and file name of the eventalign_collapse output
+        #########################################################
+        * eventalign_fn_dict
+            Multilevel dictionnary indicating the condition_label, sample_label and file name of the eventalign_collapse output
             example d = {"S1": {"R1":"path1.tsv", "R2":"path2.tsv"}, "S2": {"R1":"path3.tsv", "R2":"path4.tsv"}}
-        fasta_fn: Path to a fasta file corresponding to the reference used for read alignemnt
-        min_coverage: minimal coverage required in both samples
-        downsample_high_coverage: For reference with higher coverage, downsample by randomly selecting reads.
-        max_invalid_kmers_freq: maximum frequency of NNNNN, mismatching and missing kmers in reads
+        * fasta_fn
+            Path to a fasta file corresponding to the reference used for read alignemnt
+        * min_coverage
+            minimal coverage required in both samples
+        * downsample_high_coverage
+            For reference with higher coverage, downsample by randomly selecting reads.
+        * max_invalid_kmers_freq
+            maximum frequency of NNNNN, mismatching and missing kmers in reads
             If None, then the max_NNNNN_freq, max_mismatching_freq, max_missing_freq agrs will be used instead
-        max_NNNNN_freq: maximum frequency of NNNNN kmers in reads (1 to deactivate)
-        max_mismatching_freq: maximum frequency of mismatching kmers in reads (1 to deactivate)
-        max_missing_freq: maximum frequency of missing kmers in reads (1 to deactivate)
-        select_ref_id: if given, only reference ids in the list will be selected for the analysis
-        exclude_ref_id: if given, refid in the list will be excluded from the analysis
-        log_level: Set the log level. Valid values: warning, info, debug
+        * max_NNNNN_freq
+            maximum frequency of NNNNN kmers in reads (1 to deactivate)
+        * max_mismatching_freq
+            maximum frequency of mismatching kmers in reads (1 to deactivate)
+        * max_missing_freq
+            maximum frequency of missing kmers in reads (1 to deactivate)
+        * select_ref_id
+            if given, only reference ids in the list will be selected for the analysis
+        * exclude_ref_id
+            if given, refid in the list will be excluded from the analysis
+        * log_level
+            Set the log level. Valid values: warning, info, debug
         """
 
         # Set logging level
