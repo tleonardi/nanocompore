@@ -13,7 +13,8 @@ import numpy as np
 import pandas as pd
 from pyfaidx import Fasta
 import pyfaidx
-import scipy as sp
+from scipy.stats import logistic as sp_logistic
+from scipy.stats import wald as sp_wald
 import matplotlib.pyplot as pl
 from tqdm import tqdm
 
@@ -46,9 +47,10 @@ def SimReads (
     mod_extend_context=2,
     min_mod_dist=6,
     pos_rand_seed=42,
-    distr_rand_seed=42,
+    not_bound=False,
     log_level="info"):
     """
+    #########################################################
     * fasta_fn
         Fasta file containing references to use to generate artificial reads
     * outpath
@@ -94,7 +96,7 @@ def SimReads (
     option_d = OrderedDict()
     option_d["package_name"] = package_name
     option_d["package_version"] = package_version
-    option_d["function"] = "simulate_reads_from_fasta"
+    option_d["function"] = "SimReads"
     option_d["timestamp"] = str(datetime.datetime.now())
     for i, j in kwargs.items():
         option_d[i]=j
@@ -156,7 +158,7 @@ def SimReads (
                     mod_extend_context = mod_extend_context,
                     min_mod_dist = min_mod_dist,
                     pos_rand_seed=pos_rand_seed,
-                    distr_rand_seed=distr_rand_seed)
+                    not_bound=not_bound)
 
                 # Plot traces if required
                 if plot:
@@ -224,8 +226,8 @@ def simulate_ref_mod_context (
     mod_bases_type="A",
     mod_extend_context=0,
     min_mod_dist=6,
-    pos_rand_seed=42,
-    distr_rand_seed=42):
+    not_bound=False,
+    pos_rand_seed=42):
     """"""
 
     # Extra parameters if signal modification required
@@ -237,21 +239,36 @@ def simulate_ref_mod_context (
         # if the modification context has to be extended
         mod_dict = make_mod_dict (intensity_mod_loc, intensity_mod_scale, dwell_mod_loc, dwell_mod_scale, mod_extend_context)
     else:
-        mod_pos_list=[]
-        nreads_mod=0
+        mod_pos_list = []
+        nreads_mod = 0
 
     # Create empty arrays to store reads intensity and dwell
     n_kmers = len(ref_seq)-4
     intensity_array = np.empty(shape=(n_kmers, nreads), dtype=np.float)
     dwell_array = np.empty(shape=(n_kmers, nreads), dtype=np.float)
 
-    np.random.seed(distr_rand_seed)
     # Fill in arrays with non modified data per position
     for pos in range(n_kmers):
         kmer_seq =  ref_seq[pos:pos+5]
         kmer_model = model_df.loc[kmer_seq]
-        intensity_array[pos] = sp.stats.logistic.rvs(loc=kmer_model["model_intensity_loc"], scale=kmer_model["model_intensity_scale"], size=nreads)
-        dwell_array[pos] = sp.stats.wald.rvs(loc=kmer_model["model_dwell_loc"], scale=kmer_model["model_dwell_scale"], size=nreads)
+
+        # Sample intensity
+        intensity_array[pos] = get_valid_distr_data (
+            loc = kmer_model["model_intensity_loc"],
+            scale = kmer_model["model_intensity_scale"],
+            min = None if not_bound else kmer_model["raw_intensity_min"],
+            max = None if not_bound else kmer_model["raw_intensity_max"],
+            sp_distrib = sp_logistic,
+            size=nreads)
+
+        # Sample dwell
+        dwell_array[pos] = get_valid_distr_data (
+            loc = kmer_model["model_dwell_loc"],
+            scale = kmer_model["model_dwell_scale"],
+            min = None if not_bound else kmer_model["raw_dwell_min"],
+            max = None if not_bound else kmer_model["raw_dwell_max"],
+            sp_distrib = sp_wald,
+            size=nreads)
 
     # If modifications are required, edit the values for randomly picked positions + adjacent positions if a context was given
     if mod_bases_freq:
@@ -263,15 +280,21 @@ def simulate_ref_mod_context (
                     kmer_model = model_df.loc[kmer_seq]
 
                     if intensity_mod_loc or intensity_mod_scale:
-                        intensity_array[pos_extend][0:nreads_mod] = sp.stats.logistic.rvs(
-                            loc=kmer_model["model_intensity_loc"] + mod_dict["intensity_loc"][i],
-                            scale=kmer_model["model_intensity_scale"] + mod_dict["intensity_scale"][i],
+                        intensity_array[pos_extend][0:nreads_mod] = get_valid_distr_data (
+                            loc = kmer_model["model_intensity_loc"] + mod_dict["intensity_loc"][i],
+                            scale = kmer_model["model_intensity_scale"] + mod_dict["intensity_scale"][i],
+                            min = None if not_bound else kmer_model["raw_intensity_min"] + mod_dict["intensity_loc"][i],
+                            max = None if not_bound else kmer_model["raw_intensity_max"] + mod_dict["intensity_loc"][i],
+                            sp_distrib = sp_logistic,
                             size=nreads_mod)
 
                     if dwell_mod_loc or dwell_mod_scale:
-                        dwell_array[pos_extend][0:nreads_mod] = sp.stats.wald.rvs(
-                            loc=kmer_model["model_dwell_loc"]+ mod_dict["dwell_loc"][i],
-                            scale=kmer_model["model_dwell_scale"] + mod_dict["dwell_scale"][i],
+                        dwell_array[pos_extend][0:nreads_mod] = get_valid_distr_data (
+                            loc = kmer_model["model_dwell_loc"] + mod_dict["dwell_loc"][i],
+                            scale = kmer_model["model_dwell_scale"] + mod_dict["dwell_scale"][i],
+                            min = None if not_bound else kmer_model["raw_dwell_min"] + mod_dict["dwell_loc"][i],
+                            max = None if not_bound else kmer_model["raw_dwell_max"] + mod_dict["dwell_loc"][i],
+                            sp_distrib = sp_wald,
                             size=nreads_mod)
 
     return (intensity_array, dwell_array, mod_pos_list, nreads_mod)
@@ -299,6 +322,33 @@ def find_valid_pos_list (ref_seq, mod_bases_type, mod_bases_freq, min_mod_dist, 
             n_samples -= 1
         i+=1
     return a
+
+def get_valid_distr_data (loc, scale, size, sp_distrib, min=None, max=None, max_tries=10000):
+    """"""
+    np.random.seed(None)
+
+    # Define lower and upper bound if not given
+    if not min: min=0
+    if not max: max=np.finfo(np.float64).max
+
+    # Try to sample the required number of data point
+    i = 0
+    while True:
+        data = sp_distrib.rvs(loc=loc, scale=scale, size=size, random_state=None)
+        if data.min() > min and data.max() < max:
+            return data
+
+        # Safety trigger
+        i+=1
+        # Fall back to safe bounds if min max bounds fails to yield valid values
+        if i > max_tries:
+            logger.debug("\tCould not find valid values with min max bounds. Fall back to safe bounds. Consider `not_bound` option")
+            logger.debug("\tYou should consider using the `not_bound` option")
+            min=0
+            max=np.finfo(np.float64).max
+        # If too many tries raise an exception
+        if i > max_tries*2:
+            raise NanocomporeError ("Could not find valid data after {} tries".format(i))
 
 def make_mod_dict (intensity_mod_loc, intensity_mod_scale, dwell_mod_loc, dwell_mod_scale, mod_extend_context):
     """Compute a harmonic series per values depending on the context length"""
