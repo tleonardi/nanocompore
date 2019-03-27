@@ -52,7 +52,7 @@ def main(args=None):
     parser_sc_testing.add_argument("--sequence_context_weights", type=str, default="uniform", choices=["uniform", "harmonic"], help="Type of weights to use for combining p-values")
     parser_sc_testing.add_argument("--pvalue_thr", type=float, default=0.05, help="Adjusted p-value threshold for reporting significant sites (default: %(default)s)")
     parser_sc_testing.add_argument("--logit", action='store_true', help="Use logistic regression testing also when all conditions have replicates (default: %(default)s)")
-    parser_sc_testing.add_argument("--strict", type=bool, default=True, help="If True runtime warnings during the tests raise an error (default: %(default)s)")
+    parser_sc_testing.add_argument("--allow_warnings", action='store_true', default=False, help="If True runtime warnings during the tests don't raise an error (default: %(default)s)")
     parser_sc_common = parser_sc.add_argument_group('Other options')
     parser_sc_common.add_argument("--nthreads", "-n", type=int, default=3, help="Number of threads (default: %(default)s)")
     parser_sc_common.add_argument("--log_level", type=str, default="info", choices=["warning", "info", "debug"], help="log level (default: %(default)s)")
@@ -126,6 +126,11 @@ def sampcomp_main(args):
     if args.nthreads < 3:
         raise NanocomporeError("The minimum number of threads is 3")
 
+    if args.allow_warnings:
+        strict=False
+    else:
+        strict=True
+
     s = SampComp (
         eventalign_fn_dict = eventalign_fn_dict,
         max_invalid_kmers_freq=args.max_invalid_kmers_freq,
@@ -137,7 +142,7 @@ def sampcomp_main(args):
         downsample_high_coverage = args.downsample_high_coverage,
         comparison_method = args.comparison_methods,
         logit = args.logit,
-        strict = args.strict,
+        strict = strict,
         sequence_context = args.sequence_context,
         sequence_context_weights = args.sequence_context_weights,
         log_level = args.log_level)
