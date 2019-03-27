@@ -59,24 +59,24 @@ def test_ref_pos_list():
     for pos in range(0,10):
         test_ref_pos_list[pos] = {'data':{
                                       'WT':{
-                                          'WT1':{
+                                          'rep1':{
                                              'intensity': np.random.normal(loc=100, scale=10.0, size=100),
                                              'dwell': np.random.normal(loc=100, scale=10.0, size=100),
                                              'coverage': 100
                                           },
-                                          'WT2':{
+                                          'rep2':{
                                              'intensity':np.random.normal(loc=100, scale=10.0, size=100),
                                              'dwell':np.random.normal(loc=100, scale=10.0, size=100),
                                              'coverage': 100
                                           }
                                       },
                                       'KD':{
-                                          'KD1':{
+                                          'rep1':{
                                              'intensity':np.random.normal(loc=120, scale=10.0, size=100),
                                              'dwell':np.random.normal(loc=120, scale=10.0, size=100),
                                              'coverage': 100
                                           },
-                                          'KD2':{
+                                          'rep2':{
                                              'intensity':np.random.normal(loc=120, scale=10.0, size=100),
                                              'dwell':np.random.normal(loc=120, scale=10.0, size=100),
                                              'coverage': 100
