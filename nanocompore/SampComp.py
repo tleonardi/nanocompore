@@ -42,31 +42,32 @@ class SampComp(object):
     #~~~~~~~~~~~~~~FUNDAMENTAL METHODS~~~~~~~~~~~~~~#
 
     def __init__(self,
-        eventalign_fn_dict,
-        output_db_fn,
-        fasta_fn,
-        bed_fn=None,
-        whitelist=None,
-        comparison_method = ["GMM", "KS"],
-        logit = True,
-        strict=True,
-        sequence_context = 0,
-        sequence_context_weights = "uniform",
-        min_coverage = 50,
-        downsample_high_coverage = None,
-        max_invalid_kmers_freq = 0.1,
-        select_ref_id = [],
-        exclude_ref_id = [],
-        nthreads = 4,
-        log_level = "info"):
+        eventalign_fn_dict:"dict or str",
+        output_db_fn:"file_path",
+        fasta_fn:"file_path",
+        bed_fn:"file_path" = None,
+        whitelist:"nancocompore.Whitelist object" = None,
+        comparison_method:"list of str from {MW,KS,TT,GMM}" = ["GMM", "KS"],
+        logit:"bool" = True,
+        strict:"bool" = True,
+        sequence_context:"int" = 0,
+        sequence_context_weights:"{uniform,harmonic}" = "uniform",
+        min_coverage:"int" = 50,
+        downsample_high_coverage:"int" = 0,
+        max_invalid_kmers_freq:"float" = 0.1,
+        select_ref_id:"list or str" = [],
+        exclude_ref_id:"list or str" = [],
+        nthreads:"int <= 4" = 4,
+        log_level:"{warning,info,debug}" = "info"):
 
         """
-        #########################################################
+        Initialise a `SampComp` object and generates a white list of references with sufficient coverage for subsequent analysis.
+        The retuned object can then be called to start the analysis.
         * eventalign_fn_dict
             Multilevel dictionnary indicating the condition_label, sample_label and file name of the eventalign_collapse output.
-            One can also pass YAML file describing the samples instead
+            2 conditions are expected and at least 2 sample replicates per condition are highly recommended.
+            One can also pass YAML file describing the samples instead.
             Example `d = {"S1": {"R1":"path1.tsv", "R2":"path2.tsv"}, "S2": {"R1":"path3.tsv", "R2":"path4.tsv"}}`
-            2 conditions are expected and at least 2 sample replicates per condition are highly recommended
         * output_db_fn
             Path where to write the result database
         * fasta_fn
@@ -76,7 +77,7 @@ class SampComp(object):
         * whitelist
             Whitelist object previously generated with nanocompore Whitelist. If not given, will be automatically generated
         * comparison_method
-            Statistical method to compare the 2 samples (mann_whitney, kolmogorov_smirnov, t_test, gmm).
+            Statistical method to compare the 2 samples (mann_whitney or MW, kolmogorov_smirnov or KS, t_test or TT, gaussian_mixture_model or GMM).
             This can be a list or a comma separated string
         * logit
             Force logistic regression even if we have less than 2 replicates in any condition
@@ -85,8 +86,8 @@ class SampComp(object):
         * sequence_context
             Extend statistical analysis to contigous adjacent base if available
         * sequence_context_weights
-            type of weights to used for combining p-values. Choose between uniform and harmonic
-        * min_cov
+            type of weights to used for combining p-values.
+        * min_coverage
             minimal read coverage required in all sample
         * downsample_high_coverage
             For reference with higher coverage, downsample by randomly selecting reads.
@@ -99,7 +100,7 @@ class SampComp(object):
         * nthreads
             Number of threads (two are used for reading and writing, all the others for processing in parallel).
         * log_level
-            Set the log level. Valid values: warning, info, debug
+            Set the log level.
         """
         # Set logging level
         logger.setLevel(log_level_dict.get (log_level, logging.WARNING))
@@ -183,7 +184,9 @@ class SampComp(object):
         self.__n_samples = n
 
     def __call__(self):
-        """Run analysis"""
+        """
+        Run the analysis
+        """
 
         logger.info("Start data processing")
         # Init Multiprocessing variables
