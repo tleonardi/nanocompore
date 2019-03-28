@@ -141,14 +141,6 @@ class SampComp(object):
             with open(eventalign_fn_dict, "r") as fp:
                 eventalign_fn_dict = yaml.load(fp, Loader=yaml.SafeLoader)
 
-        # Check that the number of condition is 2 and raise a warning if there are less than 2 replicates per conditions
-        if len(eventalign_fn_dict) != 2:
-            raise NanocomporeError("2 conditions are expected. Found {}".format(len(eventalign_fn_dict)))
-        for cond_lab, sample_dict in eventalign_fn_dict.items():
-            if len(sample_dict) == 1:
-                logger.info("Only 1 replicate found for condition {}".format(cond_lab))
-                logger.info("This is not recommended. The statistics will be calculated with the logit method")
-
         # Check eventalign_dict file paths and labels
         eventalign_fn_dict = self.__check_eventalign_fn_dict(eventalign_fn_dict)
 
@@ -414,19 +406,33 @@ class SampComp(object):
     #~~~~~~~~~~~~~~PRIVATE HELPER METHODS~~~~~~~~~~~~~~#
     def __check_eventalign_fn_dict(self, d):
         """"""
+        # Check that the number of condition is 2 and raise a warning if there are less than 2 replicates per conditions
+        if len(d) != 2:
+            raise NanocomporeError("2 conditions are expected. Found {}".format(len(d)))
+        for cond_lab, sample_dict in d.items():
+            if len(sample_dict) == 1:
+                logger.info("Only 1 replicate found for condition {}".format(cond_lab))
+                logger.info("This is not recommended. The statistics will be calculated with the logit method")
+
         # Test if files are accessible and verify that there are no duplicated replicate labels
-        try:
-            rep_lab_list = []
-            for cond_lab, sd in d.items():
-                for rep_lab, fn in sd.items():
-                    if not access_file(fn):
-                        raise NanocomporeError("Cannot access eventalign_collapse file {}".format(fn))
-                    assert rep_lab not in rep_lab_list
-                    rep_lab_list.append(rep_lab)
+        duplicated_lab = False
+        rep_lab_list = []
+        rep_fn_list = []
+        for cond_lab, sd in d.items():
+            for rep_lab, fn in sd.items():
+                if not access_file(fn):
+                    raise NanocomporeError("Cannot access eventalign file: {}".format(fn))
+                if fn in rep_fn_list:
+                    raise NanocomporeError("Duplicated eventalign file detected: {}".format(fn))
+                if rep_lab in rep_lab_list:
+                    duplicated_lab = True
+                rep_lab_list.append(rep_lab)
+                rep_fn_list.append(fn)
+        if not duplicated_lab:
             return d
 
         # If duplicated replicate labels found, outprefix labels with condition name
-        except AssertionError:
+        else:
             logger.debug("Found duplicated labels in the replicate names. Prefixing with condition name")
             d_clean = OrderedDict()
             for cond_lab, sd in d.items():
