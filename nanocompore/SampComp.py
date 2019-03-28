@@ -51,8 +51,8 @@ class SampComp(object):
         bed_fn:"file_path" = None,
         overwrite:"bool"=False,
         whitelist:"nancocompore.Whitelist object" = None,
-        comparison_method:"list of str from {MW,KS,TT,GMM}" = ["GMM", "KS"],
         logit:"bool" = True,
+        comparison_methods:"list of str from {MW,KS,TT,GMM}" = ["GMM", "KS"],
         allow_warnings:"bool" = False,
         sequence_context:"int" = 0,
         sequence_context_weights:"str {uniform,harmonic}" = "uniform",
@@ -82,7 +82,7 @@ class SampComp(object):
             Path to a BED file containing the annotation of the transcriptome used as reference when mapping.
         * whitelist
             Whitelist object previously generated with nanocompore Whitelist. If not given, will be automatically generated.
-        * comparison_method
+        * comparison_methods
             Statistical method to compare the 2 samples (mann_whitney or MW, kolmogorov_smirnov or KS, t_test or TT, gaussian_mixture_model or GMM).
             This can be a list or a comma separated string.
         * logit
@@ -155,19 +155,19 @@ class SampComp(object):
             raise NanocomporeError("The minimum number of threads is 3")
 
         # Parse comparison methods
-        if comparison_method:
-            if type(comparison_method) == str:
-                comparison_method = comparison_method.split(",")
-            for i, method in enumerate(comparison_method):
+        if comparison_methods:
+            if type(comparison_methods) == str:
+                comparison_methods = comparison_methods.split(",")
+            for i, method in enumerate(comparison_methods):
                 method = method.upper()
                 if method in ["MANN_WHITNEY", "MW"]:
-                    comparison_method[i]="MW"
+                    comparison_methods[i]="MW"
                 elif method in ["KOLMOGOROV_SMIRNOV", "KS"]:
-                    comparison_method[i]="KS"
+                    comparison_methods[i]="KS"
                 elif method in ["T_TEST", "TT"]:
-                    comparison_method[i]="TT"
+                    comparison_methods[i]="TT"
                 elif method in ["GAUSSIAN_MIXTURE_MODEL", "GMM"]:
-                    comparison_method[i]="GMM"
+                    comparison_methods[i]="GMM"
                 else:
                     raise NanocomporeError("Invalid comparison method {}".format(method))
 
@@ -195,7 +195,7 @@ class SampComp(object):
         self.__fasta_fn = fasta_fn
         self.__bed_fn = bed_fn
         self.__whitelist = whitelist
-        self.__comparison_methods = comparison_method
+        self.__comparison_methods = comparison_methods
         self.__logit = logit
         self.__allow_warnings = allow_warnings
         self.__sequence_context = sequence_context
