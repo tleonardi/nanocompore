@@ -102,7 +102,7 @@ venv.bak/
 
 data
 tests
-.docs
+docs/demo/results
 
 # mypy
 .mypy_cache/
