@@ -150,7 +150,7 @@ def nonparametric_test(condition1_intensity, condition2_intensity, condition1_dw
     return(pval_intensity, pval_dwell)
 
 
-def gmm_test(data, anova=True, logit=False, log_dwell=True, verbose=True, allow_warnings=False):
+def gmm_test(data, anova=True, logit=False, verbose=True, allow_warnings=False):
     # Condition labels
     condition_labels = tuple(data.keys())
     # List of sample labels
@@ -163,9 +163,6 @@ def gmm_test(data, anova=True, logit=False, log_dwell=True, verbose=True, allow_
     # Merge the intensities and dwell times of all samples in a single array
     global_intensity = np.concatenate(([v['intensity'] for v in data[condition_labels[0]].values()]+[v['intensity'] for v in data[condition_labels[1]].values()]), axis=None)
     global_dwell = np.concatenate(([v['dwell'] for v in data[condition_labels[0]].values()]+[v['dwell'] for v in data[condition_labels[1]].values()]), axis=None)
-
-    if log_dwell:
-        global_dwell = np.log10(global_dwell)
 
     # Scale the intensity and dwell time arrays
     X = StandardScaler().fit_transform([(i, d) for i,d in zip(global_intensity, global_dwell)])
