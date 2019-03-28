@@ -2,6 +2,7 @@
 
 #~~~~~~~~~~~~~~IMPORTS~~~~~~~~~~~~~~#
 # Std lib
+import logging
 from collections import *
 import shelve
 from dbm import error as dbm_error
@@ -25,30 +26,48 @@ from sklearn.preprocessing import scale as scale
 # Local package
 from nanocompore.common import *
 
+# Logger setup
+logging.basicConfig(level=logging.INFO, format='%(message)s')
+logger = logging.getLogger(__name__)
+log_level_dict = {"debug":logging.DEBUG, "info":logging.INFO, "warning":logging.WARNING}
+
 #~~~~~~~~~~~~~~MAIN CLASS~~~~~~~~~~~~~~#
 class SampCompDB(object):
     """ Wrapper over the result shelve SampComp """
 
     #~~~~~~~~~~~~~~FUNDAMENTAL METHODS~~~~~~~~~~~~~~#
-    def __init__(self, db_fn, fasta_fn, bed_fn=None, run_type="RNA"):
+    def __init__(self,
+        db_prefix:"file_prefix_path",
+        fasta_fn:"file_path",
+        bed_fn:"file_path" = None,
+        run_type:"str {RNA,DNA}" = "RNA",
+        log_level:"str {warning,info,debug}" = "info"):
         """
         Import a shelve db and a fasta reference file. Automatically returned by SampComp
         Can also be manually created from an existing shelve db output
-        * db_fn
-            Path where to write the result database
+        * db_prefix
+            Prefix of the database. For example if the path to the db file is "/outpath/out.db" the db_prefix is "/outpath/out"
         * fasta_fn
             Path to a fasta file corresponding to the reference used for read alignemnt
         * bed_fn
             Path to a BED file containing the annotation of the transcriptome used as reference when mapping
         * run_type
             Define the run type model to import (RNA or DNA)
+        * log_level
+            Set the log level.
         """
+
+        # Set logging level
+        logger.setLevel(log_level_dict.get(log_level, logging.WARNING))
+        logger.info("Loading SampCompDB")
 
         # Try to get ref_id list and metadata from shelve db
         try:
+            db_fn = db_prefix+"SampComp.db"
             with shelve.open(db_fn, flag='r') as db:
                 # Try to get metadata from db
                 try:
+                    logger.debug("\tReading Metadata")
                     metadata = db['__metadata']
                     self._comparison_method = metadata['comparison_method']
                     self._sequence_context = metadata['sequence_context']
@@ -58,21 +77,25 @@ class SampCompDB(object):
                 except KeyError:
                     raise NanocomporeError("The result database does not contain metadata")
                 # Try to load read_ids
+                logger.debug("\tLoading list of reference ids")
                 self.ref_id_list = [k for k in db.keys() if k!='__metadata']
                 if not self.ref_id_list:
                     raise NanocomporeError("The result database is empty")
-                # finally save db path
-                self._db_fn = db_fn
-
         except dbm_error:
             raise NanocomporeError("The result database cannot be opened")
 
-        # Test is Fasta can be opened
-        try:
-            with Fasta(fasta_fn):
-                self._fasta_fn = fasta_fn
-        except IOError:
-            raise NanocomporeError("The fasta file cannot be opened")
+        # Save db prefix and db path
+        self._db_prefix = db_prefix
+        self._db_fn = db_fn
+
+        logger.debug("Checking files and arg values")
+        # Check if fasta and bed files exist
+        if not access_file(fasta_fn):
+            raise NanocomporeError("{} is not a valid FASTA file".format(fasta_fn))
+        self._fasta_fn = fasta_fn
+        if bed_fn and not access_file(bed_fn):
+            raise NanocomporeError("{} is not a valid BED file".format(bed_fn))
+        self._bed_fn = bed_fn
 
         # Define model depending on run_type
         if run_type == "RNA":
@@ -81,10 +104,9 @@ class SampCompDB(object):
         else:
             raise NanocomporeError("Only RNA is implemented at the moment")
 
-        self.bed_fn = bed_fn
-
-        #Create results df with adjusted p-values
+        # Create results df with adjusted p-values
         if self._pvalue_tests:
+            logger.info("Calculate results")
             self.results = self.__calculate_results(adjust=True)
 
     def __repr__(self):
@@ -112,7 +134,6 @@ class SampCompDB(object):
 
     def __calculate_results(self, adjust=True):
         """"""
-
         # Collect all pvalue results in a dataframe
         l = []
         for ref_id, ref_pos_list in self:
@@ -129,10 +150,10 @@ class SampCompDB(object):
                     l.append(row_dict)
         df = pd.DataFrame(l)
 
-        if self.bed_fn:
+        if self._bed_fn:
             bed_annot={}
             try:
-                with open(self.bed_fn) as tsvfile:
+                with open(self._bed_fn) as tsvfile:
                     for line in tsvfile:
                         record_name=line.split('\t')[3]
                         if( record_name in self.ref_id_list):
@@ -208,8 +229,36 @@ class SampCompDB(object):
         return(corrected_p_values)
 
     #~~~~~~~~~~~~~~PUBLIC METHODS~~~~~~~~~~~~~~#
+    def save_all (self, outpath_prefix=None, pvalue_thr=0.01):
+        """
+        This function saves all text reports including genomic coordinate if a bed file was provided
+        * outpath_prefix
+            outpath + prefix to use as a basename for output files
+        * pvalue_thr
+            pvalue threshold to report significant sites in bed files
+        """
+        if not outpath_prefix:
+            outpath_prefix = self._db_prefix
+        logger.debug("Save reports to {}".format(outpath_prefix))
 
-    def save_to_bed(self, output_fn, bedgraph=False, pvalue_field=None, pvalue_thr=0.01, span=5, convert=None, assembly=None, title=None):
+        # Save reports
+        logger.debug("\tSaving extended tabular report")
+        self.save_report(output_fn = outpath_prefix+"nanocompore_results.tsv")
+        logger.debug("\tSaving shift results")
+        self.save_shift_stats(output_fn = outpath_prefix+"nanocompore_shift_stats.tsv")
+
+        # Save bed and bedgraph files for each method used
+        if self._bed_fn:
+            logger.debug("\tSaving significant genomic coordinates in Bed and Bedgraph format")
+            for m in self._pvalue_tests:
+                self.save_to_bed(
+                    output_fn = outpath_prefix+"sig_sites_{}_thr_{}.bed".format(m, pvalue_thr),
+                    bedgraph=False, pvalue_field=m, pvalue_thr=pvalue_thr, span=5, title="Nanocompore Significant Sites")
+                self.save_to_bed(
+                    output_fn = outpath_prefix+"sig_sites_{}_thr_{}.bedgraph".format(m, pvalue_thr),
+                    bedgraph=True, pvalue_field=m, pvalue_thr=pvalue_thr, title="Nanocompore Significant Sites")
+
+    def save_to_bed(self, output_fn=None, bedgraph=False, pvalue_field=None, pvalue_thr=0.01, span=5, convert=None, assembly=None, title=None):
         """
         Saves the results object to BED6 format.
         * bedgraph
@@ -227,7 +276,7 @@ class SampCompDB(object):
         * assembly
             required if convert is used. One of "hg38" or "mm10"
         """
-        if self.bed_fn is None:
+        if self._bed_fn is None:
             raise NanocomporeError("In order to generate a BED file SampCompDB needs to be initialised with a transcriptome BED")
         if span < 1:
             raise NanocomporeError("span has to be >=1")
@@ -281,9 +330,7 @@ class SampCompDB(object):
                     bed_file.write("%s\t%s\t%s\t%s\n" % (line.chr, line.start, line.end, line.score))
 
     def save_report(self, output_fn=None):
-        """
-        Saves an extended tabular report
-        """
+        """Saves an extended tabular report"""
         if output_fn is None:
             fp = sys.stdout
         elif isinstance(output_fn, str):
@@ -329,7 +376,8 @@ class SampCompDB(object):
                 fp.write('\t'.join([ str(i) for i in line ])+'\n')
         fp.close()
 
-    def save_shift_stats(self,  output_fn=None):
+    def save_shift_stats(self, output_fn=None):
+        """"""
         if output_fn is None:
             fp = sys.stdout
         elif isinstance(output_fn, str):
@@ -353,11 +401,11 @@ class SampCompDB(object):
                     fp.write('\t'.join([ str(i) for i in line ])+'\n')
         fp.close()
 
-    def list_most_significant_positions(self, n=10):
-        pass
-
-    def list_most_significant_references(self, n=10):
-        pass
+    # def list_most_significant_positions(self, n=10):
+    #     pass
+    #
+    # def list_most_significant_references(self, n=10):
+    #     pass
 
     #~~~~~~~~~~~~~~PLOTTING METHODS~~~~~~~~~~~~~~#
     def plot_pvalue( self, ref_id, start=None, end=None, kind="lineplot", threshold=0.01, figsize=(30,10), palette="Set2", plot_style="ggplot", tests=None):

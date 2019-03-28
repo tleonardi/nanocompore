@@ -17,12 +17,22 @@ import numpy as np
 import pandas as pd
 
 # Local package
-from nanocompore.common import NanocomporeError
+from nanocompore.common import *
 
 # Init randon seed
 np.random.seed(42)
 
-def txCompare(ref_pos_list, methods=None, sequence_context=0, min_coverage=20, logger=None, ref=None, sequence_context_weights="uniform", anova=True, logit=False, strict=True):
+def txCompare(
+    ref_pos_list,
+    methods=None,
+    sequence_context=0,
+    min_coverage=20,
+    logger=None,
+    ref=None,
+    sequence_context_weights="uniform",
+    anova=True,
+    logit=False,
+    allow_warnings=False):
 
     if sequence_context_weights != "uniform" and sequence_context_weights != "harmonic":
         raise NanocomporeError("Invalid sequence_context_weights (uniform or harmonic)")
@@ -64,7 +74,7 @@ def txCompare(ref_pos_list, methods=None, sequence_context=0, min_coverage=20, l
                     tests.add("{}_intensity_pvalue".format(met))
                     tests.add("{}_dwell_pvalue".format(met))
                 elif met == "GMM":
-                    gmm_results = gmm_test(data, anova=anova, logit=logit, strict=strict)
+                    gmm_results = gmm_test(data, anova=anova, logit=logit, allow_warnings=allow_warnings)
                     res["GMM_model"] = gmm_results['gmm']
                     if anova:
                         res["GMM_pvalue"] = gmm_results['anova']['pvalue']
@@ -140,9 +150,9 @@ def nonparametric_test(condition1_intensity, condition2_intensity, condition1_dw
     return(pval_intensity, pval_dwell)
 
 
-def gmm_test(data, anova=True, logit=False, log_dwell=True, verbose=True, strict=True):
+def gmm_test(data, anova=True, logit=False, log_dwell=True, verbose=True, allow_warnings=False):
     # Condition labels
-    condition_labels = tuple(data.keys()) 
+    condition_labels = tuple(data.keys())
     # List of sample labels
     sample_labels = list(data[condition_labels[0]].keys()) + list(data[condition_labels[1]].keys())
     # Dictionary Sample_label:Condition_label
@@ -163,7 +173,7 @@ def gmm_test(data, anova=True, logit=False, log_dwell=True, verbose=True, strict
     # Generate an array of sample labels
     Y = [ k for k,v in data[condition_labels[0]].items() for _ in v['intensity'] ] + [ k for k,v in data[condition_labels[1]].items() for _ in v['intensity'] ]
 
-    gmm_fit = fit_best_gmm(X, max_components=2, cv_types=['spherical', 'tied', 'diag', 'full'])
+    gmm_fit = fit_best_gmm(X, max_components=2, cv_types=['full'])
     gmm_mod, gmm_type, gmm_ncomponents = gmm_fit
 
     # If the best GMM has 2 clusters do an anova test on the log odd ratios
@@ -176,7 +186,7 @@ def gmm_test(data, anova=True, logit=False, log_dwell=True, verbose=True, strict
             counters[lab] = Counter(y_pred[[i==lab for i in Y]])
         cluster_counts = count_reads_in_cluster(counters)
         if anova:
-            aov_results = gmm_anova_test(counters, sample_condition_labels, condition_labels, gmm_ncomponents, strict=strict)
+            aov_results = gmm_anova_test(counters, sample_condition_labels, condition_labels, gmm_ncomponents, allow_warnings)
         else:
             aov_results=None
 
@@ -213,7 +223,7 @@ def fit_best_gmm(X, max_components=2, cv_types=['spherical', 'tied', 'diag', 'fu
                 best_gmm_ncomponents = n_components
     return((best_gmm, best_gmm_type, best_gmm_ncomponents))
 
-def gmm_anova_test(counters, sample_condition_labels, condition_labels, gmm_ncomponents, strict=True):
+def gmm_anova_test(counters, sample_condition_labels, condition_labels, gmm_ncomponents, allow_warnings=False):
     labels= []
     logr = []
     for sample,counter in counters.items():
@@ -231,7 +241,7 @@ def gmm_anova_test(counters, sample_condition_labels, condition_labels, gmm_ncom
     logr_s2 = [logr[i] for i,l in enumerate(labels) if l==condition_labels[1]]
     # If the SS for either array is 0, skip the anova test
     if sum_of_squares(logr_s1-np.mean(logr_s1)) == 0 and sum_of_squares(logr_s2-np.mean(logr_s2)) == 0:
-        if strict: 
+        if not allow_warnings:
             raise NanocomporeError("While doing the Annova test we found a sample with within variance = 0. Use --allow_warnings to ignore.")
         else:
             aov_table = "Within variance is 0"
@@ -244,13 +254,13 @@ def gmm_anova_test(counters, sample_condition_labels, condition_labels, gmm_ncom
                 aov_table = f_oneway(logr_s1, logr_s2)
                 aov_pvalue = aov_table.pvalue
             except RuntimeWarning:
-                if strict:
+                if not allow_warnings:
                     raise NanocomporeError("While doing the Anova test a runtime warning was raised. Use --allow_warnings to ignore.")
                 else:
                     warnings.filterwarnings('default')
                     aov_table = f_oneway(logr_s1, logr_s2)
                     aov_pvalue = np.finfo(np.float).tiny
-    if aov_pvalue == 0: 
+    if aov_pvalue == 0:
         raise NanocomporeError("The Anova test returned a p-value of 0. This is most likely an error somewhere")
     # Calculate the delta log odds ratio, i.e. the difference of the means of the log odds ratios between the two conditions
     aov_delta_logit=float(np.mean(logr_s1)-np.mean(logr_s2))
@@ -381,4 +391,3 @@ def sum_of_squares(x):
     """
     x = np.atleast_1d(x)
     return np.sum(x*x)
-
