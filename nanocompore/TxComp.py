@@ -77,9 +77,9 @@ def txCompare(
                     gmm_results = gmm_test(data, anova=anova, logit=logit, allow_warnings=allow_warnings)
                     res["GMM_model"] = gmm_results['gmm']
                     if anova:
-                        res["GMM_pvalue"] = gmm_results['anova']['pvalue']
+                        res["GMM_anova_pvalue"] = gmm_results['anova']['pvalue']
                         res["GMM_anova_model"] = gmm_results['anova']
-                        tests.add("GMM_pvalue")
+                        tests.add("GMM_anova_pvalue")
                     if logit:
                         res["GMM_logit_pvalue"] = gmm_results['logit']['pvalue']
                         res["GMM_logit_model"] = gmm_results['logit']

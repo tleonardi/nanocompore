@@ -342,12 +342,15 @@ class SampCompDB(object):
             raise NanocomporeError("output_fn needs to be a string or None")
 
         headers = ['pos', 'chr', 'genomicPos', 'ref_id', 'strand', 'ref_kmer']+self._pvalue_tests
-        if "GMM" in self._comparison_method:
-            headers += ["GMM_cov_type", "GMM_n_clust", "Anova_delta_logit", "Logit_LOR", "cluster_counts"]
+
         # Read extra GMM info from the shelve
-        if "" in self._comparison_method:
-            headers += ['LOR', 'clusters']
-            gmm_info=OrderedDict()
+        if "GMM" in self._comparison_method:
+            headers.extend(["GMM_cov_type", "GMM_n_clust", "cluster_counts"])
+            # Conditional add if logit or Anova
+            if "GMM_anova_pvalue" in self._pvalue_tests:
+                headers.append("Anova_delta_logit")
+            if "GMM_logit_pvalue" in self._pvalue_tests:
+                headers.append("Logit_LOR")
 
         # Write headers to file
         fp.write('\t'.join([ str(i) for i in headers ])+'\n')
@@ -366,12 +369,12 @@ class SampCompDB(object):
                         line.append(record_txComp['GMM_model']['model'].covariance_type)
                     elif f == "GMM_n_clust":
                         line.append(record_txComp['GMM_model']['model'].n_components)
+                    elif f == "cluster_counts":
+                        line.append(record_txComp['GMM_model']['cluster_counts'])
                     elif f == "Anova_delta_logit":
                         line.append(record_txComp['GMM_anova_model']['delta_logit'])
                     elif f == "Logit_LOR":
                         line.append(record_txComp['GMM_logit_model']['coef'])
-                    elif f == "cluster_counts":
-                        line.append(record_txComp['GMM_model']['cluster_counts'])
                     else: line.append("NA")
                 fp.write('\t'.join([ str(i) for i in line ])+'\n')
         fp.close()
@@ -815,7 +818,7 @@ class SampCompDB(object):
 
             return(fig, ax)
 
-    def plot_volcano(self, ref_id, threshold=0.01, figsize=(30,10), palette="Set2", plot_style="ggplot", method="GMM_pvalue"):
+    def plot_volcano(self, ref_id, threshold=0.01, figsize=(30,10), palette="Set2", plot_style="ggplot", method="GMM_anova_pvalue"):
         """
         Plot pvalues per position (by default plot all fields starting by "pvalue")
         It is pointless to plot more than 50 positions at once as it becomes hard to distiguish
