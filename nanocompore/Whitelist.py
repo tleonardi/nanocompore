@@ -65,7 +65,7 @@ class Whitelist(object):
 
         # Set logging level
         logger.setLevel(log_level_dict.get(log_level, logging.WARNING))
-        logger.info("Initialise Whitelist and checks options")
+        logger.info("Initialising Whitelist and checking options")
         self.__log_level = log_level
 
         # Check index files
@@ -76,7 +76,7 @@ class Whitelist(object):
                 if not access_file(idx_fn):
                     raise NanocomporeError("Cannot access eventalign_collapse index file {}".format(idx_fn))
                 # Check header line and set a flag to skip filter if the index file does not contain kmer status information
-                with open (idx_fn, "r") as fp:
+                with open(idx_fn, "r") as fp:
                     header = fp.readline().rstrip().split("\t")
                 if not all_values_in (("ref_id", "read_id", "byte_offset", "byte_len"), header):
                     raise NanocomporeError("The index file {} does not contain the require header fields".format(idx_fn))
@@ -101,7 +101,7 @@ class Whitelist(object):
             raise NanocomporeError("The fasta file cannot be opened")
 
         # Create reference index for both files
-        logger.info("Read eventalign index files")
+        logger.info("Reading eventalign index files")
         ref_reads = self.__read_eventalign_index(
             eventalign_fn_dict = eventalign_fn_dict,
             max_invalid_kmers_freq = max_invalid_kmers_freq,
@@ -112,7 +112,7 @@ class Whitelist(object):
             exclude_ref_id = exclude_ref_id)
 
         # Filtering at transcript level
-        logger.info("Filter out references with low coverage")
+        logger.info("Filtering out references with low coverage")
         self.ref_reads = self.__select_ref(
             ref_reads = ref_reads,
             min_coverage=min_coverage,
@@ -178,7 +178,7 @@ class Whitelist(object):
                     for line in fp:
                         try:
                             # Transform line to dict and cast str numbers to actual numbers
-                            read = numeric_cast_dict (keys=col_names, values=line.rstrip().split("\t"))
+                            read = numeric_cast_dict(keys=col_names, values=line.rstrip().split("\t"))
 
                             # Filter out ref_id if a select_ref_id list or exclude_ref_id list was provided
                             if select_ref_id and not read["ref_id"] in select_ref_id:
