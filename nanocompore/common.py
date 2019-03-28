@@ -20,13 +20,13 @@ def mkdir (fn, exist_ok=False):
     """
     Create directory recursivelly. Raise IO error if path exist or if error at creation
     """
-    if os.path.isdir (fn) and not exist_ok:
-        raise NanocomporeError ("The output folder `{}` already exists".format(fn))
-    else:
-        try:
-            os.makedirs (fn)
-        except:
-            raise NanocomporeError ("Error creating output folder `{}`".format(fn))
+    # if os.path.isdir(fn) and not exist_ok:
+    #     raise NanocomporeError ("The output folder `{}` already exists".format(fn))
+    # else:
+    try:
+        os.makedirs (fn, exist_ok=exist_ok)
+    except:
+        raise NanocomporeError ("Error creating output folder `{}`".format(fn))
 
 def access_file (fn, **kwargs):
     """
