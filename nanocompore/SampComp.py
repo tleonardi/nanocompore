@@ -52,7 +52,7 @@ class SampComp(object):
         strict:"bool" = True,
         sequence_context:"int" = 0,
         sequence_context_weights:"{uniform,harmonic}" = "uniform",
-        min_coverage:"int" = 50,
+        min_coverage:"int" = 40,
         downsample_high_coverage:"int" = 0,
         max_invalid_kmers_freq:"float" = 0.1,
         select_ref_id:"list or str" = [],
@@ -98,7 +98,7 @@ class SampComp(object):
         * exclude_ref_id
             if given, refid in the list will be excluded from the analysis
         * nthreads
-            Number of threads (two are used for reading and writing, all the others for processing in parallel).
+            Number of threads (two are used for reading and writing, all the others for parallel processing).
         * log_level
             Set the log level.
         """
@@ -118,11 +118,8 @@ class SampComp(object):
             if len(sample_dict) == 1:
                 logger.info("Only 1 replicate found for condition {}. This is not recomended. The statistics will be calculated with the logit method".format(cond_lab))
 
-        # Check args
-        for sample_dict in eventalign_fn_dict.values():
-            for fn in sample_dict.values():
-                if not access_file(fn):
-                    raise NanocomporeError("Cannot access eventalign_collapse file {}".format(fn))
+        # Check eventalign_dict file paths and labels
+        eventalign_fn_dict = self.__check_eventalign_fn_dict (eventalign_fn_dict)
 
         if nthreads < 3:
             raise NanocomporeError("Number of threads not valid")
@@ -187,7 +184,6 @@ class SampComp(object):
         """
         Run the analysis
         """
-
         logger.info("Start data processing")
         # Init Multiprocessing variables
         in_q = mp.Queue(maxsize = 100)
@@ -374,7 +370,31 @@ class SampComp(object):
             error_q.put(None)
 
     #~~~~~~~~~~~~~~PRIVATE HELPER METHODS~~~~~~~~~~~~~~#
+    def __check_eventalign_fn_dict (self, d):
+        """"""
+        # Test if files are accessible and verify that there are no duplicated replicate labels
+        try:
+            rep_lab_list = []
+            for cond_lab, sd in d.items():
+                for rep_lab, fn in sd.items():
+                    if not access_file(fn):
+                        raise NanocomporeError("Cannot access eventalign_collapse file {}".format(fn))
+                    assert rep_lab not in rep_lab_list
+                    rep_lab_list.append(rep_lab)
+            return d
+
+        # If duplicated replicate labels found, prefix labels with condition name
+        except AssertionError:
+            logger.debug("Found duplicated labels in the replicate names. Prefixing with condition name")
+            d_clean = OrderedDict()
+            for cond_lab, sd in d.items():
+                d_clean[cond_lab] = OrderedDict()
+                for rep_lab, fn in sd.items():
+                    d_clean[cond_lab]["{}_{}".format(cond_lab, rep_lab)] = fn
+            return d_clean
+
     def __eventalign_fn_open(self):
+        """"""
         fp_dict = OrderedDict()
         for cond_lab, sample_dict in self.__eventalign_fn_dict.items():
             fp_dict[cond_lab] = OrderedDict()
@@ -383,11 +403,13 @@ class SampComp(object):
         return fp_dict
 
     def __eventalign_fn_close(self, fp_dict):
+        """"""
         for sample_dict in fp_dict.values():
             for fp in sample_dict.values():
                 fp.close()
 
     def __make_ref_pos_list(self, ref_id):
+        """"""
         ref_pos_list = []
         with Fasta(self.__fasta_fn) as fasta:
             ref_fasta = fasta [ref_id]
