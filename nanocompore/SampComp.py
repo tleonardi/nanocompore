@@ -46,17 +46,17 @@ class SampComp(object):
     def __init__(self,
         eventalign_fn_dict:"dict or str",
         fasta_fn:"file_path",
-        outpath:"directory_path",
-        outprefix:"str"="out_",
         bed_fn:"file_path" = None,
-        overwrite:"bool"=False,
+        outpath:"directory_path" = "results",
+        outprefix:"str" = "out_",
+        overwrite:"bool" = False,
         whitelist:"nancocompore.Whitelist object" = None,
-        logit:"bool" = True,
         comparison_methods:"list of str from {MW,KS,TT,GMM}" = ["GMM", "KS"],
+        logit:"bool" = False,
         allow_warnings:"bool" = False,
         sequence_context:"int" = 0,
         sequence_context_weights:"str {uniform,harmonic}" = "uniform",
-        min_coverage:"int" = 40,
+        min_coverage:"int" = 30,
         downsample_high_coverage:"int" = 0,
         max_invalid_kmers_freq:"float" = 0.1,
         select_ref_id:"list or str" = [],
@@ -136,6 +136,7 @@ class SampComp(object):
 
         # If eventalign_fn_dict is not a dict try to load a YAML file instead
         if type(eventalign_fn_dict) == str:
+            logger.debug("Parsing YAML file")
             if not access_file(eventalign_fn_dict):
                 raise NanocomporeError("{} is not a valid file".format(eventalign_fn_dict))
             with open(eventalign_fn_dict, "r") as fp:
@@ -143,6 +144,7 @@ class SampComp(object):
 
         # Check eventalign_dict file paths and labels
         eventalign_fn_dict = self.__check_eventalign_fn_dict(eventalign_fn_dict)
+        logger.debug(eventalign_fn_dict)
 
         # Check if fasta and bed files exist
         if not access_file(fasta_fn):
