@@ -414,7 +414,6 @@ class SampCompDB(object):
     def plot_pvalue( self, ref_id, start=None, end=None, kind="lineplot", threshold=0.01, figsize=(30,10), palette="Set2", plot_style="ggplot", tests=None):
         """
         Plot pvalues per position (by default plot all fields starting by "pvalue")
-        It is pointless to plot more than 50 positions at once as it becomes hard to distiguish
         * ref_id
             Valid reference id name in the database
         * start
@@ -465,7 +464,11 @@ class SampCompDB(object):
         array = np.zeros(end-start, dtype=[(test, np.float) for test in tests])
         for id, row in df.iterrows():
             for test in tests:
-                array[row["pos"]-start][test] = -np.log10(row[test])
+                if np.isnan(row[test]):
+                    v = 0
+                else:
+                    v = -np.log10(row[test])
+                array[row["pos"]-start][test] = v
         # Cast collected results to dataframe
         df = pd.DataFrame(array, index=pos_list)
 
