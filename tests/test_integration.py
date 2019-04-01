@@ -7,16 +7,17 @@ from nanocompore.SimReads import SimReads
 from nanocompore.SampComp import SampComp
 
 
-@pytest.fixture()
-def fasta_file(tmp_path):
-    fasta_file=tmp_path/"reference.fa"
+@pytest.fixture(scope="module")
+def fasta_file(tmpdir_factory):
+    fasta_file = tmpdir_factory.mktemp("fasta").join("reference.fa")
     with open(fasta_file, 'w') as f:
         f.write('>Ref_001\nAATGGGAACGCTTAAACTTACCAAAGTGGTAGGGCATTATAACCCGATGAGACGTGTTACCCCTCAAAGGGCGGTACACCAACTTCAGACTGAGGTTCGATCTCGTGAAATGTCAGCAAGACCTCCACTCCGAAGCCATGAAGCGTTGCCGGGGATTAGCAAGCATCATGTTTACGAATTATATATGCAGACCGTCTTAACCTGGTCCCTAACTAATAATTTATAGTTCTTAGGACGCTCTTGATGATACCCGACGCCCGGCGATCTTATCATCTTTGGCCCCTTCTTCCGGATAGTGTAACGATCATAATTTTCTGCGGAACCTGAAGTTTGCTTTGAGCAAAACTGAGGAGGTTAGTTCTAATATCTGTGTCGCCAAAAACAGCACGATTCTCGACCCGGCGCCGCCACTCGCGACAGCCTTGGGTCCCAGATGCGAACTAATACTAACGGCCCCGACTGCAGAGAAATTTCGGCACACACTCATCTTTTTGCAGCCG\n')
         f.write('>Ref_002\nAATGAGGGATCGAAGCGA\n')
     return(str(fasta_file))
 
-@pytest.fixture()
-def nanopolishcomp_test_files(tmp_path, fasta_file):
+@pytest.fixture(scope="module")
+def nanopolishcomp_test_files(tmpdir_factory, fasta_file):
+    tmp_path=tmpdir_factory.mktemp("generated_data")
     for rep in [1,2]:
         SimReads (
             fasta_fn=fasta_file,
