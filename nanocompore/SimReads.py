@@ -120,8 +120,8 @@ def SimReads(
         json.dump(option_d, log_fp, indent=2)
 
     # Check if fasta file exists
-    if not access_file(args.fasta):
-        raise NanocomporeError("{} is not a valid file".format(args.fasta))
+    if not access_file(fasta_fn):
+        raise NanocomporeError("{} is not a valid file".format(fasta_fn))
 
     # Define model depending on run_type
     if run_type == "RNA":
