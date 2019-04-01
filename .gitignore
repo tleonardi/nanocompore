@@ -101,7 +101,6 @@ venv.bak/
 /site
 
 data
-tests
 docs/demo/results
 
 # mypy
