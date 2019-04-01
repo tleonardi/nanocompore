@@ -41,7 +41,7 @@ def nanopolishcomp_test_files(tmpdir_factory, fasta_file):
             outpath=str(tmp_path),
             outprefix="mod_rep"+str(rep),
             run_type = "RNA",
-            intensity_mod_loc=0.1,
+            intensity_mod_loc=10,
             dwell_mod_loc=0.1,
             mod_reads_freq=0.5,
             mod_bases_freq=0.25,
@@ -82,7 +82,5 @@ def test_1(nanopolishcomp_test_files, method, context, context_weight):
             nthreads = 4,
             log_level = "debug",
             overwrite=True)
-    
     db = s()
-    
     db.save_report("tmp/report.txt")
