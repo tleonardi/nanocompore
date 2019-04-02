@@ -27,7 +27,7 @@ class Whitelist(object):
         eventalign_fn_dict,
         fasta_fn,
         min_coverage = 10,
-        min_ref_length=100,
+        min_ref_length = 100,
         downsample_high_coverage = False,
         max_invalid_kmers_freq = 0.1,
         max_NNNNN_freq = 0.1,

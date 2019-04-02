@@ -68,12 +68,7 @@ class SampCompDB(object):
                 # Try to get metadata from db
                 try:
                     logger.debug("\tReading Metadata")
-                    metadata = db['__metadata']
-                    self._comparison_method = metadata['comparison_method']
-                    self._sequence_context = metadata['sequence_context']
-                    self._min_coverage = metadata['min_coverage']
-                    self._n_samples = metadata['n_samples']
-                    self._pvalue_tests = metadata['pvalue_tests']
+                    self._metadata = db['__metadata']
                 except KeyError:
                     raise NanocomporeError("The result database does not contain metadata")
                 # Try to load read_ids
@@ -105,17 +100,21 @@ class SampCompDB(object):
             raise NanocomporeError("Only RNA is implemented at the moment")
 
         # Create results df with adjusted p-values
-        if self._pvalue_tests:
+        if self._metadata["pvalue_tests"]:
             logger.info("Calculate results")
             self.results = self.__calculate_results(adjust=True)
 
     def __repr__(self):
         """readable description of the object"""
-        return "[{}] Number of references: {}\n".format(self.__class__.__name__, len(self))
+        s = "[{}]\n".format(self.__class__.__name__)
+        for i,j in self._metadata.items():
+            s+= "\t{}: {}\n".format(i,j)
+        s+= "\tNumber of references: {}\n".format(len(self))
+        return s
 
     #~~~~~~~~~~~~~~MAGIC METHODS~~~~~~~~~~~~~~#
     def __len__(self):
-        return len(self.ref_id_list)-1
+        return len(self.ref_id_list)
 
     def __iter__(self):
         with shelve.open(self._db_fn, flag = "r") as db:
@@ -143,7 +142,7 @@ class SampCompDB(object):
                     row_dict["ref_id"] = ref_id
                     row_dict["pos"] = pos
                     row_dict["ref_kmer"] = pos_dict["ref_kmer"]
-                    for test in self._pvalue_tests:
+                    for test in self._metadata["pvalue_tests"]:
                         if test in pos_dict["txComp"]:
                             pval = pos_dict["txComp"][test]
                             row_dict[test] = pval
@@ -167,12 +166,12 @@ class SampCompDB(object):
             # This is very inefficient. We should get chr and strand only once per transcript, ideally when writing the BED file
             df['chr'] = df.apply(lambda row: bed_annot[row['ref_id']].chr,axis=1)
             df['strand'] = df.apply(lambda row: bed_annot[row['ref_id']].strand,axis=1)
-            df=df[['ref_id', 'pos', 'chr', 'strand', 'genomicPos', 'ref_kmer']+self._pvalue_tests]
+            df=df[['ref_id', 'pos', 'chr', 'strand', 'genomicPos', 'ref_kmer']+self._metadata["pvalue_tests"]]
         else:
-            df=df[['ref_id', 'pos', 'ref_kmer']+self._pvalue_tests]
+            df=df[['ref_id', 'pos', 'ref_kmer']+self._metadata["pvalue_tests"]]
 
         if adjust:
-            for col in self._pvalue_tests:
+            for col in self._metadata["pvalue_tests"]:
                 df[col] = self.__multipletests_filter_nan(df[col], method="fdr_bh")
         return df
 
@@ -250,7 +249,7 @@ class SampCompDB(object):
         # Save bed and bedgraph files for each method used
         if self._bed_fn:
             logger.debug("\tSaving significant genomic coordinates in Bed and Bedgraph format")
-            for m in self._pvalue_tests:
+            for m in self._metadata["pvalue_tests"]:
                 self.save_to_bed(
                     output_fn = outpath_prefix+"sig_sites_{}_thr_{}.bed".format(m, pvalue_thr),
                     bedgraph=False, pvalue_field=m, pvalue_thr=pvalue_thr, span=5, title="Nanocompore Significant Sites")
@@ -341,15 +340,15 @@ class SampCompDB(object):
         else:
             raise NanocomporeError("output_fn needs to be a string or None")
 
-        headers = ['pos', 'chr', 'genomicPos', 'ref_id', 'strand', 'ref_kmer']+self._pvalue_tests
+        headers = ['pos', 'chr', 'genomicPos', 'ref_id', 'strand', 'ref_kmer']+self._metadata["pvalue_tests"]
 
         # Read extra GMM info from the shelve
-        if "GMM" in self._comparison_method:
+        if "GMM" in self._metadata["comparison_methods"]:
             headers.extend(["GMM_cov_type", "GMM_n_clust", "cluster_counts"])
             # Conditional add if logit or Anova
-            if "GMM_anova_pvalue" in self._pvalue_tests:
+            if "GMM_anova_pvalue" in self._metadata["pvalue_tests"]:
                 headers.append("Anova_delta_logit")
-            if "GMM_logit_pvalue" in self._pvalue_tests:
+            if "GMM_logit_pvalue" in self._metadata["pvalue_tests"]:
                 headers.append("Logit_LOR")
 
         # Write headers to file
@@ -359,7 +358,7 @@ class SampCompDB(object):
         for cur_id in self.ref_id_list:
             cur_ref_pos_list = self[cur_id]
             for record in self.results[self.results.ref_id == cur_id ].itertuples():
-                if "GMM" in self._comparison_method:
+                if "GMM" in self._metadata["comparison_methods"]:
                     record_txComp = cur_ref_pos_list[record.pos]['txComp']
                 line = []
                 for f in headers:
@@ -445,7 +444,7 @@ class SampCompDB(object):
 
         # list tests methods
         if not tests:
-            tests = self._pvalue_tests
+            tests = self._metadata["pvalue_tests"]
         else:
             if isinstance(tests, str):
                 tests = tests.split(",")
@@ -453,11 +452,11 @@ class SampCompDB(object):
                 raise NanocomporeError("Method must be either a string or a list")
             tests_set = set()
             for test in tests:
-                for available_test in self._pvalue_tests:
+                for available_test in self._metadata["pvalue_tests"]:
                     if test in available_test:
                         tests_set.add(available_test)
             if not tests_set:
-                raise NanocomporeError("No matching tests found in the list of available tests: {}".format(self._pvalue_tests))
+                raise NanocomporeError("No matching tests found in the list of available tests: {}".format(self._metadata["pvalue_tests"]))
             tests = sorted(list(tests_set))
 
         # Collect data for interval in a numpy array
@@ -629,7 +628,7 @@ class SampCompDB(object):
             fig, ax = pl.subplots(figsize=figsize)
             _ = sns.lineplot( x="pos", y="cov", hue="sample", data=df, ax=ax, palette=palette, drawstyle="steps")
             if not scale:
-                _ = ax.axhline(y=self._min_coverage, linestyle=":", color="grey", label="minimal coverage")
+                _ = ax.axhline(y=self._metadata["min_coverage"], linestyle=":", color="grey", label="minimal coverage")
 
             _ = ax.set_ylim(0, None)
             _ = ax.set_xlim(start, end-1)
@@ -750,7 +749,7 @@ class SampCompDB(object):
         data = ref_data[pos]['data']
 
         # Sample colors in palette
-        col_gen = self.__color_generator(palette=palette, n=self._n_samples if split_samples else 2)
+        col_gen = self.__color_generator(palette=palette, n=self._metadata["n_samples"] if split_samples else 2)
 
         # Collect and transform data in dict
         plot_data_dict = OrderedDict()
@@ -854,8 +853,8 @@ class SampCompDB(object):
 
         # Make a list with all methods available
         methods=list(self.results)
-        if method not in self._pvalue_tests:
-            raise NanocomporeError("Method %s is not in the results dataframe. Please chose one of %s "%(method, self._pvalue_tests))
+        if method not in self._metadata["pvalue_tests"]:
+            raise NanocomporeError("Method %s is not in the results dataframe. Please chose one of %s "%(method, self._metadata["pvalue_tests"]))
 
         # Parse line position per position
         d = OrderedDict()
