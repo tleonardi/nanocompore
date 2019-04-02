@@ -155,6 +155,10 @@ def gmm_test(data, anova=True, logit=False, verbose=True, allow_warnings=False):
     condition_labels = tuple(data.keys())
     # List of sample labels
     sample_labels = list(data[condition_labels[0]].keys()) + list(data[condition_labels[1]].keys())
+
+    if len(sample_labels) != len(set(sample_labels)):
+        raise NanocomporeError("Sample labels have to be unique and it looks like some are not.")
+
     # Dictionary Sample_label:Condition_label
     sample_condition_labels = { sk:k for k,v in data.items() for sk in v.keys() }
     if len(condition_labels) != 2:

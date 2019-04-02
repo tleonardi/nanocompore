@@ -152,3 +152,40 @@ def test_txComp_GMM_anova_0_var(test_ref_pos_list_0_var):
     tol=0.000000001
     with pytest.raises(NanocomporeError):
         txCompare(test_ref_pos_list_0_var, methods=['GMM'], logit=False, sequence_context=2, min_coverage=3, logger=ml, allow_warnings=False)
+
+@pytest.fixture
+def test_ref_pos_list_dup_lab():
+    test_ref_pos_list = [None]
+    test_ref_pos_list[0] = {'data':{
+                                  'WT':{
+                                      'Rep1':{
+                                         'intensity': [0,0],
+                                         'dwell': [0,0],
+                                         'coverage': 100
+                                      },
+                                      'Rep2':{
+                                         'intensity': [0,0],
+                                         'dwell': [0,0],
+                                         'coverage': 100
+                                      }
+                                  },
+                                  'KD':{
+                                      'Rep1':{
+                                         'intensity': [0,0],
+                                         'dwell': [0,0],
+                                         'coverage': 100
+                                      },
+                                      'Rep2':{
+                                         'intensity': [0,0],
+                                         'dwell': [0,0],
+                                         'coverage': 100
+                                      }
+                                  }
+                              }
+                             }
+    return(test_ref_pos_list)
+
+def test_txComp_GMM_dup_lab(test_ref_pos_list_dup_lab):
+    ml = mock.Mock()
+    with pytest.raises(NanocomporeError):
+        txCompare(test_ref_pos_list_dup_lab, methods=['GMM'], logit=False, sequence_context=2, min_coverage=3, logger=ml, allow_warnings=False)
