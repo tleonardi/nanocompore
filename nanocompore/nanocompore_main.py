@@ -65,6 +65,8 @@ def main(args=None):
         help="Minimum coverage required in each condition to do the comparison (default: %(default)s)")
     parser_sc_filtering.add_argument("--downsample_high_coverage", type=int, default=0,
         help="Used for debug: transcripts with high covergage will be downsampled (default: %(default)s)")
+    parser_sc_filtering.add_argument("--min_ref_length", type=int, default=100,
+        help="Minimum length of a reference transcript to include it in the analysis (default: %(default)s)")
 
     parser_sc_testing = parser_sc.add_argument_group('Statistical testing options')
     parser_sc_testing.add_argument("--comparison_methods", type=str, default="GMM,KS",
@@ -167,6 +169,7 @@ def sampcomp_main(args):
         bed_fn = args.bed,
         nthreads = args.nthreads,
         min_coverage = args.min_coverage,
+        min_ref_length = args.min_ref_length,
         downsample_high_coverage = args.downsample_high_coverage,
         comparison_methods = args.comparison_methods,
         logit = args.logit,

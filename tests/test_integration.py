@@ -76,11 +76,25 @@ def test_1(nanopolishcomp_test_files, method, context, context_weight):
             allow_warnings=True,
             sequence_context = context,
             sequence_context_weights = context_weight,
-            min_coverage = 10,
             downsample_high_coverage = None,
-            max_invalid_kmers_freq = 0.1,
-            nthreads = 4,
-            log_level = "debug",
             overwrite=True)
     db = s()
     db.save_report("tmp/report.txt")
+    # check that the small reference is discarded by min_ref_length
+    assert len(db.ref_id_list) == 1
+
+def test_2(nanopolishcomp_test_files):
+    fasta_file=nanopolishcomp_test_files[0]
+    fn_dict=nanopolishcomp_test_files[1]
+    s = SampComp(eventalign_fn_dict=fn_dict,
+            outpath="tmp/",
+            outprefix="nanocompore",
+            fasta_fn=fasta_file,
+            allow_warnings=True,
+            min_ref_length = 5,
+            downsample_high_coverage = None,
+            overwrite=True)
+    db = s()
+    db.save_report("tmp/report.txt")
+    # check that the small reference is no discarded by min_ref_length
+    assert len(db.ref_id_list) == 2
