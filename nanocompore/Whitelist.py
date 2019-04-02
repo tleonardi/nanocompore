@@ -227,36 +227,35 @@ class Whitelist(object):
 
         valid_ref_reads = OrderedDict()
         c = Counter()
-        with Fasta(self._fasta_fn) as fasta:
 
-            for ref_id, ref_dict in ref_reads.items():
-                try:
-                    valid_dict = OrderedDict()
-                    for cond_lab, cond_dict in ref_dict.items():
-                        valid_dict[cond_lab] = OrderedDict()
+        for ref_id, ref_dict in ref_reads.items():
+            try:
+                valid_dict = OrderedDict()
+                for cond_lab, cond_dict in ref_dict.items():
+                    valid_dict[cond_lab] = OrderedDict()
+                    for sample_lab, read_list in cond_dict.items():
+                        # Filter out if coverage too low
+                        assert len(read_list) >= min_coverage
+                        # Downsample if coverage too high
+                        if downsample_high_coverage and len(read_list) > downsample_high_coverage:
+                            read_list = random.sample(read_list, downsample_high_coverage)
+                        valid_dict[cond_lab][sample_lab]=read_list
+
+
+                # If all valid add to new dict
+                valid_ref_reads [ref_id] = valid_dict
+
+                # Save extra info for debug
+                if self.__log_level == "debug":
+                    c["valid_ref_id"] += 1
+                    for cond_lab, cond_dict in valid_dict.items():
                         for sample_lab, read_list in cond_dict.items():
-                            # Filter out if coverage too low
-                            assert len(read_list) >= min_coverage
-                            # Downsample if coverage too high
-                            if downsample_high_coverage and len(read_list) > downsample_high_coverage:
-                                read_list = random.sample(read_list, downsample_high_coverage)
-                            valid_dict[cond_lab][sample_lab]=read_list
+                            lab = "{} {} Reads".format(cond_lab, sample_lab)
+                            c[lab] += len(read_list)
 
-
-                    # If all valid add to new dict
-                    valid_ref_reads [ref_id] = valid_dict
-
-                    # Save extra info for debug
-                    if self.__log_level == "debug":
-                        c["valid_ref_id"] += 1
-                        for cond_lab, cond_dict in valid_dict.items():
-                            for sample_lab, read_list in cond_dict.items():
-                                lab = "{} {} Reads".format(cond_lab, sample_lab)
-                                c[lab] += len(read_list)
-
-                except AssertionError:
-                    if self.__log_level == "debug":
-                        c["invalid_ref_id"] += 1
+            except AssertionError:
+                if self.__log_level == "debug":
+                    c["invalid_ref_id"] += 1
 
         logger.debug(counter_to_str(c))
         logger.info("\tReferences remaining after reference coverage filtering: {}".format(len(valid_ref_reads)))
