@@ -102,7 +102,6 @@ venv.bak/
 
 data
 docs/demo/results
-tests
 
 # mypy
 .mypy_cache/
