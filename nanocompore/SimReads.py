@@ -102,7 +102,6 @@ def SimReads(
     option_d = OrderedDict()
     option_d["package_name"] = package_name
     option_d["package_version"] = package_version
-    option_d["function"] = "SimReads"
     option_d["timestamp"] = str(datetime.datetime.now())
     for i, j in kwargs.items():
         option_d[i]=j

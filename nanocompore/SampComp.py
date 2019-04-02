@@ -116,7 +116,6 @@ class SampComp(object):
         option_d = OrderedDict()
         option_d["package_name"] = package_name
         option_d["package_version"] = package_version
-        option_d["function"] = "SampComp"
         option_d["timestamp"] = str(datetime.datetime.now())
         for i, j in kwargs.items():
             if not i == "self":
