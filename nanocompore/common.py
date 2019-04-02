@@ -66,7 +66,7 @@ def all_values_in (required_val_list, all_val_list):
             return False
     return True
 
-def jhelp (f:"python function or method", title_level:"int"=3):
+def jhelp (f:"python function or method"):
     """
     Display a Markdown pretty help message for functions and class methods (default __init__ is a class is passed)
     jhelp also display default values and type annotations if available.
@@ -74,10 +74,8 @@ def jhelp (f:"python function or method", title_level:"int"=3):
     The docstring synthax should follow the markdown formated convention below
     * f
         Function or method to display the help message for
-    * title_level
-        Level of the main function name tittle
     """
-    # For some reason signature is not aways importable. In these cases the build-in help is called instead
+    # For some reason signature is not always importable. In these cases the build-in help is called instead
     try:
         from IPython.core.display import display, Markdown, HTML
         import inspect
