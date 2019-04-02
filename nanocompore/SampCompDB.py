@@ -221,6 +221,9 @@ class SampCompDB(object):
         0.45714286, 0.016     , 0.008     ,        nan,        nan,
         0.016     ,        nan])
         """
+        if all([np.isnan(p) for p in pvalues]): 
+            return pvalues
+
         pvalues_no_nan = [p for p in pvalues if not np.isnan(p)]
         corrected_p_values = multipletests(pvalues_no_nan, method=method)[1]
         for i, p in enumerate(pvalues):
