@@ -394,11 +394,14 @@ class SampComp(object):
                         pbar.update()
 
                 db["__metadata"] = {
-                    "comparison_method": self.__comparison_methods,
+                    "package_name": package_name,
+                    "package_version": package_version,
+                    "timestamp": str(datetime.datetime.now()),
+                    "comparison_methods": self.__comparison_methods,
+                    "pvalue_tests": sorted(list(pvalue_tests)),
                     "sequence_context": self.__sequence_context,
                     "min_coverage": self.__min_coverage,
-                    "n_samples": self.__n_samples,
-                    "pvalue_tests": sorted(list(pvalue_tests))}
+                    "n_samples": self.__n_samples}
 
         # Manage exceptions, deal poison pills and close files
         except Exception:
