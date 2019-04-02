@@ -4,7 +4,7 @@ from scipy.stats import combine_pvalues
 import numpy as np
 from unittest import mock
 from nanocompore.SimReads import SimReads
-from nanocompore.Whitelist import Whitelist 
+from nanocompore.Whitelist import Whitelist
 
 
 @pytest.fixture(scope="module")
@@ -22,10 +22,10 @@ def nanopolishcomp_test_files(tmpdir_factory, fasta_file):
     tmp_path=tmpdir_factory.mktemp("generated_data")
     SimReads(fasta_fn=fasta_file, outpath=str(tmp_path), outprefix="reads", overwrite=True)
     fn_dict={"S1": {
-            "R1": str(tmp_path / "reads.tsv"), 
+            "R1": str(tmp_path / "reads.tsv"),
             },
         "S2": {
-            "R1": str(tmp_path / "reads.tsv"), 
+            "R1": str(tmp_path / "reads.tsv"),
             }
         }
     return((fasta_file, fn_dict))
@@ -34,15 +34,15 @@ def test_def_len_filter(nanopolishcomp_test_files):
     fasta_file, fn_dict = nanopolishcomp_test_files
     whitelist = Whitelist(eventalign_fn_dict = fn_dict, fasta_fn = fasta_file, min_coverage = 100)
     assert len(whitelist.ref_reads) == 1
-    
+
 def test_no_len_filter(nanopolishcomp_test_files):
     fasta_file, fn_dict = nanopolishcomp_test_files
-    whitelist = Whitelist(eventalign_fn_dict = fn_dict, fasta_fn = fasta_file, min_coverage = 100, min_length=0)
+    whitelist = Whitelist(eventalign_fn_dict = fn_dict, fasta_fn = fasta_file, min_coverage = 100, min_ref_length=0)
     assert len(whitelist.ref_reads) == 2
 
 def test_high_len_filter(nanopolishcomp_test_files):
     fasta_file, fn_dict = nanopolishcomp_test_files
-    whitelist = Whitelist(eventalign_fn_dict = fn_dict, fasta_fn = fasta_file, min_coverage = 100, min_length=1000)
+    whitelist = Whitelist(eventalign_fn_dict = fn_dict, fasta_fn = fasta_file, min_coverage = 100, min_ref_length=1000)
     assert len(whitelist.ref_reads) == 0
 
 def test_high_cov_filter(nanopolishcomp_test_files):
