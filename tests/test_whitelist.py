@@ -37,12 +37,12 @@ def test_def_len_filter(nanopolishcomp_test_files):
     
 def test_no_len_filter(nanopolishcomp_test_files):
     fasta_file, fn_dict = nanopolishcomp_test_files
-    whitelist = Whitelist(eventalign_fn_dict = fn_dict, fasta_fn = fasta_file, min_coverage = 100, min_length=0)
+    whitelist = Whitelist(eventalign_fn_dict = fn_dict, fasta_fn = fasta_file, min_coverage = 100, min_ref_length=0)
     assert len(whitelist.ref_reads) == 2
 
 def test_high_len_filter(nanopolishcomp_test_files):
     fasta_file, fn_dict = nanopolishcomp_test_files
-    whitelist = Whitelist(eventalign_fn_dict = fn_dict, fasta_fn = fasta_file, min_coverage = 100, min_length=1000)
+    whitelist = Whitelist(eventalign_fn_dict = fn_dict, fasta_fn = fasta_file, min_coverage = 100, min_ref_length=1000)
     assert len(whitelist.ref_reads) == 0
 
 def test_high_cov_filter(nanopolishcomp_test_files):
