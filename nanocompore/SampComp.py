@@ -57,6 +57,7 @@ class SampComp(object):
         sequence_context:"int" = 0,
         sequence_context_weights:"str {uniform,harmonic}" = "uniform",
         min_coverage:"int" = 30,
+        min_ref_length:"int" = 100,
         downsample_high_coverage:"int" = 0,
         max_invalid_kmers_freq:"float" = 0.1,
         select_ref_id:"list or str" = [],
@@ -95,6 +96,8 @@ class SampComp(object):
             type of weights to used for combining p-values.
         * min_coverage
             minimal read coverage required in all sample.
+        * min_ref_length
+            minimal length of a reference transcript to be considered in the analysis
         * downsample_high_coverage
             For reference with higher coverage, downsample by randomly selecting reads.
         * max_invalid_kmers_freq
@@ -178,6 +181,7 @@ class SampComp(object):
                 eventalign_fn_dict = eventalign_fn_dict,
                 fasta_fn = fasta_fn,
                 min_coverage = min_coverage,
+                min_ref_length = min_ref_length,
                 downsample_high_coverage = downsample_high_coverage,
                 max_invalid_kmers_freq = max_invalid_kmers_freq,
                 select_ref_id = select_ref_id,

@@ -27,6 +27,7 @@ class Whitelist(object):
         eventalign_fn_dict,
         fasta_fn,
         min_coverage = 10,
+        min_ref_length=100,
         downsample_high_coverage = False,
         max_invalid_kmers_freq = 0.1,
         max_NNNNN_freq = 0.1,
@@ -44,6 +45,8 @@ class Whitelist(object):
             Path to a fasta file corresponding to the reference used for read alignemnt
         * min_coverage
             minimal coverage required in both samples
+        * min_ref_length
+            minimal length of a reference transcript to be considered in the analysis
         * downsample_high_coverage
             For reference with higher coverage, downsample by randomly selecting reads.
         * max_invalid_kmers_freq
@@ -116,9 +119,11 @@ class Whitelist(object):
         self.ref_reads = self.__select_ref(
             ref_reads = ref_reads,
             min_coverage=min_coverage,
+            min_ref_length=min_ref_length,
             downsample_high_coverage=downsample_high_coverage)
 
         self.__min_coverage = min_coverage
+        self.__min_ref_length = min_ref_length
         self.__downsample_high_coverage = downsample_high_coverage
         self.__max_invalid_kmers_freq = max_invalid_kmers_freq
 
@@ -222,15 +227,17 @@ class Whitelist(object):
     def __select_ref(self,
         ref_reads,
         min_coverage,
+        min_ref_length,
         downsample_high_coverage):
         """Select ref_id with a minimal coverage in both sample + downsample if needed"""
 
         valid_ref_reads = OrderedDict()
         c = Counter()
         with Fasta(self._fasta_fn) as fasta:
-
             for ref_id, ref_dict in ref_reads.items():
                 try:
+                    # Discard reference transcripts shorter than the threshold
+                    assert len(fasta[ref_id]) > min_ref_length
                     valid_dict = OrderedDict()
                     for cond_lab, cond_dict in ref_dict.items():
                         valid_dict[cond_lab] = OrderedDict()
