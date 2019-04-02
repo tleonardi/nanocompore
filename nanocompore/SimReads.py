@@ -44,7 +44,7 @@ def SimReads(
     dwell_mod_loc:"float" = 0,
     dwell_mod_scale:"float" = 0,
     mod_reads_freq:"float" = 0,
-    mod_bases_freq:"float" = 0,
+    mod_bases_freq:"float" = 0.25,
     mod_bases_type:"str {A,T,C,G}" = "A",
     mod_extend_context:"int" = 2,
     min_mod_dist:"int" = 6,
@@ -242,7 +242,7 @@ def simulate_ref_mod_context(
     """"""
 
     # Extra parameters if signal modification required
-    if mod_bases_freq:
+    if mod_reads_freq and mod_bases_freq:
         # Define number of reads to modify and number not to modify
         nreads_mod = int(np.rint(nreads*mod_reads_freq))
         # Define positions to modify base on mod_base_freq and mod_base_type
@@ -282,7 +282,7 @@ def simulate_ref_mod_context(
             size=nreads)
 
     # If modifications are required, edit the values for randomly picked positions + adjacent positions if a context was given
-    if mod_bases_freq:
+    if mod_reads_freq and mod_bases_freq:
         for pos in mod_pos_list:
             for i in range(-mod_extend_context, mod_extend_context+1):
                 pos_extend = pos+i
