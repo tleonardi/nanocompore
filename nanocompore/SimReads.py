@@ -122,8 +122,8 @@ def SimReads(
         json.dump(option_d, log_fp, indent=2)
 
     # Check if fasta file exists
-    if not access_file(args.fasta):
-        raise NanocomporeError("{} is not a valid file".format(args.fasta))
+    if not access_file(fasta_fn):
+        raise NanocomporeError("{} is not a valid file".format(fasta_fn))
 
     # Define model depending on run_type
     if run_type == "RNA":
@@ -139,7 +139,7 @@ def SimReads(
     with pyfaidx.Fasta(fasta_fn) as fasta,\
          open(os.path.join(outpath, "{}.tsv".format(outprefix)) , "w") as data_fp,\
          open(os.path.join(outpath, "{}.tsv.idx".format(outprefix)), "w") as idx_fp,\
-         open(os.path.join(outpath, "{}._pos.tsv".format(outprefix)), "w") as pos_fp:
+         open(os.path.join(outpath, "{}_pos.tsv".format(outprefix)), "w") as pos_fp:
 
         # Get all reference names if no ref_list
         if not ref_list:

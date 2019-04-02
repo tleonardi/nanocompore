@@ -84,8 +84,9 @@ def test_ref_pos_list():
                                       }
                                   }
                                  }
-    expected = {'GMM_anova': [0.009294583692737432, 0.0007186082196801213, 0.0073120479947770415, 0.0006747727949872362, 0.00607648353543618, 0.004730678594686069, 0.004780377368257902, 0.0032067424187288665, 0.00040586223756605407, 0.0009465280405188231],
-		'GMM_logit': [1.2742453287653416e-39, 3.3968653938213694e-40, 1.9321679678622595e-36, 8.482777798354296e-40, 6.928304506982671e-39, 7.065038671811672e-40, 1.8392720921153275e-40, 4.6826664356268694e-32, 5.922884891638699e-34, 3.1972432623454785e-40]
+    # These expected values have been checked against the R implementations of aov() and glm(family="binomial")
+    expected = {'GMM_anova': [0.0008574768473501677, 0.0036329291397528157, 0.007312047981252302, 0.0017335646468135102, np.nan, 0.004197519576768562, 0.004730678586860965, 0.0029247769925892517, 0.0023262178697710987, 0.00020764199465021126],
+		'GMM_logit': [1.274245328765287e-39, 3.3968653938213694e-40, 1.9321679678623975e-36, 8.482777798353687e-40, np.nan, 7.06503867181238e-40, 1.839272092115274e-40, 9.162002495725215e-32, 5.922884891638699e-34, 3.1972432623454785e-40] 
 		}
     return((test_ref_pos_list, expected))
 
@@ -93,9 +94,20 @@ def test_ref_pos_list():
 def test_txComp_GMM_anova(test_ref_pos_list):
     ml = mock.Mock()
     tol=0.000000001
-    res = txCompare(test_ref_pos_list[0], methods=['GMM'], logit=False, sequence_context=2, min_coverage=3, logger=ml, strict=True)
-    GMM_pvalues = [pos['txComp']['GMM_pvalue'] for pos in res ]
-    assert GMM_pvalues == [pytest.approx(i, abs=tol) for i in test_ref_pos_list[1]['GMM_anova']] 
+    res = txCompare(test_ref_pos_list[0], methods=['GMM'], logit=False, sequence_context=2, min_coverage=3, logger=ml, allow_warnings=False)
+    GMM_pvalues = [pos['txComp']['GMM_anova_pvalue'] for pos in res ]
+    assert GMM_pvalues == [pytest.approx(i, abs=tol, nan_ok=True) for i in test_ref_pos_list[1]['GMM_anova']] 
+
+def test_txComp_GMM_logit(test_ref_pos_list):
+    ml = mock.Mock()
+    tol=0.000000001
+    res = txCompare(test_ref_pos_list[0], methods=['GMM'], logit=True, anova=False, sequence_context=2, min_coverage=3, logger=ml, allow_warnings=False)
+    GMM_logit = [pos['txComp']['GMM_logit_pvalue'] for pos in res ]
+    print(GMM_logit)
+    print(test_ref_pos_list[1]['GMM_logit'])
+    print([pos['txComp']['GMM_model']['cluster_counts'] for pos in res ])
+
+    assert GMM_logit == [pytest.approx(i, abs=tol, nan_ok=True) for i in test_ref_pos_list[1]['GMM_logit']] 
 
 @pytest.fixture
 def test_ref_pos_list_0_var():
@@ -139,11 +151,41 @@ def test_txComp_GMM_anova_0_var(test_ref_pos_list_0_var):
     ml = mock.Mock()
     tol=0.000000001
     with pytest.raises(NanocomporeError):
-        txCompare(test_ref_pos_list_0_var, methods=['GMM'], logit=False, sequence_context=2, min_coverage=3, logger=ml, strict=True)
+        txCompare(test_ref_pos_list_0_var, methods=['GMM'], logit=False, sequence_context=2, min_coverage=3, logger=ml, allow_warnings=False)
 
-def test_txComp_GMM_logit(test_ref_pos_list):
+@pytest.fixture
+def test_ref_pos_list_dup_lab():
+    test_ref_pos_list = [None]
+    test_ref_pos_list[0] = {'data':{
+                                  'WT':{
+                                      'Rep1':{
+                                         'intensity': [0,0],
+                                         'dwell': [0,0],
+                                         'coverage': 100
+                                      },
+                                      'Rep2':{
+                                         'intensity': [0,0],
+                                         'dwell': [0,0],
+                                         'coverage': 100
+                                      }
+                                  },
+                                  'KD':{
+                                      'Rep1':{
+                                         'intensity': [0,0],
+                                         'dwell': [0,0],
+                                         'coverage': 100
+                                      },
+                                      'Rep2':{
+                                         'intensity': [0,0],
+                                         'dwell': [0,0],
+                                         'coverage': 100
+                                      }
+                                  }
+                              }
+                             }
+    return(test_ref_pos_list)
+
+def test_txComp_GMM_dup_lab(test_ref_pos_list_dup_lab):
     ml = mock.Mock()
-    tol=0.000000001
-    res = txCompare(test_ref_pos_list[0], methods=['GMM'], logit=True, anova=False, sequence_context=2, min_coverage=3, logger=ml, strict=True)
-    GMM_logit = [pos['txComp']['GMM_logit_pvalue'] for pos in res ]
-    assert GMM_logit == [pytest.approx(i, abs=tol) for i in test_ref_pos_list[1]['GMM_logit']] 
+    with pytest.raises(NanocomporeError):
+        txCompare(test_ref_pos_list_dup_lab, methods=['GMM'], logit=False, sequence_context=2, min_coverage=3, logger=ml, allow_warnings=False)

@@ -27,6 +27,7 @@ class Whitelist(object):
         eventalign_fn_dict,
         fasta_fn,
         min_coverage = 10,
+        min_ref_length=100,
         downsample_high_coverage = False,
         max_invalid_kmers_freq = 0.1,
         max_NNNNN_freq = 0.1,
@@ -44,6 +45,8 @@ class Whitelist(object):
             Path to a fasta file corresponding to the reference used for read alignemnt
         * min_coverage
             minimal coverage required in both samples
+        * min_ref_length
+            minimal length of a reference transcript to be considered in the analysis
         * downsample_high_coverage
             For reference with higher coverage, downsample by randomly selecting reads.
         * max_invalid_kmers_freq
@@ -116,9 +119,11 @@ class Whitelist(object):
         self.ref_reads = self.__select_ref(
             ref_reads = ref_reads,
             min_coverage=min_coverage,
+            min_ref_length=min_ref_length,
             downsample_high_coverage=downsample_high_coverage)
 
         self.__min_coverage = min_coverage
+        self.__min_ref_length = min_ref_length
         self.__downsample_high_coverage = downsample_high_coverage
         self.__max_invalid_kmers_freq = max_invalid_kmers_freq
 
@@ -222,40 +227,43 @@ class Whitelist(object):
     def __select_ref(self,
         ref_reads,
         min_coverage,
+        min_ref_length,
         downsample_high_coverage):
         """Select ref_id with a minimal coverage in both sample + downsample if needed"""
 
         valid_ref_reads = OrderedDict()
         c = Counter()
-
-        for ref_id, ref_dict in ref_reads.items():
-            try:
-                valid_dict = OrderedDict()
-                for cond_lab, cond_dict in ref_dict.items():
-                    valid_dict[cond_lab] = OrderedDict()
-                    for sample_lab, read_list in cond_dict.items():
-                        # Filter out if coverage too low
-                        assert len(read_list) >= min_coverage
-                        # Downsample if coverage too high
-                        if downsample_high_coverage and len(read_list) > downsample_high_coverage:
-                            read_list = random.sample(read_list, downsample_high_coverage)
-                        valid_dict[cond_lab][sample_lab]=read_list
-
-
-                # If all valid add to new dict
-                valid_ref_reads [ref_id] = valid_dict
-
-                # Save extra info for debug
-                if self.__log_level == "debug":
-                    c["valid_ref_id"] += 1
-                    for cond_lab, cond_dict in valid_dict.items():
+        with Fasta(self._fasta_fn) as fasta:
+            for ref_id, ref_dict in ref_reads.items():
+                try:
+                    # Discard reference transcripts shorter than the threshold
+                    assert len(fasta[ref_id]) > min_ref_length
+                    valid_dict = OrderedDict()
+                    for cond_lab, cond_dict in ref_dict.items():
+                        valid_dict[cond_lab] = OrderedDict()
                         for sample_lab, read_list in cond_dict.items():
-                            lab = "{} {} Reads".format(cond_lab, sample_lab)
-                            c[lab] += len(read_list)
+                            # Filter out if coverage too low
+                            assert len(read_list) >= min_coverage
+                            # Downsample if coverage too high
+                            if downsample_high_coverage and len(read_list) > downsample_high_coverage:
+                                read_list = random.sample(read_list, downsample_high_coverage)
+                            valid_dict[cond_lab][sample_lab]=read_list
 
-            except AssertionError:
-                if self.__log_level == "debug":
-                    c["invalid_ref_id"] += 1
+
+                    # If all valid add to new dict
+                    valid_ref_reads [ref_id] = valid_dict
+
+                    # Save extra info for debug
+                    if self.__log_level == "debug":
+                        c["valid_ref_id"] += 1
+                        for cond_lab, cond_dict in valid_dict.items():
+                            for sample_lab, read_list in cond_dict.items():
+                                lab = "{} {} Reads".format(cond_lab, sample_lab)
+                                c[lab] += len(read_list)
+
+                except AssertionError:
+                    if self.__log_level == "debug":
+                        c["invalid_ref_id"] += 1
 
         logger.debug(counter_to_str(c))
         logger.info("\tReferences remaining after reference coverage filtering: {}".format(len(valid_ref_reads)))

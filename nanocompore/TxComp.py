@@ -155,6 +155,10 @@ def gmm_test(data, anova=True, logit=False, verbose=True, allow_warnings=False):
     condition_labels = tuple(data.keys())
     # List of sample labels
     sample_labels = list(data[condition_labels[0]].keys()) + list(data[condition_labels[1]].keys())
+
+    if len(sample_labels) != len(set(sample_labels)):
+        raise NanocomporeError("Sample labels have to be unique and it looks like some are not.")
+
     # Dictionary Sample_label:Condition_label
     sample_condition_labels = { sk:k for k,v in data.items() for sk in v.keys() }
     if len(condition_labels) != 2:
@@ -163,6 +167,7 @@ def gmm_test(data, anova=True, logit=False, verbose=True, allow_warnings=False):
     # Merge the intensities and dwell times of all samples in a single array
     global_intensity = np.concatenate(([v['intensity'] for v in data[condition_labels[0]].values()]+[v['intensity'] for v in data[condition_labels[1]].values()]), axis=None)
     global_dwell = np.concatenate(([v['dwell'] for v in data[condition_labels[0]].values()]+[v['dwell'] for v in data[condition_labels[1]].values()]), axis=None)
+    global_dwell = np.log10(global_dwell)
 
     # Scale the intensity and dwell time arrays
     X = StandardScaler().fit_transform([(i, d) for i,d in zip(global_intensity, global_dwell)])
@@ -239,7 +244,7 @@ def gmm_anova_test(counters, sample_condition_labels, condition_labels, gmm_ncom
     # If the SS for either array is 0, skip the anova test
     if sum_of_squares(logr_s1-np.mean(logr_s1)) == 0 and sum_of_squares(logr_s2-np.mean(logr_s2)) == 0:
         if not allow_warnings:
-            raise NanocomporeError("While doing the Annova test we found a sample with within variance = 0. Use --allow_warnings to ignore.")
+            raise NanocomporeError("While doing the Anova test we found a sample with within variance = 0. Use --allow_warnings to ignore.")
         else:
             aov_table = "Within variance is 0"
             aov_pvalue = np.finfo(np.float).tiny
