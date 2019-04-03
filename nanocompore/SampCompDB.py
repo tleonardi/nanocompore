@@ -406,9 +406,24 @@ class SampCompDB(object):
                     fp.write('\t'.join([ str(i) for i in line ])+'\n')
         fp.close()
 
-    # def list_most_significant_positions(self, n=10):
-    #     pass
-    #
+    def list_significant_positions(self, ref_id=None, test=None, thr=0.05):
+        """
+        Return a list of positions of ref_id with p-value <= threshold for
+        statistical test specified
+        * ref_id
+            Valid reference id name in the database
+        * test
+            Name of the test of interest
+        * thr
+            p-value threshold
+        """
+        if not test in self._metadata["pvalue_tests"]:
+            raise NanocomporeError("The test requested ({}) does not exist".format(test))
+        if not ref_id in self.ref_id_list:
+            raise NanocomporeError("The reference requested ({}) is not in the DB".format(ref_id))
+        sig = list(self.results[(self.results['ref_id'] == ref_id) & (self.results[test] <= thr)]['pos'])
+        return(sig)
+    
     # def list_most_significant_references(self, n=10):
     #     pass
 
