@@ -17,36 +17,25 @@ class NanocomporeWarning (Warning):
 
 #~~~~~~~~~~~~~~FUNCTIONS~~~~~~~~~~~~~~#
 def mkdir (fn, exist_ok=False):
-    """
-    Create directory recursivelly. Raise IO error if path exist or if error at creation
-    """
-    # if os.path.isdir(fn) and not exist_ok:
-    #     raise NanocomporeError ("The output folder `{}` already exists".format(fn))
-    # else:
+    """ Create directory recursivelly. Raise IO error if path exist or if error at creation """
     try:
         os.makedirs (fn, exist_ok=exist_ok)
     except:
         raise NanocomporeError ("Error creating output folder `{}`".format(fn))
 
 def access_file (fn, **kwargs):
-    """
-    Check if the file is readable
-    """
+    """ Check if the file is readable """
     return os.path.isfile (fn) and os.access (fn, os.R_OK)
 
 def numeric_cast_list (l):
-    """
-    Cast str values to integer or float from a list
-    """
+    """ Cast str values to integer or float from a list """
     l2 = []
     for v in l:
         l2.append(numeric_cast(v))
     return l2
 
 def numeric_cast_dict (keys, values):
-    """
-    Cast str values to integer or float from a list
-    """
+    """ Cast str values to integer or float from a list """
     d = OrderedDict()
     for k, v in zip(keys, values):
         d[k] = numeric_cast(v)
@@ -64,22 +53,20 @@ def numeric_cast (v):
     return v
 
 def counter_to_str (c):
-    """
-    Transform a counter dict to a tabulated str
-    """
+    """ Transform a counter dict to a tabulated str """
     m = ""
     for i, j in c.most_common():
         m += "\t{}: {:,}".format(i, j)
     return m
 
 def all_values_in (required_val_list, all_val_list):
-    """"""
+    """Check that all values in required_val_list are found in all_val_list"""
     for v in required_val_list:
         if not v in all_val_list:
             return False
     return True
 
-def jhelp (f:"python function or method", title_level:"int"=3):
+def jhelp (f:"python function or method"):
     """
     Display a Markdown pretty help message for functions and class methods (default __init__ is a class is passed)
     jhelp also display default values and type annotations if available.
@@ -87,10 +74,8 @@ def jhelp (f:"python function or method", title_level:"int"=3):
     The docstring synthax should follow the markdown formated convention below
     * f
         Function or method to display the help message for
-    * title_level
-        Level of the main function name tittle
     """
-    # For some reason signature is not aways importable. In these cases the build-in help is called instead
+    # For some reason signature is not always importable. In these cases the build-in help is called instead
     try:
         from IPython.core.display import display, Markdown, HTML
         import inspect
@@ -133,9 +118,7 @@ def jhelp (f:"python function or method", title_level:"int"=3):
                     descr.append(l)
 
         # Reformat collected information in Markdown synthax
-        s = "{} {}.\{}\n\n".format("#"*title_level, f.__module__, f.__name__)
-
-        s+= "{}\n\n".format(" ".join(descr))
+        s = "---\n\n**{}.\{}**\n\n{}\n\n---\n\n".format(f.__module__, f.__name__, " ".join(descr))
         for k, v in doc_dict.items():
             s+="* **{}** *{}*\n\n{}\n\n".format(k, " ".join(sig_dict[k]), " ".join(v))
 
