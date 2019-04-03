@@ -88,7 +88,7 @@ def test_1(nanopolishcomp_test_files, method, context, context_weight):
     # Assert that the modified positions identified by SampComp match the expected ones
     for ref in db.ref_id_list:
         for test in [t for t in db._metadata["pvalue_tests"] if "context" not in t]:
-            sig=list(db.results[(db.results['ref_id']==ref) & (db.results[test]<0.05)]['pos']) 
+            sig=db.list_significant_positions(ref_id=ref, test=test, thr=0.05)
             assert expected_pos[ref] == sig
 
 def test_2(nanopolishcomp_test_files):
