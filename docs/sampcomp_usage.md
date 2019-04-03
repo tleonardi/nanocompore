@@ -25,20 +25,20 @@ s = SampComp(
     eventalign_fn_dict = {
         'S1':{'rep1':'./data/S1_R1.tsv', 'rep2':'./data/S1_R2.tsv'},
         'S2':{'rep1':'./data/S2_R1.tsv', 'rep2':'./data/S2_R2.tsv'}},
-    output_db_fn = "./results/out.db",
+    outpath = "./results/",
     fasta_fn = "./reference/ref.fa")
 
 # Run the analysis
 s()
 ```
 
-## Main options
+## Description of main options
 
 `SampComp` provides a very flexible analysis framework with a few mandatory options and many optional parameters. The full documentation command line documentation is provided at the bottom of this page or can be obtained via the help option `nanocompore sampcomp --help`. Immediately below is the detailed explanation of the main options:
 
 #### Sample files
 
-`SampComp` required sample files obtained with `NanopolishComp EventalignCollapse` as explained before (see [data preparation](data_preparation.md)) for both the control and the experimental conditions. 2 conditions are expected, and at least 2 sample replicates per conditions are highly recommended. `SampComp` is called through the CLI the files can be provides using either relevant command options or a YAML file. If using the Python API, one can pass either a python dictionary or a YAML file.
+`SampComp` requires sample files obtained with `NanopolishComp EventalignCollapse` as explained before (see [data preparation](data_preparation.md)) for both the control and the experimental conditions. 2 conditions are expected, and at least 2 sample replicates per conditions are highly recommended. If `SampComp` is called through the CLI the files can be provides using either relevant command options or a YAML file. If using the Python API, one can pass either a python dictionary or a YAML file.
 
 !!! info "YAML file option (CLI or API)"
     This option allows to pass a YAML formatted file indicating the sample condition labels and paths to data files with the option `--sample_yaml` for the CLI or directly to `eventalign_fn_dict` for the API. The file should be formatted as follow:
@@ -54,14 +54,14 @@ s()
     ```
 
 !!! info "Command line option (CLI only)"
-	This option requires to provide 1 list of files per condition using `--file_list1` and `--file_list2` arguments as well as the labels for condition each conditions using `--label1` and `--label2`.
+	This option requires to provide 1 comma separated list of files per condition using `--file_list1` and `--file_list2` arguments as well as the labels for condition each conditions using `--label1` and `--label2`.
 
 !!! info "Python dictionary (API only)"
     This option allows to pass a multi-level python dictionary containing the sample condition labels and paths to data files. The dictionary should be formatted as follow:
 
     ```python
     eventalign_fn_dict = {
-        "WT": {"rep1":"path/to/sample1/rep1/data", "rep2":"path/to/sample1/rep2/data"},
+        "WT":  {"rep1":"path/to/sample1/rep1/data", "rep2":"path/to/sample1/rep2/data"},
         "KO": {"rep1":"path/to/sample2/rep1/data", "rep2":"path/to/sample2/rep2/data"}
         }
     ```

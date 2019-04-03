@@ -118,7 +118,7 @@ def jhelp (f:"python function or method"):
                     descr.append(l)
 
         # Reformat collected information in Markdown synthax
-        s = "---\n\n**{}.\{}**\n\n{}\n\n---\n\n".format(f.__module__, f.__name__, " ".join(descr))
+        s = "---\n\n**{}.{}**\n\n{}\n\n---\n\n".format(f.__module__, f.__name__, " ".join(descr))
         for k, v in doc_dict.items():
             s+="* **{}** *{}*\n\n{}\n\n".format(k, " ".join(sig_dict[k]), " ".join(v))
 
