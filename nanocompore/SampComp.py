@@ -355,6 +355,7 @@ class SampComp(object):
                                     prev_pos = pos
 
                 if self.__comparison_methods:
+                    random_state=np.random.RandomState(seed=42)
                     ref_pos_list = txCompare(
                         ref_pos_list=ref_pos_list,
                         methods=self.__comparison_methods,
@@ -363,7 +364,8 @@ class SampComp(object):
                         min_coverage= self.__min_coverage,
                         allow_warnings=self.__allow_warnings,
                         logit=self.__logit,
-                        logger=logger)
+                        logger=logger,
+                        random_state=random_state)
 
                 # Add the current read details to queue
                 logger.debug("Adding %s to out_q"%(ref_id))
