@@ -72,8 +72,12 @@ class SampCompDB(object):
                 except KeyError:
                     raise NanocomporeError("The result database does not contain metadata")
                 # Try to load read_ids
-                logger.debug("\tLoading list of reference ids")
-                self.ref_id_list = [k for k in db.keys() if k!='__metadata']
+                try:
+                    logger.debug("\tLoading list of reference ids")
+                    self.ref_id_list = db['__ref_id_list']
+                except KeyError:
+                    logger.debug("\tCannot find the ref_id_list in shelve. Try to build the list from entries")
+                    self.ref_id_list = [k for k in db.keys() if k not in  ['__metadata', '__ref_id_list']]
                 if not self.ref_id_list:
                     raise NanocomporeError("The result database is empty")
         except dbm_error:
@@ -119,7 +123,7 @@ class SampCompDB(object):
     def __iter__(self):
         with shelve.open(self._db_fn, flag = "r") as db:
             for k, v in db.items():
-                if not k == '__metadata':
+                if not k in  ['__metadata', '__ref_id_list']:
                     yield(k, v)
 
     def __getitem__(self, items):
@@ -220,7 +224,7 @@ class SampCompDB(object):
         0.45714286, 0.016     , 0.008     ,        nan,        nan,
         0.016     ,        nan])
         """
-        if all([np.isnan(p) for p in pvalues]): 
+        if all([np.isnan(p) for p in pvalues]):
             return pvalues
 
         pvalues_no_nan = [p for p in pvalues if not np.isnan(p)]
@@ -423,7 +427,7 @@ class SampCompDB(object):
             raise NanocomporeError("The reference requested ({}) is not in the DB".format(ref_id))
         sig = list(self.results[(self.results['ref_id'] == ref_id) & (self.results[test] <= thr)]['pos'])
         return(sig)
-    
+
     # def list_most_significant_references(self, n=10):
     #     pass
 

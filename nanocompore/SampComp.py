@@ -380,12 +380,14 @@ class SampComp(object):
     def __write_output(self, out_q, error_q):
         # Get results out of the out queue and write in shelve
         pvalue_tests = set()
+        ref_id_list = []
         try:
             with shelve.open(self.__outpath_prefix+"SampComp.db", flag='n') as db:
                 # Iterate over the counter queue and process items until all poison pills are found
                 pbar = tqdm(total = len(self.__whitelist), unit=" Processed References", disable=self.__log_level in ("warning", "debug"))
                 for _ in range(self.__nthreads):
                     for ref_id, ref_pos_list in iter(out_q.get, None):
+                        ref_id_list.append(ref_id)
                         logger.debug("Writer thread writing %s"%ref_id)
                         # Get pvalue fields available in analysed data before
                         for pos_dict in ref_pos_list:
@@ -397,6 +399,10 @@ class SampComp(object):
                         db [ref_id] = ref_pos_list
                         pbar.update()
 
+                # Write list of refid
+                db["__ref_id_list"] = ref_id_list
+
+                # Write metadata
                 db["__metadata"] = {
                     "package_name": package_name,
                     "package_version": package_version,
