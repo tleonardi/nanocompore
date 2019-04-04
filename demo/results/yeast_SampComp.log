@@ -1,0 +1,37 @@
+{
+  "package_name": "nanocompore",
+  "package_version": "1.0.0b7",
+  "timestamp": "2019-04-04 14:25:53.662599",
+  "log_level": "info",
+  "nthreads": 3,
+  "exclude_ref_id": [],
+  "select_ref_id": [],
+  "max_invalid_kmers_freq": 0.1,
+  "downsample_high_coverage": 0,
+  "min_ref_length": 100,
+  "min_coverage": 30,
+  "sequence_context_weights": "uniform",
+  "sequence_context": 2,
+  "allow_warnings": false,
+  "logit": true,
+  "comparison_methods": [
+    "GMM",
+    "KS"
+  ],
+  "whitelist": null,
+  "overwrite": true,
+  "outprefix": "yeast_",
+  "outpath": "./results",
+  "bed_fn": null,
+  "fasta_fn": "./references/yeast/Yeast_transcriptome.fa",
+  "eventalign_fn_dict": {
+    "KO": {
+      "rep1": "./eventalign_files/yeast/KO_1_eventalign_collapsed.tsv",
+      "rep2": "./eventalign_files/yeast/KO_2_eventalign_collapsed.tsv"
+    },
+    "WT": {
+      "rep1": "./eventalign_files/yeast/WT_1_eventalign_collapsed.tsv",
+      "rep2": "./eventalign_files/yeast/WT_2_eventalign_collapsed.tsv"
+    }
+  }
+}

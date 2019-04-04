@@ -1,0 +1,30 @@
+{
+  "package_name": "nanocompore",
+  "package_version": "1.0.0b7",
+  "timestamp": "2019-04-04 11:07:33.970514",
+  "log_level": "info",
+  "nthreads": 3,
+  "exclude_ref_id": [],
+  "select_ref_id": [],
+  "max_invalid_kmers_freq": 0.1,
+  "downsample_high_coverage": 0,
+  "min_ref_length": 100,
+  "min_coverage": 30,
+  "sequence_context_weights": "harmonic",
+  "sequence_context": 2,
+  "allow_warnings": false,
+  "logit": true,
+  "comparison_methods": [
+    "GMM",
+    "MW",
+    "KS",
+    "TT"
+  ],
+  "whitelist": null,
+  "overwrite": true,
+  "outprefix": "simulated_stats_",
+  "outpath": "./results/",
+  "bed_fn": null,
+  "fasta_fn": "./references/simulated/ref.fa",
+  "eventalign_fn_dict": "./samples.yaml"
+}

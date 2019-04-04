@@ -128,31 +128,6 @@
       </div>
       <div class="md-flex__cell md-flex__cell--shrink">
         
-          <label class="md-icon md-icon--search md-header-nav__button" for="__search"></label>
-          
-<div class="md-search" data-md-component="search" role="dialog">
-  <label class="md-search__overlay" for="__search"></label>
-  <div class="md-search__inner" role="search">
-    <form class="md-search__form" name="search">
-      <input type="text" class="md-search__input" name="query" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="query" data-md-state="active">
-      <label class="md-icon md-search__icon" for="__search"></label>
-      <button type="reset" class="md-icon md-search__icon" data-md-component="reset" tabindex="-1">
-        &#xE5CD;
-      </button>
-    </form>
-    <div class="md-search__output">
-      <div class="md-search__scrollwrap" data-md-scrollfix>
-        <div class="md-search-result" data-md-component="result">
-          <div class="md-search-result__meta">
-            Type to start searching
-          </div>
-          <ol class="md-search-result__list"></ol>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
-        
       </div>
       
         <div class="md-flex__cell md-flex__cell--shrink">
@@ -296,8 +271,8 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#read-indexing-and-resquiggling-with" title="Read indexing and resquiggling with" class="md-nav__link">
-    Read indexing and resquiggling with
+  <a href="#read-indexing-and-resquiggling" title="Read indexing and resquiggling" class="md-nav__link">
+    Read indexing and resquiggling
   </a>
   
 </li>
@@ -318,10 +293,70 @@
       
 
 
+  <li class="md-nav__item md-nav__item--nested">
+    
+      <input class="md-toggle md-nav__toggle" data-md-toggle="nav-4" type="checkbox" id="nav-4">
+    
+    <label class="md-nav__link" for="nav-4">
+      Usage
+    </label>
+    <nav class="md-nav" data-md-component="collapsible" data-md-level="1">
+      <label class="md-nav__title" for="nav-4">
+        Usage
+      </label>
+      <ul class="md-nav__list" data-md-scrollfix>
+        
+        
+          
+          
+          
+
+
   <li class="md-nav__item">
-    <a href="../usage/" title="Nanocompore Usage" class="md-nav__link">
-      Nanocompore Usage
+    <a href="../usage/" title="How to use Nanocompore" class="md-nav__link">
+      How to use Nanocompore
     </a>
+  </li>
+
+        
+          
+          
+          
+
+
+  <li class="md-nav__item">
+    <a href="../demo/SampComp_usage/" title="Compare samples with SampComp" class="md-nav__link">
+      Compare samples with SampComp
+    </a>
+  </li>
+
+        
+          
+          
+          
+
+
+  <li class="md-nav__item">
+    <a href="../demo/SampCompDB_usage/" title="Generate plots and tables with SampCompDB" class="md-nav__link">
+      Generate plots and tables with SampCompDB
+    </a>
+  </li>
+
+        
+          
+          
+          
+
+
+  <li class="md-nav__item">
+    <a href="../demo/SimReads_usage/" title="Generate simulated reads" class="md-nav__link">
+      Generate simulated reads
+    </a>
+  </li>
+
+        
+      </ul>
+    </nav>
   </li>
 
     
@@ -380,20 +415,20 @@
   </li>
 
         
-      </ul>
-    </nav>
-  </li>
-
-    
-      
-      
-      
+          
+          
+          
 
 
   <li class="md-nav__item">
     <a href="../licence/" title="Licence" class="md-nav__link">
       Licence
     </a>
+  </li>
+
+        
+      </ul>
+    </nav>
   </li>
 
     
@@ -432,8 +467,8 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#read-indexing-and-resquiggling-with" title="Read indexing and resquiggling with" class="md-nav__link">
-    Read indexing and resquiggling with
+  <a href="#read-indexing-and-resquiggling" title="Read indexing and resquiggling" class="md-nav__link">
+    Read indexing and resquiggling
   </a>
   
 </li>
@@ -479,7 +514,7 @@
 samtools index <span class="o">{</span>aligned_reads_bam<span class="o">}</span>
 </pre></div>
 
-<h3 id="read-indexing-and-resquiggling-with">Read indexing and resquiggling with</h3>
+<h3 id="read-indexing-and-resquiggling">Read indexing and resquiggling</h3>
 <p>Nanopolish is required to realign raw signal to the expected reference sequence. Reads have to be indexed first with nanopolish index, realigned with nanopolish eventalign and finally the data has to be collapsed per kmer and indexed by NanopolishComp Eventalign_collapse.</p>
 <p>Example with <a href="https://github.com/jts/nanopolish">Nanopolish v0.10.1</a> and <a href="https://github.com/a-slide/NanopolishComp">NanopolishComp v0.4.3</a></p>
 <div class="codehilite"><pre><span></span>nanopolish index -s <span class="o">{</span>sequencing_summary.txt<span class="o">}</span> -d <span class="o">{</span>raw_fast5_dir<span class="o">}</span> <span class="o">{</span>basecalled_fastq<span class="o">}</span>
@@ -523,13 +558,13 @@ NanopolishComp Eventalign_collapse -i <span class="o">{</span>eventalign_reads_t
           </a>
         
         
-          <a href="../usage/" title="Nanocompore Usage" class="md-flex md-footer-nav__link md-footer-nav__link--next" rel="next">
+          <a href="../usage/" title="How to use Nanocompore" class="md-flex md-footer-nav__link md-footer-nav__link--next" rel="next">
             <div class="md-flex__cell md-flex__cell--stretch md-footer-nav__title">
               <span class="md-flex__ellipsis">
                 <span class="md-footer-nav__direction">
                   Next
                 </span>
-                Nanocompore Usage
+                How to use Nanocompore
               </span>
             </div>
             <div class="md-flex__cell md-flex__cell--shrink">

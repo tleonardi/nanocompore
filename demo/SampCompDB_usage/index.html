@@ -1,0 +1,1238 @@
+
+
+
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      <meta http-equiv="x-ua-compatible" content="ie=edge">
+      
+        <meta name="description" content="Compare nanopore signal to find modifications">
+      
+      
+        <link rel="canonical" href="https://tleonardi.github.io/nanocompore/demo/SampCompDB_usage/">
+      
+      
+        <meta name="author" content="Adrien Leger & Tommaso Leonardi">
+      
+      
+        <meta name="lang:clipboard.copy" content="Copy to clipboard">
+      
+        <meta name="lang:clipboard.copied" content="Copied to clipboard">
+      
+        <meta name="lang:search.language" content="en">
+      
+        <meta name="lang:search.pipeline.stopwords" content="True">
+      
+        <meta name="lang:search.pipeline.trimmer" content="True">
+      
+        <meta name="lang:search.result.none" content="No matching documents">
+      
+        <meta name="lang:search.result.one" content="1 matching document">
+      
+        <meta name="lang:search.result.other" content="# matching documents">
+      
+        <meta name="lang:search.tokenizer" content="[\s\-]+">
+      
+      <link rel="shortcut icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.0.4, mkdocs-material-4.0.2">
+    
+    
+      
+        <title>Generate plots and tables with SampCompDB - Nanocompore</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/application.982221ab.css">
+      
+      
+    
+    
+      <script src="../../assets/javascripts/modernizr.1f0bcf2b.js"></script>
+    
+    
+      
+    
+    <link rel="stylesheet" href="../../assets/fonts/material-icons.css">
+    
+    
+    
+      
+    
+    
+  </head>
+  
+    <body dir="ltr">
+  
+    <svg class="md-svg">
+      <defs>
+        
+        
+          <svg xmlns="http://www.w3.org/2000/svg" width="416" height="448"
+    viewBox="0 0 416 448" id="__github">
+  <path fill="currentColor" d="M160 304q0 10-3.125 20.5t-10.75 19-18.125
+        8.5-18.125-8.5-10.75-19-3.125-20.5 3.125-20.5 10.75-19 18.125-8.5
+        18.125 8.5 10.75 19 3.125 20.5zM320 304q0 10-3.125 20.5t-10.75
+        19-18.125 8.5-18.125-8.5-10.75-19-3.125-20.5 3.125-20.5 10.75-19
+        18.125-8.5 18.125 8.5 10.75 19 3.125 20.5zM360
+        304q0-30-17.25-51t-46.75-21q-10.25 0-48.75 5.25-17.75 2.75-39.25
+        2.75t-39.25-2.75q-38-5.25-48.75-5.25-29.5 0-46.75 21t-17.25 51q0 22 8
+        38.375t20.25 25.75 30.5 15 35 7.375 37.25 1.75h42q20.5 0
+        37.25-1.75t35-7.375 30.5-15 20.25-25.75 8-38.375zM416 260q0 51.75-15.25
+        82.75-9.5 19.25-26.375 33.25t-35.25 21.5-42.5 11.875-42.875 5.5-41.75
+        1.125q-19.5 0-35.5-0.75t-36.875-3.125-38.125-7.5-34.25-12.875-30.25-20.25-21.5-28.75q-15.5-30.75-15.5-82.75
+        0-59.25 34-99-6.75-20.5-6.75-42.5 0-29 12.75-54.5 27 0 47.5 9.875t47.25
+        30.875q36.75-8.75 77.25-8.75 37 0 70 8 26.25-20.5
+        46.75-30.25t47.25-9.75q12.75 25.5 12.75 54.5 0 21.75-6.75 42 34 40 34
+        99.5z" />
+</svg>
+        
+      </defs>
+    </svg>
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" data-md-component="overlay" for="__drawer"></label>
+    
+      <a href="#generate-plots-and-tables-with-sampcompdb" tabindex="1" class="md-skip">
+        Skip to content
+      </a>
+    
+    
+      <header class="md-header" data-md-component="header">
+  <nav class="md-header-nav md-grid">
+    <div class="md-flex">
+      <div class="md-flex__cell md-flex__cell--shrink">
+        <a href="https://tleonardi.github.io/nanocompore/" title="Nanocompore" class="md-header-nav__button md-logo">
+          
+            <i class="md-icon"></i>
+          
+        </a>
+      </div>
+      <div class="md-flex__cell md-flex__cell--shrink">
+        <label class="md-icon md-icon--menu md-header-nav__button" for="__drawer"></label>
+      </div>
+      <div class="md-flex__cell md-flex__cell--stretch">
+        <div class="md-flex__ellipsis md-header-nav__title" data-md-component="title">
+          
+            <span class="md-header-nav__topic">
+              Nanocompore
+            </span>
+            <span class="md-header-nav__topic">
+              Generate plots and tables with SampCompDB
+            </span>
+          
+        </div>
+      </div>
+      <div class="md-flex__cell md-flex__cell--shrink">
+        
+      </div>
+      
+        <div class="md-flex__cell md-flex__cell--shrink">
+          <div class="md-header-nav__source">
+            
+
+
+  
+
+<a href="https://github.com/tleonardi/nanocompore/" title="Go to repository" class="md-source" data-md-source="github">
+  
+    <div class="md-source__icon">
+      <svg viewBox="0 0 24 24" width="24" height="24">
+        <use xlink:href="#__github" width="24" height="24"></use>
+      </svg>
+    </div>
+  
+  <div class="md-source__repository">
+    tleonardi/nanocompore
+  </div>
+</a>
+          </div>
+        </div>
+      
+    </div>
+  </nav>
+</header>
+    
+    <div class="md-container">
+      
+        
+      
+      
+      <main class="md-main">
+        <div class="md-main__inner md-grid" data-md-component="container">
+          
+            
+              <div class="md-sidebar md-sidebar--primary" data-md-component="navigation">
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    <nav class="md-nav md-nav--primary" data-md-level="0">
+  <label class="md-nav__title md-nav__title--site" for="__drawer">
+    <a href="https://tleonardi.github.io/nanocompore/" title="Nanocompore" class="md-nav__button md-logo">
+      
+        <i class="md-icon"></i>
+      
+    </a>
+    Nanocompore
+  </label>
+  
+    <div class="md-nav__source">
+      
+
+
+  
+
+<a href="https://github.com/tleonardi/nanocompore/" title="Go to repository" class="md-source" data-md-source="github">
+  
+    <div class="md-source__icon">
+      <svg viewBox="0 0 24 24" width="24" height="24">
+        <use xlink:href="#__github" width="24" height="24"></use>
+      </svg>
+    </div>
+  
+  <div class="md-source__repository">
+    tleonardi/nanocompore
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+      
+
+
+  <li class="md-nav__item">
+    <a href="../.." title="Home" class="md-nav__link">
+      Home
+    </a>
+  </li>
+
+    
+      
+      
+      
+
+
+  <li class="md-nav__item">
+    <a href="../../installation/" title="Installation instructions" class="md-nav__link">
+      Installation instructions
+    </a>
+  </li>
+
+    
+      
+      
+      
+
+
+  <li class="md-nav__item">
+    <a href="../../data_preparation/" title="Data preparation" class="md-nav__link">
+      Data preparation
+    </a>
+  </li>
+
+    
+      
+      
+      
+
+  
+
+
+  <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+    
+      <input class="md-toggle md-nav__toggle" data-md-toggle="nav-4" type="checkbox" id="nav-4" checked>
+    
+    <label class="md-nav__link" for="nav-4">
+      Usage
+    </label>
+    <nav class="md-nav" data-md-component="collapsible" data-md-level="1">
+      <label class="md-nav__title" for="nav-4">
+        Usage
+      </label>
+      <ul class="md-nav__list" data-md-scrollfix>
+        
+        
+          
+          
+          
+
+
+  <li class="md-nav__item">
+    <a href="../../usage/" title="How to use Nanocompore" class="md-nav__link">
+      How to use Nanocompore
+    </a>
+  </li>
+
+        
+          
+          
+          
+
+
+  <li class="md-nav__item">
+    <a href="../SampComp_usage/" title="Compare samples with SampComp" class="md-nav__link">
+      Compare samples with SampComp
+    </a>
+  </li>
+
+        
+          
+          
+          
+
+  
+
+
+  <li class="md-nav__item md-nav__item--active">
+    
+    <input class="md-toggle md-nav__toggle" data-md-toggle="toc" type="checkbox" id="__toc">
+    
+      
+    
+    
+      <label class="md-nav__link md-nav__link--active" for="__toc">
+        Generate plots and tables with SampCompDB
+      </label>
+    
+    <a href="./" title="Generate plots and tables with SampCompDB" class="md-nav__link md-nav__link--active">
+      Generate plots and tables with SampCompDB
+    </a>
+    
+      
+<nav class="md-nav md-nav--secondary">
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">Table of contents</label>
+    <ul class="md-nav__list" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#import-the-package" title="Import the package" class="md-nav__link">
+    Import the package
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#load-the-database-with-sampcompdb" title="Load the database with SampCompDB" class="md-nav__link">
+    Load the database with SampCompDB
+  </a>
+  
+    <nav class="md-nav">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#basic-initialisation" title="Basic initialisation" class="md-nav__link">
+    Basic initialisation
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#generate-text-reports" title="Generate text reports" class="md-nav__link">
+    Generate text reports
+  </a>
+  
+    <nav class="md-nav">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#save_report" title="save_report" class="md-nav__link">
+    save_report
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#save_shift_stats" title="save_shift_stats" class="md-nav__link">
+    save_shift_stats
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#save_to_bed" title="save_to_bed" class="md-nav__link">
+    save_to_bed
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#generate-plots" title="Generate plots" class="md-nav__link">
+    Generate plots
+  </a>
+  
+    <nav class="md-nav">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#extra-import-for-the-plotting-library" title="Extra import for the plotting library" class="md-nav__link">
+    Extra import for the plotting library
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#plot_pvalue" title="plot_pvalue" class="md-nav__link">
+    plot_pvalue
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#plot_signal" title="plot_signal" class="md-nav__link">
+    plot_signal
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#plot_coverage" title="plot_coverage" class="md-nav__link">
+    plot_coverage
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#plot_kmers_stats" title="plot_kmers_stats" class="md-nav__link">
+    plot_kmers_stats
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#plot_position" title="plot_position" class="md-nav__link">
+    plot_position
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+      
+      
+      
+      
+    </ul>
+  
+</nav>
+    
+  </li>
+
+        
+          
+          
+          
+
+
+  <li class="md-nav__item">
+    <a href="../SimReads_usage/" title="Generate simulated reads" class="md-nav__link">
+      Generate simulated reads
+    </a>
+  </li>
+
+        
+      </ul>
+    </nav>
+  </li>
+
+    
+      
+      
+      
+
+
+  <li class="md-nav__item">
+    <a href="../../alternative/" title="Alternative and complementary packages" class="md-nav__link">
+      Alternative and complementary packages
+    </a>
+  </li>
+
+    
+      
+      
+      
+
+
+  <li class="md-nav__item md-nav__item--nested">
+    
+      <input class="md-toggle md-nav__toggle" data-md-toggle="nav-6" type="checkbox" id="nav-6">
+    
+    <label class="md-nav__link" for="nav-6">
+      Getting involved and finding help
+    </label>
+    <nav class="md-nav" data-md-component="collapsible" data-md-level="1">
+      <label class="md-nav__title" for="nav-6">
+        Getting involved and finding help
+      </label>
+      <ul class="md-nav__list" data-md-scrollfix>
+        
+        
+          
+          
+          
+
+
+  <li class="md-nav__item">
+    <a href="../../contributing/" title="Contributing" class="md-nav__link">
+      Contributing
+    </a>
+  </li>
+
+        
+          
+          
+          
+
+
+  <li class="md-nav__item">
+    <a href="../../code_of_conduct/" title="Code of conduct" class="md-nav__link">
+      Code of conduct
+    </a>
+  </li>
+
+        
+          
+          
+          
+
+
+  <li class="md-nav__item">
+    <a href="../../licence/" title="Licence" class="md-nav__link">
+      Licence
+    </a>
+  </li>
+
+        
+      </ul>
+    </nav>
+  </li>
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="toc">
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+<nav class="md-nav md-nav--secondary">
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">Table of contents</label>
+    <ul class="md-nav__list" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#import-the-package" title="Import the package" class="md-nav__link">
+    Import the package
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#load-the-database-with-sampcompdb" title="Load the database with SampCompDB" class="md-nav__link">
+    Load the database with SampCompDB
+  </a>
+  
+    <nav class="md-nav">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#basic-initialisation" title="Basic initialisation" class="md-nav__link">
+    Basic initialisation
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#generate-text-reports" title="Generate text reports" class="md-nav__link">
+    Generate text reports
+  </a>
+  
+    <nav class="md-nav">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#save_report" title="save_report" class="md-nav__link">
+    save_report
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#save_shift_stats" title="save_shift_stats" class="md-nav__link">
+    save_shift_stats
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#save_to_bed" title="save_to_bed" class="md-nav__link">
+    save_to_bed
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#generate-plots" title="Generate plots" class="md-nav__link">
+    Generate plots
+  </a>
+  
+    <nav class="md-nav">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#extra-import-for-the-plotting-library" title="Extra import for the plotting library" class="md-nav__link">
+    Extra import for the plotting library
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#plot_pvalue" title="plot_pvalue" class="md-nav__link">
+    plot_pvalue
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#plot_signal" title="plot_signal" class="md-nav__link">
+    plot_signal
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#plot_coverage" title="plot_coverage" class="md-nav__link">
+    plot_coverage
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#plot_kmers_stats" title="plot_kmers_stats" class="md-nav__link">
+    plot_kmers_stats
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#plot_position" title="plot_position" class="md-nav__link">
+    plot_position
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+      
+      
+      
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          <div class="md-content">
+            <article class="md-content__inner md-typeset">
+              
+                
+                  <a href="https://github.com/tleonardi/nanocompore/edit/master/docs/demo/SampCompDB_usage.ipynb" title="Edit this page" class="md-icon md-content__icon">&#xE3C9;</a>
+                
+                
+                <h1 id="generate-plots-and-tables-with-sampcompdb">Generate plots and tables with SampCompDB</h1>
+<p>Whether ran from the CLI or API <code class="codehilite">SampComp</code> creates a python object database (shelve DBM) containing the statistical analysis results.</p>
+<p>The API directly returns a <code class="codehilite">SampCompDB</code> object wrapping the shelve. It is also possible to reload the <code class="codehilite">SampCompDB</code> latter using the db file path prefix. <code class="codehilite">SampCompDB</code> also need a FASTA file to get the corresponding reference id sequence and accept an optional BED file containing genomic annotations. SampCompDB provide a large selection of simple high level function to plot and export the results.</p>
+<p>At the moment <code class="codehilite">SampCompDB</code> is only accessible through the python API.</p>
+<h2 id="import-the-package">Import the package</h2>
+<div class="codehilite"><pre><span></span><span class="kn">from</span> <span class="nn">nanocompore.SampCompDB</span> <span class="kn">import</span> <span class="n">SampCompDB</span><span class="p">,</span> <span class="n">jhelp</span>
+</pre></div>
+
+<h2 id="load-the-database-with-sampcompdb">Load the database with SampCompDB</h2>
+<div class="codehilite"><pre><span></span><span class="n">jhelp</span> <span class="p">(</span><span class="n">SampCompDB</span><span class="p">)</span>
+</pre></div>
+
+<hr />
+<p><strong>nanocompore.SampCompDB.<strong>init</strong></strong></p>
+<p>Import a shelve db and a fasta reference file. Automatically returned by SampComp Can also be manually created from an existing shelve db output</p>
+<hr />
+<ul>
+<li><strong>db_prefix</strong> <em>: file_prefix_path (required)</em></li>
+</ul>
+<p>Prefix of the database. For example if the path to the db file is "/outpath/out.db" the db_prefix is "/outpath/out"</p>
+<ul>
+<li><strong>fasta_fn</strong> <em>: file_path (required)</em></li>
+</ul>
+<p>Path to a fasta file corresponding to the reference used for read alignemnt</p>
+<ul>
+<li><strong>bed_fn</strong> <em>: file_path (default = None)</em></li>
+</ul>
+<p>Path to a BED file containing the annotation of the transcriptome used as reference when mapping</p>
+<ul>
+<li><strong>run_type</strong> <em>: str {RNA,DNA} (default = RNA)</em></li>
+</ul>
+<p>Define the run type model to import (RNA or DNA)</p>
+<ul>
+<li><strong>log_level</strong> <em>: str {warning,info,debug} (default = info)</em></li>
+</ul>
+<p>Set the log level.</p>
+<h3 id="basic-initialisation">Basic initialisation</h3>
+<div class="codehilite"><pre><span></span><span class="c1"># Load database</span>
+<span class="n">db</span> <span class="o">=</span> <span class="n">SampCompDB</span> <span class="p">(</span>
+    <span class="n">db_prefix</span> <span class="o">=</span> <span class="s2">&quot;results/simulated_&quot;</span><span class="p">,</span>
+    <span class="n">fasta_fn</span> <span class="o">=</span> <span class="s2">&quot;references/simulated/ref.fa&quot;</span><span class="p">)</span>
+
+<span class="c1"># Print general metadata information</span>
+<span class="k">print</span> <span class="p">(</span><span class="n">db</span><span class="p">)</span>
+
+<span class="c1"># Prit list of references containing valid data</span>
+<span class="k">print</span> <span class="p">(</span><span class="n">db</span><span class="o">.</span><span class="n">ref_id_list</span><span class="p">)</span>
+</pre></div>
+
+<div class="codehilite"><pre><span></span>Loading SampCompDB
+Calculate results
+
+
+[SampCompDB]
+    package_name: nanocompore
+    package_version: 1.0.0b7
+    timestamp: 2019-04-04 11:05:23.270305
+    comparison_methods: [&#39;GMM&#39;, &#39;KS&#39;]
+    pvalue_tests: [&#39;GMM_anova_pvalue&#39;, &#39;KS_dwell_pvalue&#39;, &#39;KS_intensity_pvalue&#39;]
+    sequence_context: 0
+    min_coverage: 30
+    n_samples: 4
+    Number of references: 5
+
+[&#39;ref_0000&#39;, &#39;ref_0002&#39;, &#39;ref_0001&#39;, &#39;ref_0003&#39;, &#39;ref_0004&#39;]
+</pre></div>
+
+
+<h2 id="generate-text-reports">Generate text reports</h2>
+<p><code class="codehilite">SampCompDB</code> can generate 3 types of text reports:
+* Tabulated statistics =&gt; <strong><code class="codehilite">save_report</code></strong>
+* Tabulated intensity and dwell values per conditions =&gt; <strong><code class="codehilite">save_shift_stats</code></strong>
+* BED significant genomic positions =&gt;  <strong><code class="codehilite">save_to_bed</code></strong></p>
+<p>In addition, we also conveniently wrapped all 3 methods in <strong><code class="codehilite">save_all</code></strong>.</p>
+<h3 id="save_report">save_report</h3>
+<div class="codehilite"><pre><span></span><span class="n">jhelp</span><span class="p">(</span><span class="n">SampCompDB</span><span class="o">.</span><span class="n">save_report</span><span class="p">)</span>
+</pre></div>
+
+<hr />
+<p><strong>nanocompore.SampCompDB.save_report</strong></p>
+<p>Saves a tabulated text dump of the database containing all the statistical results for all the positions</p>
+<hr />
+<ul>
+<li><strong>output_fn</strong> <em>: str (default = None)</em></li>
+</ul>
+<p>Path to file where to write the data. If None, data is returned to the standard output.</p>
+<div class="codehilite"><pre><span></span><span class="c1"># Reload DB</span>
+<span class="n">db</span> <span class="o">=</span> <span class="n">SampCompDB</span> <span class="p">(</span><span class="n">db_prefix</span> <span class="o">=</span> <span class="s2">&quot;results/simulated_&quot;</span><span class="p">,</span> <span class="n">fasta_fn</span> <span class="o">=</span> <span class="s2">&quot;references/simulated/ref.fa&quot;</span><span class="p">,</span> <span class="n">log_level</span><span class="o">=</span><span class="s2">&quot;warning&quot;</span><span class="p">)</span>
+
+<span class="c1"># Save report</span>
+<span class="n">db</span><span class="o">.</span><span class="n">save_report</span> <span class="p">(</span><span class="n">output_fn</span><span class="o">=</span><span class="s2">&quot;./results/simulated_report.tsv&quot;</span><span class="p">)</span>
+
+<span class="c1"># Visualise first lines</span>
+<span class="err">!</span><span class="n">head</span> <span class="s2">&quot;./results/simulated_report.tsv&quot;</span>
+</pre></div>
+
+<div class="codehilite"><pre><span></span>pos chr genomicPos  ref_id  strand  ref_kmer    GMM_anova_pvalue    KS_dwell_pvalue KS_intensity_pvalue GMM_cov_type    GMM_n_clust cluster_counts  Anova_delta_logit
+0   NA  NA  ref_0000    NA  AATGG   0.005245519399155092    1.6993740039732178e-11  1.4627259309612494e-17  full    2   Modified_rep1:6/49__Modified_rep2:4/41__Unmodified_rep1:41/14__Unmodified_rep2:32/13    -2.9907071055
+1   NA  NA  ref_0000    NA  ATGGG   nan 8.820572851659097e-06   0.00013789333950857486  full    1   NC  nan
+2   NA  NA  ref_0000    NA  TGGGC   nan 0.014838000312885985    7.275766237834673e-05   full    1   NC  nan
+3   NA  NA  ref_0000    NA  GGGCT   nan 0.7170686058500053  0.9283139049939192  full    1   NC  nan
+4   NA  NA  ref_0000    NA  GGCTT   nan 0.8151939481590966  0.9695221198459655  full    1   NC  nan
+5   NA  NA  ref_0000    NA  GCTTA   nan 0.9988610897488148  0.6475435384552904  full    1   NC  nan
+6   NA  NA  ref_0000    NA  CTTAA   nan 0.9861884723418123  0.9968163382856648  full    1   NC  nan
+7   NA  NA  ref_0000    NA  TTAAA   nan 0.9611279889382083  0.7193199986470227  full    1   NC  nan
+8   NA  NA  ref_0000    NA  TAAAC   nan 0.8151939481590966  0.7193199986470227  full    1   NC  nan
+</pre></div>
+
+
+<h3 id="save_shift_stats">save_shift_stats</h3>
+<div class="codehilite"><pre><span></span><span class="n">jhelp</span><span class="p">(</span><span class="n">SampCompDB</span><span class="o">.</span><span class="n">save_shift_stats</span><span class="p">)</span>
+</pre></div>
+
+<hr />
+<p><strong>nanocompore.SampCompDB.save_shift_stats</strong></p>
+<p>Save the mean, median and sd intensity and dwell time for each condition and for each position. This can be used to evaluate the intensity of the shift for significant positions.</p>
+<hr />
+<ul>
+<li><strong>output_fn</strong> <em>(default = None)</em></li>
+</ul>
+<p>Path to file where to write the data. If None, data is returned to the standard output.</p>
+<div class="codehilite"><pre><span></span><span class="c1"># Reload DB</span>
+<span class="n">db</span> <span class="o">=</span> <span class="n">SampCompDB</span> <span class="p">(</span><span class="n">db_prefix</span> <span class="o">=</span> <span class="s2">&quot;results/simulated_&quot;</span><span class="p">,</span> <span class="n">fasta_fn</span> <span class="o">=</span> <span class="s2">&quot;references/simulated/ref.fa&quot;</span><span class="p">,</span> <span class="n">log_level</span><span class="o">=</span><span class="s2">&quot;warning&quot;</span><span class="p">)</span>
+
+<span class="c1"># Save report</span>
+<span class="n">db</span><span class="o">.</span><span class="n">save_shift_stats</span> <span class="p">(</span><span class="n">output_fn</span><span class="o">=</span><span class="s2">&quot;./results/simulated_shift.tsv&quot;</span><span class="p">)</span>
+
+<span class="c1"># Visualise first lines</span>
+<span class="err">!</span><span class="n">head</span> <span class="s2">&quot;./results/simulated_shift.tsv&quot;</span>
+</pre></div>
+
+<div class="codehilite"><pre><span></span>red_if  pos c1_mean_intensity   c2_mean_intensity   c1_median_intensity c2_median_intensity c1_sd_intensity c2_sd_intensity c1_mean_dwell   c2_mean_dwell   c1_median_dwell c2_median_dwell c1_sd_dwell c2_sd_dwell
+ref_0001    0   99.86521522816629   95.52846468110967   100.16702432141244  95.13036610945501   3.7516782494836702  3.1739776537905118  0.017977369379788073    0.014142268215356003    0.014592671365001404    0.009938811132441343    0.011880802887400801    0.01184474740385291
+ref_0001    1   95.51936094713678   87.27615952874599   95.9945031188992    86.41810985869571   4.439033457155757   4.104499368547678   0.022549460598306155    0.013115311034969667    0.01937803071046053 0.009880540414948643    0.014722117319511605    0.00973550865537285
+ref_0001    2   95.52315169782791   92.34964506890061   95.26854917868084   92.33788488943738   5.950261769233862   5.868269402327571   0.015595689944837725    0.013457094587408206    0.012115546273371455    0.008773347718738837    0.00933692542234524 0.01274618467516576
+ref_0001    3   122.29563233691074  120.31834278328982  122.33536172524686  119.98165407420854  3.624654560435613   3.3985294638505827  0.018135679591528706    0.014685872696189272    0.013070412702765481    0.008948805511716458    0.013245219967907508    0.01525109709578569
+ref_0001    4   127.86098017400758  127.44825183561187  128.0262486329749   127.42965372246013  4.280533244462166   4.710869351362601   0.012663102316134848    0.011692853971881564    0.009313320260530871    0.008134744380027242    0.009611429620053248    0.009653227513903647
+ref_0001    5   67.63481699926052   67.1827907286042    67.3472284205863    67.35375035804773   2.5099929659051337  2.796329273828752   0.010501496157478092    0.010267078518930542    0.007116625933422124    0.007533754721474799    0.00937181209207926 0.00810885837245761
+ref_0001    6   66.2738277340307    66.52302339484865   66.31190127082398   66.79704763596214   1.7105309704572291  1.7753701853358863  0.014841702561212684    0.01386411611776216 0.009644741613041173    0.00982445969943052 0.0170488676992597  0.011893320651022577
+ref_0001    7   69.14079055190206   69.58706995729456   69.04380455926685   69.0855322221245    2.4297811434241923  2.9605601125756387  0.009595625294236621    0.0114205931427363  0.007536527142576946    0.007678758916950794    0.007986095512596545    0.010793919224660824
+ref_0001    8   82.33429240816304   82.16964832837907   82.32011862505345   82.10017750465934   3.0161103805165466  2.42309027320146    0.013362509869491567    0.011667214127728188    0.009165033372008037    0.008438555634548251    0.017309804487855632    0.009154397018922332
+</pre></div>
+
+
+<h3 id="save_to_bed">save_to_bed</h3>
+<div class="codehilite"><pre><span></span><span class="n">jhelp</span><span class="p">(</span><span class="n">SampCompDB</span><span class="o">.</span><span class="n">save_to_bed</span><span class="p">)</span>
+</pre></div>
+
+<hr />
+<p><strong>nanocompore.SampCompDB.save_to_bed</strong></p>
+<p>Save the position of significant positions in the genome space in BED6 or BEDGRAPH format. The resulting file can be used in a genome browser to visualise significant genomic locations. The option is only available if <code class="codehilite">SampCompDB</code> if initialised with a BED file containing genome annotations.</p>
+<hr />
+<ul>
+<li><strong>output_fn</strong> <em>(default = None)</em></li>
+</ul>
+<p>Path to file where to write the data</p>
+<ul>
+<li><strong>bedgraph</strong> <em>(default = False)</em></li>
+</ul>
+<p>save file in bedgraph format instead of bed</p>
+<ul>
+<li><strong>pvalue_field</strong> <em>(default = None)</em></li>
+</ul>
+<p>specifies what column to use as BED score (field 5, as -log10)</p>
+<ul>
+<li><strong>pvalue_thr</strong> <em>(default = 0.01)</em></li>
+</ul>
+<p>only report positions with pvalue&lt;=thr</p>
+<ul>
+<li><strong>span</strong> <em>(default = 5)</em></li>
+</ul>
+<p>The size of each BED feature. If size=5 (default) features correspond to kmers. If size=1 features correspond to the first base of each kmer.</p>
+<ul>
+<li><strong>convert</strong> <em>(default = None)</em></li>
+</ul>
+<p>one of 'ensembl_to_ucsc' or 'ucsc_to_ensembl". Convert chromosome named between Ensembl and Ucsc conventions</p>
+<ul>
+<li><strong>assembly</strong> <em>(default = None)</em></li>
+</ul>
+<p>required if convert is used. One of "hg38" or "mm10"</p>
+<div class="codehilite"><pre><span></span><span class="c1"># Reload DB</span>
+<span class="n">db</span> <span class="o">=</span> <span class="n">SampCompDB</span> <span class="p">(</span><span class="n">db_prefix</span> <span class="o">=</span> <span class="s2">&quot;results/simulated_&quot;</span><span class="p">,</span> <span class="n">fasta_fn</span> <span class="o">=</span> <span class="s2">&quot;references/simulated/ref.fa&quot;</span><span class="p">,</span> <span class="n">bed_fn</span><span class="o">=</span><span class="s2">&quot;references/simulated/annot.bed&quot;</span><span class="p">,</span> <span class="n">log_level</span><span class="o">=</span><span class="s2">&quot;warning&quot;</span><span class="p">)</span>
+
+<span class="c1"># Save report</span>
+<span class="n">db</span><span class="o">.</span><span class="n">save_to_bed</span> <span class="p">(</span><span class="n">output_fn</span><span class="o">=</span><span class="s2">&quot;./results/simulated_sig_positions.bed&quot;</span><span class="p">)</span>
+
+<span class="c1"># Visualise first lines</span>
+<span class="err">!</span><span class="n">head</span> <span class="s2">&quot;./results/simulated_sig_positions.bed&quot;</span>
+</pre></div>
+
+<h2 id="generate-plots">Generate plots</h2>
+<p><code class="codehilite">SampCompDB</code> comes with a range of methods to visualise the data and explore candidate.</p>
+<ul>
+<li><strong><code class="codehilite">plot_pvalue</code></strong>: Plot the <code class="codehilite">-log(10)</code> of the pvalues obtained for all the statistical methods at reference level</li>
+<li><strong><code class="codehilite">plot_signal</code></strong>: Generate comparative plots of both median intensity and dwell time for each condition at read level </li>
+<li><strong><code class="codehilite">plot_coverage</code></strong>: Plot the read coverage over a reference for all samples analysed </li>
+<li><strong><code class="codehilite">plot_kmers_stats</code></strong>: Fancy version of <code class="codehilite">plot_coverage</code> that also report missing, mismatching and undefined kmers status from Nanopolish </li>
+<li><strong><code class="codehilite">plot_position</code></strong>: Allow to visualise the distribution of intensity and dwell time in 2D for a single position</li>
+</ul>
+<h3 id="extra-import-for-the-plotting-library">Extra import for the plotting library</h3>
+<p>Matplotlib is required to use the ploting methods in Jupyter </p>
+<div class="codehilite"><pre><span></span><span class="kn">import</span> <span class="nn">matplotlib.pyplot</span> <span class="kn">as</span> <span class="nn">pl</span>
+<span class="o">%</span><span class="n">matplotlib</span> <span class="n">inline</span>
+</pre></div>
+
+<h3 id="plot_pvalue">plot_pvalue</h3>
+<div class="codehilite"><pre><span></span><span class="n">jhelp</span><span class="p">(</span><span class="n">SampCompDB</span><span class="o">.</span><span class="n">plot_pvalue</span><span class="p">)</span>
+</pre></div>
+
+<hr />
+<p><strong>nanocompore.SampCompDB.plot_pvalue</strong></p>
+<p>Plot pvalues per position (by default plot all fields starting by "pvalue")</p>
+<hr />
+<ul>
+<li><strong>ref_id</strong> <em>: str (required)</em></li>
+</ul>
+<p>Valid reference id name in the database</p>
+<ul>
+<li><strong>start</strong> <em>: int (default = None)</em></li>
+</ul>
+<p>Start coordinate</p>
+<ul>
+<li><strong>end</strong> <em>: int (default = None)</em></li>
+</ul>
+<p>End coordinate (included)</p>
+<ul>
+<li><strong>kind</strong> <em>: {lineplot,barplot} (default = lineplot)</em></li>
+</ul>
+<p>kind of plot to represent the data</p>
+<ul>
+<li><strong>figsize</strong> <em>: tuple of 2 int (default = (30, 10))</em></li>
+</ul>
+<p>length and heigh of the output plot</p>
+<ul>
+<li><strong>palette</strong> <em>: str (default = Set2)</em></li>
+</ul>
+<p>Colormap. See <a href="https://matplotlib.org/users/colormaps.html">https://matplotlib.org/users/colormaps.html</a>, <a href="https://matplotlib.org/examples/color/named_colors.html">https://matplotlib.org/examples/color/named_colors.html</a></p>
+<ul>
+<li><strong>plot_style</strong> <em>: str (default = ggplot)</em></li>
+</ul>
+<p>Matplotlib plotting style. See <a href="https://matplotlib.org/users/style_sheets.html">https://matplotlib.org/users/style_sheets.html</a></p>
+<ul>
+<li><strong>tests</strong> <em>: str, list or None (default = None)</em></li>
+</ul>
+<p>Limit the pvalue methods shown in the plot. Either a list of methods or a string coresponding to a part of the name</p>
+<div class="codehilite"><pre><span></span><span class="c1"># Reload DB</span>
+<span class="n">db</span> <span class="o">=</span> <span class="n">SampCompDB</span> <span class="p">(</span><span class="n">db_prefix</span> <span class="o">=</span> <span class="s2">&quot;results/simulated_&quot;</span><span class="p">,</span> <span class="n">fasta_fn</span> <span class="o">=</span> <span class="s2">&quot;references/simulated/ref.fa&quot;</span><span class="p">,</span> <span class="n">log_level</span><span class="o">=</span><span class="s2">&quot;warning&quot;</span><span class="p">)</span>
+<span class="c1"># Plot</span>
+<span class="n">fig</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <span class="n">db</span><span class="o">.</span><span class="n">plot_pvalue</span> <span class="p">(</span><span class="s2">&quot;ref_0000&quot;</span><span class="p">)</span>
+</pre></div>
+
+<p><img alt="png" src="output_26_0.png" /></p>
+<div class="codehilite"><pre><span></span><span class="c1"># Reload DB</span>
+<span class="n">db</span> <span class="o">=</span> <span class="n">SampCompDB</span> <span class="p">(</span><span class="n">db_prefix</span> <span class="o">=</span> <span class="s2">&quot;results/simulated_stats_&quot;</span><span class="p">,</span> <span class="n">fasta_fn</span> <span class="o">=</span> <span class="s2">&quot;references/simulated/ref.fa&quot;</span><span class="p">,</span> <span class="n">log_level</span><span class="o">=</span><span class="s2">&quot;warning&quot;</span><span class="p">)</span>
+<span class="c1"># Plot</span>
+<span class="n">fig</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <span class="n">db</span><span class="o">.</span><span class="n">plot_pvalue</span> <span class="p">(</span><span class="s2">&quot;ref_0001&quot;</span><span class="p">,</span> <span class="n">palette</span><span class="o">=</span><span class="s2">&quot;Set1&quot;</span><span class="p">)</span>
+</pre></div>
+
+<p><img alt="png" src="output_27_0.png" /></p>
+<div class="codehilite"><pre><span></span><span class="c1"># Reload DB</span>
+<span class="n">db</span> <span class="o">=</span> <span class="n">SampCompDB</span> <span class="p">(</span><span class="n">db_prefix</span> <span class="o">=</span> <span class="s2">&quot;results/yeast_&quot;</span><span class="p">,</span> <span class="n">fasta_fn</span> <span class="o">=</span> <span class="s2">&quot;references/yeast/Yeast_transcriptome.fa&quot;</span><span class="p">,</span> <span class="n">log_level</span><span class="o">=</span><span class="s2">&quot;warning&quot;</span><span class="p">)</span>
+<span class="c1"># Plot</span>
+<span class="n">fig</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <span class="n">db</span><span class="o">.</span><span class="n">plot_pvalue</span> <span class="p">(</span><span class="s2">&quot;YHR174W&quot;</span><span class="p">)</span>
+</pre></div>
+
+<p><img alt="png" src="output_28_0.png" /></p>
+<h3 id="plot_signal">plot_signal</h3>
+<div class="codehilite"><pre><span></span><span class="n">jhelp</span><span class="p">(</span><span class="n">SampCompDB</span><span class="o">.</span><span class="n">plot_signal</span><span class="p">)</span>
+</pre></div>
+
+<hr />
+<p><strong>nanocompore.SampCompDB.plot_signal</strong></p>
+<p>Plot the dwell time and median intensity distribution position per position Pointless for more than 50 positions at once as it becomes hard to distinguish</p>
+<hr />
+<ul>
+<li><strong>ref_id</strong> <em>: str (required)</em></li>
+</ul>
+<p>Valid reference id name in the database</p>
+<ul>
+<li><strong>start</strong> <em>: int (default = None)</em></li>
+</ul>
+<p>Start coordinate</p>
+<ul>
+<li><strong>end</strong> <em>: int (default = None)</em></li>
+</ul>
+<p>End coordinate (included)</p>
+<ul>
+<li><strong>kind</strong> <em>: {violinplot, boxenplot, swarmplot} (default = violinplot)</em></li>
+</ul>
+<p>Kind of plot</p>
+<ul>
+<li><strong>split_samples</strong> <em>: bool (default = False)</em></li>
+</ul>
+<p>If samples for a same condition are represented separatly. If false they are merged per condition</p>
+<ul>
+<li><strong>figsize</strong> <em>: tuple of 2 int (default = (30, 10))</em></li>
+</ul>
+<p>length and heigh of the output plot</p>
+<ul>
+<li><strong>palette</strong> <em>: str (default = Set2)</em></li>
+</ul>
+<p>Colormap. See <a href="https://matplotlib.org/users/colormaps.html">https://matplotlib.org/users/colormaps.html</a>, <a href="https://matplotlib.org/examples/color/named_colors.html">https://matplotlib.org/examples/color/named_colors.html</a></p>
+<ul>
+<li><strong>plot_style</strong> <em>: str (default = ggplot)</em></li>
+</ul>
+<p>Matplotlib plotting style. See <a href="https://matplotlib.org/users/style_sheets.html">https://matplotlib.org/users/style_sheets.html</a></p>
+<div class="codehilite"><pre><span></span><span class="c1"># Reload DB</span>
+<span class="n">db</span> <span class="o">=</span> <span class="n">SampCompDB</span> <span class="p">(</span><span class="n">db_prefix</span> <span class="o">=</span> <span class="s2">&quot;results/simulated_&quot;</span><span class="p">,</span> <span class="n">fasta_fn</span> <span class="o">=</span> <span class="s2">&quot;references/simulated/ref.fa&quot;</span><span class="p">,</span> <span class="n">log_level</span><span class="o">=</span><span class="s2">&quot;warning&quot;</span><span class="p">)</span>
+<span class="c1"># Plot</span>
+<span class="n">fig</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <span class="n">db</span><span class="o">.</span><span class="n">plot_signal</span> <span class="p">(</span><span class="s2">&quot;ref_0000&quot;</span><span class="p">,</span> <span class="n">start</span><span class="o">=</span><span class="mi">75</span><span class="p">,</span> <span class="n">end</span><span class="o">=</span><span class="mi">100</span><span class="p">)</span>
+</pre></div>
+
+<p><img alt="png" src="output_31_0.png" /></p>
+<div class="codehilite"><pre><span></span><span class="c1"># Reload DB</span>
+<span class="n">db</span> <span class="o">=</span> <span class="n">SampCompDB</span> <span class="p">(</span><span class="n">db_prefix</span> <span class="o">=</span> <span class="s2">&quot;results/simulated_&quot;</span><span class="p">,</span> <span class="n">fasta_fn</span> <span class="o">=</span> <span class="s2">&quot;references/simulated/ref.fa&quot;</span><span class="p">,</span> <span class="n">log_level</span><span class="o">=</span><span class="s2">&quot;warning&quot;</span><span class="p">)</span>
+<span class="c1"># Plot</span>
+<span class="n">fig</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <span class="n">db</span><span class="o">.</span><span class="n">plot_signal</span> <span class="p">(</span><span class="s2">&quot;ref_0001&quot;</span><span class="p">,</span> <span class="n">start</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">end</span><span class="o">=</span><span class="mi">125</span><span class="p">,</span> <span class="n">kind</span><span class="o">=</span><span class="s2">&quot;swarmplot&quot;</span><span class="p">)</span>
+</pre></div>
+
+<p><img alt="png" src="output_32_0.png" /></p>
+<div class="codehilite"><pre><span></span><span class="c1"># Reload DB</span>
+<span class="n">db</span> <span class="o">=</span> <span class="n">SampCompDB</span> <span class="p">(</span><span class="n">db_prefix</span> <span class="o">=</span> <span class="s2">&quot;results/yeast_&quot;</span><span class="p">,</span> <span class="n">fasta_fn</span> <span class="o">=</span> <span class="s2">&quot;references/yeast/Yeast_transcriptome.fa&quot;</span><span class="p">,</span> <span class="n">log_level</span><span class="o">=</span><span class="s2">&quot;warning&quot;</span><span class="p">)</span>
+<span class="c1"># Plot</span>
+<span class="n">fig</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <span class="n">db</span><span class="o">.</span><span class="n">plot_signal</span> <span class="p">(</span><span class="s2">&quot;YHR174W&quot;</span><span class="p">,</span> <span class="n">start</span><span class="o">=</span><span class="mi">665</span><span class="p">,</span> <span class="n">end</span><span class="o">=</span><span class="mi">700</span><span class="p">,</span> <span class="n">kind</span><span class="o">=</span><span class="s2">&quot;boxenplot&quot;</span><span class="p">)</span>
+</pre></div>
+
+<p><img alt="png" src="output_33_0.png" /></p>
+<h3 id="plot_coverage">plot_coverage</h3>
+<div class="codehilite"><pre><span></span><span class="n">jhelp</span><span class="p">(</span><span class="n">SampCompDB</span><span class="o">.</span><span class="n">plot_coverage</span><span class="p">)</span>
+</pre></div>
+
+<hr />
+<p><strong>nanocompore.SampCompDB.plot_coverage</strong></p>
+<p>Plot the read coverage over a reference for all samples analysed</p>
+<hr />
+<ul>
+<li><strong>ref_id</strong> <em>: str (required)</em></li>
+</ul>
+<p>Valid reference id name in the database</p>
+<ul>
+<li><strong>start</strong> <em>: int (default = None)</em></li>
+</ul>
+<p>Start coordinate</p>
+<ul>
+<li><strong>end</strong> <em>: int (default = None)</em></li>
+</ul>
+<p>End coordinate (included)</p>
+<ul>
+<li><strong>figsize</strong> <em>: tuple of 2 int (default = (30, 5))</em></li>
+</ul>
+<p>length and heigh of the output plot</p>
+<ul>
+<li><strong>palette</strong> <em>: str (default = Set2)</em></li>
+</ul>
+<p>Colormap. See <a href="https://matplotlib.org/users/colormaps.html">https://matplotlib.org/users/colormaps.html</a>, <a href="https://matplotlib.org/examples/color/named_colors.html">https://matplotlib.org/examples/color/named_colors.html</a></p>
+<ul>
+<li><strong>plot_style</strong> <em>: str (default = ggplot)</em></li>
+</ul>
+<p>Matplotlib plotting style. See <a href="https://matplotlib.org/users/style_sheets.html">https://matplotlib.org/users/style_sheets.html</a></p>
+<div class="codehilite"><pre><span></span><span class="c1"># Reload DB</span>
+<span class="n">db</span> <span class="o">=</span> <span class="n">SampCompDB</span> <span class="p">(</span><span class="n">db_prefix</span> <span class="o">=</span> <span class="s2">&quot;results/yeast_&quot;</span><span class="p">,</span> <span class="n">fasta_fn</span> <span class="o">=</span> <span class="s2">&quot;references/yeast/Yeast_transcriptome.fa&quot;</span><span class="p">,</span> <span class="n">log_level</span><span class="o">=</span><span class="s2">&quot;warning&quot;</span><span class="p">)</span>
+<span class="c1"># Plot</span>
+<span class="n">fig</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <span class="n">db</span><span class="o">.</span><span class="n">plot_coverage</span> <span class="p">(</span><span class="s2">&quot;YHR174W&quot;</span><span class="p">)</span>
+</pre></div>
+
+<p><img alt="png" src="output_36_0.png" /></p>
+<h3 id="plot_kmers_stats">plot_kmers_stats</h3>
+<div class="codehilite"><pre><span></span><span class="n">jhelp</span><span class="p">(</span><span class="n">SampCompDB</span><span class="o">.</span><span class="n">plot_kmers_stats</span><span class="p">)</span>
+</pre></div>
+
+<hr />
+<p><strong>nanocompore.SampCompDB.plot_kmers_stats</strong></p>
+<p>Fancy version of <code class="codehilite">plot_coverage</code> that also report missing, mismatching and undefined kmers status from Nanopolish</p>
+<hr />
+<ul>
+<li><strong>ref_id</strong> <em>: str (required)</em></li>
+</ul>
+<p>Valid reference id name in the database</p>
+<ul>
+<li><strong>start</strong> <em>: int (default = None)</em></li>
+</ul>
+<p>Start coordinate</p>
+<ul>
+<li><strong>end</strong> <em>: int (default = None)</em></li>
+</ul>
+<p>End coordinate (included)</p>
+<ul>
+<li><strong>figsize</strong> <em>: tuple of 2 int (default = (30, 10))</em></li>
+</ul>
+<p>length and heigh of the output plot</p>
+<ul>
+<li><strong>palette</strong> <em>: str (default = Accent)</em></li>
+</ul>
+<p>Colormap. See <a href="https://matplotlib.org/users/colormaps.html">https://matplotlib.org/users/colormaps.html</a>, <a href="https://matplotlib.org/examples/color/named_colors.html">https://matplotlib.org/examples/color/named_colors.html</a></p>
+<ul>
+<li><strong>plot_style</strong> <em>: str (default = ggplot)</em></li>
+</ul>
+<p>Matplotlib plotting style. See <a href="https://matplotlib.org/users/style_sheets.html">https://matplotlib.org/users/style_sheets.html</a></p>
+<div class="codehilite"><pre><span></span><span class="c1"># Reload DB</span>
+<span class="n">db</span> <span class="o">=</span> <span class="n">SampCompDB</span> <span class="p">(</span><span class="n">db_prefix</span> <span class="o">=</span> <span class="s2">&quot;results/yeast_&quot;</span><span class="p">,</span> <span class="n">fasta_fn</span> <span class="o">=</span> <span class="s2">&quot;references/yeast/Yeast_transcriptome.fa&quot;</span><span class="p">,</span> <span class="n">log_level</span><span class="o">=</span><span class="s2">&quot;warning&quot;</span><span class="p">)</span>
+<span class="c1"># Plot</span>
+<span class="n">fig</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <span class="n">db</span><span class="o">.</span><span class="n">plot_kmers_stats</span> <span class="p">(</span><span class="s2">&quot;YHR174W&quot;</span><span class="p">)</span>
+</pre></div>
+
+<p><img alt="png" src="output_39_0.png" /></p>
+<h3 id="plot_position">plot_position</h3>
+<div class="codehilite"><pre><span></span><span class="n">jhelp</span><span class="p">(</span><span class="n">SampCompDB</span><span class="o">.</span><span class="n">plot_position</span><span class="p">)</span>
+</pre></div>
+
+<hr />
+<p><strong>nanocompore.SampCompDB.plot_position</strong></p>
+<p>Plot the dwell time and median intensity at the given position as a scatter plot.</p>
+<hr />
+<ul>
+<li><strong>ref_id</strong> <em>: str (required)</em></li>
+</ul>
+<p>Valid reference id name in the database</p>
+<ul>
+<li><strong>pos</strong> <em>: int (default = None)</em></li>
+</ul>
+<p>Position of interest</p>
+<ul>
+<li><strong>split_samples</strong> <em>(default = False)</em></li>
+</ul>
+<p>If True, samples for a same condition are represented separately. If False, they are merged per condition</p>
+<ul>
+<li><strong>figsize</strong> <em>: tuple of 2 int (default = (30, 10))</em></li>
+</ul>
+<p>length and heigh of the output plot</p>
+<ul>
+<li><strong>palette</strong> <em>: str (default = Set2)</em></li>
+</ul>
+<p>Colormap. See <a href="https://matplotlib.org/users/colormaps.html">https://matplotlib.org/users/colormaps.html</a>, <a href="https://matplotlib.org/examples/color/named_colors.html">https://matplotlib.org/examples/color/named_colors.html</a></p>
+<ul>
+<li><strong>plot_style</strong> <em>: str (default = ggplot)</em></li>
+</ul>
+<p>Matplotlib plotting style. See <a href="https://matplotlib.org/users/style_sheets.html">https://matplotlib.org/users/style_sheets.html</a></p>
+<ul>
+<li><strong>xlim</strong> <em>: tuple of 2 int (default = (None, None))</em></li>
+</ul>
+<p>A tuple of explicit limits for the x axis</p>
+<ul>
+<li><strong>ylim</strong> <em>: tuple of 2 int (default = (None, None))</em></li>
+</ul>
+<p>A tuple of explicit limits for the y axis</p>
+<ul>
+<li><strong>kde</strong> <em>: bool (default = True)</em></li>
+</ul>
+<p>plot the KDE of the intensity/dwell bivarariate distributions in the two samples</p>
+<ul>
+<li><strong>scatter</strong> <em>: bool (default = True)</em></li>
+</ul>
+<p>if True, plot the individual data points</p>
+<ul>
+<li><strong>pointSize</strong> <em>: int (default = 20)</em></li>
+</ul>
+<p>int specifying the point size for the scatter plot</p>
+<ul>
+<li><strong>model</strong> <em>: bool (default = False)</em></li>
+</ul>
+<p>If true, plot the GMM density estimate</p>
+<ul>
+<li><strong>gmm_levels</strong> <em>: int (default = 50)</em></li>
+</ul>
+<p>number of contour lines to use for the GMM countour plot</p>
+<div class="codehilite"><pre><span></span><span class="c1"># Reload DB</span>
+<span class="n">db</span> <span class="o">=</span> <span class="n">SampCompDB</span> <span class="p">(</span><span class="n">db_prefix</span> <span class="o">=</span> <span class="s2">&quot;results/simulated_&quot;</span><span class="p">,</span> <span class="n">fasta_fn</span> <span class="o">=</span> <span class="s2">&quot;references/simulated/ref.fa&quot;</span><span class="p">,</span> <span class="n">log_level</span><span class="o">=</span><span class="s2">&quot;warning&quot;</span><span class="p">)</span>
+<span class="c1"># Plot</span>
+<span class="n">fig</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <span class="n">db</span><span class="o">.</span><span class="n">plot_position</span> <span class="p">(</span><span class="s2">&quot;ref_0000&quot;</span><span class="p">,</span> <span class="n">pos</span><span class="o">=</span><span class="mi">82</span><span class="p">)</span>
+</pre></div>
+
+<p><img alt="png" src="output_42_0.png" /></p>
+                
+                  
+                
+              
+              
+                
+
+
+              
+            </article>
+          </div>
+        </div>
+      </main>
+      
+        
+<footer class="md-footer">
+  
+    <div class="md-footer-nav">
+      <nav class="md-footer-nav__inner md-grid">
+        
+          <a href="../SampComp_usage/" title="Compare samples with SampComp" class="md-flex md-footer-nav__link md-footer-nav__link--prev" rel="prev">
+            <div class="md-flex__cell md-flex__cell--shrink">
+              <i class="md-icon md-icon--arrow-back md-footer-nav__button"></i>
+            </div>
+            <div class="md-flex__cell md-flex__cell--stretch md-footer-nav__title">
+              <span class="md-flex__ellipsis">
+                <span class="md-footer-nav__direction">
+                  Previous
+                </span>
+                Compare samples with SampComp
+              </span>
+            </div>
+          </a>
+        
+        
+          <a href="../SimReads_usage/" title="Generate simulated reads" class="md-flex md-footer-nav__link md-footer-nav__link--next" rel="next">
+            <div class="md-flex__cell md-flex__cell--stretch md-footer-nav__title">
+              <span class="md-flex__ellipsis">
+                <span class="md-footer-nav__direction">
+                  Next
+                </span>
+                Generate simulated reads
+              </span>
+            </div>
+            <div class="md-flex__cell md-flex__cell--shrink">
+              <i class="md-icon md-icon--arrow-forward md-footer-nav__button"></i>
+            </div>
+          </a>
+        
+      </nav>
+    </div>
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-footer-copyright">
+        
+          <div class="md-footer-copyright__highlight">
+            Copyright &copy; 2019 Adrien Leger & Tommaso Leonardi
+          </div>
+        
+        powered by
+        <a href="https://www.mkdocs.org">MkDocs</a>
+        and
+        <a href="https://squidfunk.github.io/mkdocs-material/">
+          Material for MkDocs</a>
+      </div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    
+      <script src="../../assets/javascripts/application.d9aa80ab.js"></script>
+      
+      <script>app.initialize({version:"1.0.4",url:{base:"../.."}})</script>
+      
+    
+  </body>
+</html>

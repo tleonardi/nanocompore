@@ -1,0 +1,28 @@
+{
+  "package_name": "nanocompore",
+  "package_version": "1.0.0b7",
+  "timestamp": "2019-04-04 12:44:53.131905",
+  "log_level": "info",
+  "not_bound": false,
+  "data_rand_seed": null,
+  "pos_rand_seed": 42,
+  "min_mod_dist": 6,
+  "mod_extend_context": 2,
+  "mod_bases_type": "A",
+  "mod_bases_freq": 0.25,
+  "mod_reads_freq": 0.5,
+  "dwell_mod_scale": 0,
+  "dwell_mod_loc": 0.05,
+  "intensity_mod_scale": 0,
+  "intensity_mod_loc": 10,
+  "plot": true,
+  "nreads_per_ref": 100,
+  "ref_list": [
+    "ref_0000"
+  ],
+  "run_type": "RNA",
+  "overwrite": "True",
+  "outprefix": "out",
+  "outpath": "./results/",
+  "fasta_fn": "./references/simulated/ref.fa"
+}

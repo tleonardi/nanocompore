@@ -1,0 +1,745 @@
+
+
+
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      <meta http-equiv="x-ua-compatible" content="ie=edge">
+      
+        <meta name="description" content="Compare nanopore signal to find modifications">
+      
+      
+        <link rel="canonical" href="https://tleonardi.github.io/nanocompore/demo/SimReads_usage/">
+      
+      
+        <meta name="author" content="Adrien Leger & Tommaso Leonardi">
+      
+      
+        <meta name="lang:clipboard.copy" content="Copy to clipboard">
+      
+        <meta name="lang:clipboard.copied" content="Copied to clipboard">
+      
+        <meta name="lang:search.language" content="en">
+      
+        <meta name="lang:search.pipeline.stopwords" content="True">
+      
+        <meta name="lang:search.pipeline.trimmer" content="True">
+      
+        <meta name="lang:search.result.none" content="No matching documents">
+      
+        <meta name="lang:search.result.one" content="1 matching document">
+      
+        <meta name="lang:search.result.other" content="# matching documents">
+      
+        <meta name="lang:search.tokenizer" content="[\s\-]+">
+      
+      <link rel="shortcut icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.0.4, mkdocs-material-4.0.2">
+    
+    
+      
+        <title>Generate simulated reads - Nanocompore</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/application.982221ab.css">
+      
+      
+    
+    
+      <script src="../../assets/javascripts/modernizr.1f0bcf2b.js"></script>
+    
+    
+      
+    
+    <link rel="stylesheet" href="../../assets/fonts/material-icons.css">
+    
+    
+    
+      
+    
+    
+  </head>
+  
+    <body dir="ltr">
+  
+    <svg class="md-svg">
+      <defs>
+        
+        
+          <svg xmlns="http://www.w3.org/2000/svg" width="416" height="448"
+    viewBox="0 0 416 448" id="__github">
+  <path fill="currentColor" d="M160 304q0 10-3.125 20.5t-10.75 19-18.125
+        8.5-18.125-8.5-10.75-19-3.125-20.5 3.125-20.5 10.75-19 18.125-8.5
+        18.125 8.5 10.75 19 3.125 20.5zM320 304q0 10-3.125 20.5t-10.75
+        19-18.125 8.5-18.125-8.5-10.75-19-3.125-20.5 3.125-20.5 10.75-19
+        18.125-8.5 18.125 8.5 10.75 19 3.125 20.5zM360
+        304q0-30-17.25-51t-46.75-21q-10.25 0-48.75 5.25-17.75 2.75-39.25
+        2.75t-39.25-2.75q-38-5.25-48.75-5.25-29.5 0-46.75 21t-17.25 51q0 22 8
+        38.375t20.25 25.75 30.5 15 35 7.375 37.25 1.75h42q20.5 0
+        37.25-1.75t35-7.375 30.5-15 20.25-25.75 8-38.375zM416 260q0 51.75-15.25
+        82.75-9.5 19.25-26.375 33.25t-35.25 21.5-42.5 11.875-42.875 5.5-41.75
+        1.125q-19.5 0-35.5-0.75t-36.875-3.125-38.125-7.5-34.25-12.875-30.25-20.25-21.5-28.75q-15.5-30.75-15.5-82.75
+        0-59.25 34-99-6.75-20.5-6.75-42.5 0-29 12.75-54.5 27 0 47.5 9.875t47.25
+        30.875q36.75-8.75 77.25-8.75 37 0 70 8 26.25-20.5
+        46.75-30.25t47.25-9.75q12.75 25.5 12.75 54.5 0 21.75-6.75 42 34 40 34
+        99.5z" />
+</svg>
+        
+      </defs>
+    </svg>
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" data-md-component="overlay" for="__drawer"></label>
+    
+      <a href="#generate-simulated-reads" tabindex="1" class="md-skip">
+        Skip to content
+      </a>
+    
+    
+      <header class="md-header" data-md-component="header">
+  <nav class="md-header-nav md-grid">
+    <div class="md-flex">
+      <div class="md-flex__cell md-flex__cell--shrink">
+        <a href="https://tleonardi.github.io/nanocompore/" title="Nanocompore" class="md-header-nav__button md-logo">
+          
+            <i class="md-icon"></i>
+          
+        </a>
+      </div>
+      <div class="md-flex__cell md-flex__cell--shrink">
+        <label class="md-icon md-icon--menu md-header-nav__button" for="__drawer"></label>
+      </div>
+      <div class="md-flex__cell md-flex__cell--stretch">
+        <div class="md-flex__ellipsis md-header-nav__title" data-md-component="title">
+          
+            <span class="md-header-nav__topic">
+              Nanocompore
+            </span>
+            <span class="md-header-nav__topic">
+              Generate simulated reads
+            </span>
+          
+        </div>
+      </div>
+      <div class="md-flex__cell md-flex__cell--shrink">
+        
+      </div>
+      
+        <div class="md-flex__cell md-flex__cell--shrink">
+          <div class="md-header-nav__source">
+            
+
+
+  
+
+<a href="https://github.com/tleonardi/nanocompore/" title="Go to repository" class="md-source" data-md-source="github">
+  
+    <div class="md-source__icon">
+      <svg viewBox="0 0 24 24" width="24" height="24">
+        <use xlink:href="#__github" width="24" height="24"></use>
+      </svg>
+    </div>
+  
+  <div class="md-source__repository">
+    tleonardi/nanocompore
+  </div>
+</a>
+          </div>
+        </div>
+      
+    </div>
+  </nav>
+</header>
+    
+    <div class="md-container">
+      
+        
+      
+      
+      <main class="md-main">
+        <div class="md-main__inner md-grid" data-md-component="container">
+          
+            
+              <div class="md-sidebar md-sidebar--primary" data-md-component="navigation">
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    <nav class="md-nav md-nav--primary" data-md-level="0">
+  <label class="md-nav__title md-nav__title--site" for="__drawer">
+    <a href="https://tleonardi.github.io/nanocompore/" title="Nanocompore" class="md-nav__button md-logo">
+      
+        <i class="md-icon"></i>
+      
+    </a>
+    Nanocompore
+  </label>
+  
+    <div class="md-nav__source">
+      
+
+
+  
+
+<a href="https://github.com/tleonardi/nanocompore/" title="Go to repository" class="md-source" data-md-source="github">
+  
+    <div class="md-source__icon">
+      <svg viewBox="0 0 24 24" width="24" height="24">
+        <use xlink:href="#__github" width="24" height="24"></use>
+      </svg>
+    </div>
+  
+  <div class="md-source__repository">
+    tleonardi/nanocompore
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+      
+
+
+  <li class="md-nav__item">
+    <a href="../.." title="Home" class="md-nav__link">
+      Home
+    </a>
+  </li>
+
+    
+      
+      
+      
+
+
+  <li class="md-nav__item">
+    <a href="../../installation/" title="Installation instructions" class="md-nav__link">
+      Installation instructions
+    </a>
+  </li>
+
+    
+      
+      
+      
+
+
+  <li class="md-nav__item">
+    <a href="../../data_preparation/" title="Data preparation" class="md-nav__link">
+      Data preparation
+    </a>
+  </li>
+
+    
+      
+      
+      
+
+  
+
+
+  <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+    
+      <input class="md-toggle md-nav__toggle" data-md-toggle="nav-4" type="checkbox" id="nav-4" checked>
+    
+    <label class="md-nav__link" for="nav-4">
+      Usage
+    </label>
+    <nav class="md-nav" data-md-component="collapsible" data-md-level="1">
+      <label class="md-nav__title" for="nav-4">
+        Usage
+      </label>
+      <ul class="md-nav__list" data-md-scrollfix>
+        
+        
+          
+          
+          
+
+
+  <li class="md-nav__item">
+    <a href="../../usage/" title="How to use Nanocompore" class="md-nav__link">
+      How to use Nanocompore
+    </a>
+  </li>
+
+        
+          
+          
+          
+
+
+  <li class="md-nav__item">
+    <a href="../SampComp_usage/" title="Compare samples with SampComp" class="md-nav__link">
+      Compare samples with SampComp
+    </a>
+  </li>
+
+        
+          
+          
+          
+
+
+  <li class="md-nav__item">
+    <a href="../SampCompDB_usage/" title="Generate plots and tables with SampCompDB" class="md-nav__link">
+      Generate plots and tables with SampCompDB
+    </a>
+  </li>
+
+        
+          
+          
+          
+
+  
+
+
+  <li class="md-nav__item md-nav__item--active">
+    
+    <input class="md-toggle md-nav__toggle" data-md-toggle="toc" type="checkbox" id="__toc">
+    
+      
+    
+    
+      <label class="md-nav__link md-nav__link--active" for="__toc">
+        Generate simulated reads
+      </label>
+    
+    <a href="./" title="Generate simulated reads" class="md-nav__link md-nav__link--active">
+      Generate simulated reads
+    </a>
+    
+      
+<nav class="md-nav md-nav--secondary">
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">Table of contents</label>
+    <ul class="md-nav__list" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#in-brief" title="In brief" class="md-nav__link">
+    In brief
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#quick-start" title="Quick start" class="md-nav__link">
+    Quick start
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#description-of-main-options" title="Description of main options" class="md-nav__link">
+    Description of main options
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#advanced-api-usage" title="Advanced API Usage" class="md-nav__link">
+    Advanced API Usage
+  </a>
+  
+    <nav class="md-nav">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#import-the-package-and-plotting-tools" title="Import the package and plotting tools" class="md-nav__link">
+    Import the package and plotting tools
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#generate-reads-without-modifications" title="Generate reads without modifications" class="md-nav__link">
+    Generate reads without modifications
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#generate-a-small-dataset-with-both-modified-and-unmodified-conditions" title="Generate a small dataset with both modified and unmodified conditions" class="md-nav__link">
+    Generate a small dataset with both modified and unmodified conditions
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+      
+      
+      
+      
+    </ul>
+  
+</nav>
+    
+  </li>
+
+        
+      </ul>
+    </nav>
+  </li>
+
+    
+      
+      
+      
+
+
+  <li class="md-nav__item">
+    <a href="../../alternative/" title="Alternative and complementary packages" class="md-nav__link">
+      Alternative and complementary packages
+    </a>
+  </li>
+
+    
+      
+      
+      
+
+
+  <li class="md-nav__item md-nav__item--nested">
+    
+      <input class="md-toggle md-nav__toggle" data-md-toggle="nav-6" type="checkbox" id="nav-6">
+    
+    <label class="md-nav__link" for="nav-6">
+      Getting involved and finding help
+    </label>
+    <nav class="md-nav" data-md-component="collapsible" data-md-level="1">
+      <label class="md-nav__title" for="nav-6">
+        Getting involved and finding help
+      </label>
+      <ul class="md-nav__list" data-md-scrollfix>
+        
+        
+          
+          
+          
+
+
+  <li class="md-nav__item">
+    <a href="../../contributing/" title="Contributing" class="md-nav__link">
+      Contributing
+    </a>
+  </li>
+
+        
+          
+          
+          
+
+
+  <li class="md-nav__item">
+    <a href="../../code_of_conduct/" title="Code of conduct" class="md-nav__link">
+      Code of conduct
+    </a>
+  </li>
+
+        
+          
+          
+          
+
+
+  <li class="md-nav__item">
+    <a href="../../licence/" title="Licence" class="md-nav__link">
+      Licence
+    </a>
+  </li>
+
+        
+      </ul>
+    </nav>
+  </li>
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="toc">
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+<nav class="md-nav md-nav--secondary">
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">Table of contents</label>
+    <ul class="md-nav__list" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#in-brief" title="In brief" class="md-nav__link">
+    In brief
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#quick-start" title="Quick start" class="md-nav__link">
+    Quick start
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#description-of-main-options" title="Description of main options" class="md-nav__link">
+    Description of main options
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#advanced-api-usage" title="Advanced API Usage" class="md-nav__link">
+    Advanced API Usage
+  </a>
+  
+    <nav class="md-nav">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#import-the-package-and-plotting-tools" title="Import the package and plotting tools" class="md-nav__link">
+    Import the package and plotting tools
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#generate-reads-without-modifications" title="Generate reads without modifications" class="md-nav__link">
+    Generate reads without modifications
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#generate-a-small-dataset-with-both-modified-and-unmodified-conditions" title="Generate a small dataset with both modified and unmodified conditions" class="md-nav__link">
+    Generate a small dataset with both modified and unmodified conditions
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+      
+      
+      
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          <div class="md-content">
+            <article class="md-content__inner md-typeset">
+              
+                
+                  <a href="https://github.com/tleonardi/nanocompore/edit/master/docs/demo/SimReads_usage.ipynb" title="Edit this page" class="md-icon md-content__icon">&#xE3C9;</a>
+                
+                
+                <h1 id="generate-simulated-reads">Generate simulated reads</h1>
+<h2 id="in-brief">In brief</h2>
+<p>...</p>
+<h2 id="quick-start">Quick start</h2>
+<p>...</p>
+<h2 id="description-of-main-options">Description of main options</h2>
+<p>...</p>
+<h2 id="advanced-api-usage">Advanced API Usage</h2>
+<p>...</p>
+<h3 id="import-the-package-and-plotting-tools">Import the package and plotting tools</h3>
+<div class="codehilite"><pre><span></span><span class="kn">from</span> <span class="nn">nanocompore.SimReads</span> <span class="kn">import</span> <span class="n">SimReads</span>
+
+<span class="c1"># Ploting lib imports</span>
+<span class="kn">import</span> <span class="nn">matplotlib.pyplot</span> <span class="kn">as</span> <span class="nn">pl</span>
+<span class="o">%</span><span class="n">matplotlib</span> <span class="n">inline</span>
+</pre></div>
+
+<h3 id="generate-reads-without-modifications">Generate reads without modifications</h3>
+<div class="codehilite"><pre><span></span><span class="n">SimReads</span> <span class="p">(</span>
+    <span class="n">fasta_fn</span><span class="o">=</span><span class="s2">&quot;./references/simulated/ref.fa&quot;</span><span class="p">,</span>
+    <span class="n">ref_list</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;ref_0000&quot;</span><span class="p">],</span>
+    <span class="n">outpath</span><span class="o">=</span><span class="s2">&quot;./results/&quot;</span><span class="p">,</span>
+    <span class="n">overwrite</span><span class="o">=</span><span class="s2">&quot;True&quot;</span><span class="p">,</span>
+    <span class="n">plot</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span>
+    <span class="n">nreads_per_ref</span><span class="o">=</span><span class="mi">100</span><span class="p">)</span>
+</pre></div>
+
+<div class="codehilite"><pre><span></span><span class="nt">Initialising</span> <span class="nt">SimReads</span> <span class="nt">and</span> <span class="nt">checking</span> <span class="nt">options</span>
+<span class="nt">Importing</span> <span class="nt">RNA</span> <span class="nt">model</span> <span class="nt">file</span>
+<span class="nt">Reading</span> <span class="nt">Fasta</span> <span class="nt">file</span> <span class="nt">and</span> <span class="nt">simulate</span> <span class="nt">corresponding</span> <span class="nt">data</span>
+<span class="nt">100</span><span class="o">%|</span><span class="err">██████████</span><span class="o">|</span> <span class="nt">1</span><span class="o">/</span><span class="nt">1</span> <span class="cp">[</span><span class="mi">00</span><span class="p">:</span><span class="mi">00</span><span class="o">&amp;</span><span class="nx nx-Member">lt</span><span class="p">;</span><span class="mi">00</span><span class="p">:</span><span class="mi">00</span><span class="p">,</span>  <span class="mf">1.32</span> <span class="nx">References</span><span class="p">/</span><span class="nx">s</span><span class="cp">]</span>
+</pre></div>
+
+
+<p><img alt="png" src="output_12_1.png" /></p>
+<div class="codehilite"><pre><span></span><span class="n">SimReads</span> <span class="p">(</span>
+    <span class="n">fasta_fn</span><span class="o">=</span><span class="s2">&quot;./references/simulated/ref.fa&quot;</span><span class="p">,</span>
+    <span class="n">ref_list</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;ref_0000&quot;</span><span class="p">],</span>
+    <span class="n">outpath</span><span class="o">=</span><span class="s2">&quot;./results/&quot;</span><span class="p">,</span>
+    <span class="n">overwrite</span><span class="o">=</span><span class="s2">&quot;True&quot;</span><span class="p">,</span>
+    <span class="n">plot</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span>
+    <span class="n">nreads_per_ref</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span>
+    <span class="n">intensity_mod_loc</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span>
+    <span class="n">dwell_mod_loc</span><span class="o">=</span><span class="mf">0.05</span><span class="p">,</span>
+    <span class="n">mod_reads_freq</span><span class="o">=</span><span class="mf">0.5</span><span class="p">)</span>
+</pre></div>
+
+<div class="codehilite"><pre><span></span><span class="nt">Initialising</span> <span class="nt">SimReads</span> <span class="nt">and</span> <span class="nt">checking</span> <span class="nt">options</span>
+<span class="nt">Importing</span> <span class="nt">RNA</span> <span class="nt">model</span> <span class="nt">file</span>
+<span class="nt">Reading</span> <span class="nt">Fasta</span> <span class="nt">file</span> <span class="nt">and</span> <span class="nt">simulate</span> <span class="nt">corresponding</span> <span class="nt">data</span>
+<span class="nt">100</span><span class="o">%|</span><span class="err">██████████</span><span class="o">|</span> <span class="nt">1</span><span class="o">/</span><span class="nt">1</span> <span class="cp">[</span><span class="mi">00</span><span class="p">:</span><span class="mi">00</span><span class="o">&amp;</span><span class="nx nx-Member">lt</span><span class="p">;</span><span class="mi">00</span><span class="p">:</span><span class="mi">00</span><span class="p">,</span>  <span class="mf">1.21</span> <span class="nx">References</span><span class="p">/</span><span class="nx">s</span><span class="cp">]</span>
+</pre></div>
+
+
+<p><img alt="png" src="output_13_1.png" /></p>
+<h3 id="generate-a-small-dataset-with-both-modified-and-unmodified-conditions">Generate a small dataset with both modified and unmodified conditions</h3>
+<div class="codehilite"><pre><span></span><span class="c1"># Options</span>
+<span class="n">fasta</span> <span class="o">=</span> <span class="s2">&quot;./reference/ref.fa&quot;</span>
+<span class="n">nreads_per_ref</span> <span class="o">=</span> <span class="mi">50</span>
+
+<span class="c1"># Create directory for results</span>
+<span class="n">data_dir</span> <span class="o">=</span> <span class="s2">&quot;./sample_files/&quot;</span>
+
+<span class="k">for</span> <span class="n">replicate</span><span class="p">,</span> <span class="n">nreads</span> <span class="ow">in</span> <span class="p">[(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">55</span><span class="p">),</span> <span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">45</span><span class="p">)]:</span>
+    <span class="c1"># Generate non modified control</span>
+    <span class="n">SimReads</span> <span class="p">(</span>
+        <span class="n">fasta_fn</span><span class="o">=</span><span class="n">fasta</span><span class="p">,</span>
+        <span class="n">outpath</span><span class="o">=</span><span class="n">data_dir</span><span class="p">,</span>
+        <span class="n">prefix</span><span class="o">=</span><span class="n">f</span><span class="s2">&quot;unmodified_rep_{replicate}&quot;</span><span class="p">,</span>
+        <span class="n">nreads_per_ref</span><span class="o">=</span> <span class="n">nreads</span><span class="p">)</span>
+
+    <span class="c1"># Generate modified control</span>
+    <span class="n">SimReads</span> <span class="p">(</span>
+        <span class="n">fasta_fn</span><span class="o">=</span><span class="n">fasta</span><span class="p">,</span>
+        <span class="n">outpath</span><span class="o">=</span><span class="n">data_dir</span><span class="p">,</span>
+        <span class="n">prefix</span><span class="o">=</span><span class="n">f</span><span class="s2">&quot;modified_rep_{replicate}&quot;</span><span class="p">,</span>
+        <span class="n">nreads_per_ref</span><span class="o">=</span> <span class="n">nreads</span><span class="p">,</span>
+        <span class="n">intensity_mod_loc</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span>
+        <span class="n">dwell_mod_loc</span><span class="o">=</span><span class="mf">0.01</span><span class="p">,</span>
+        <span class="n">mod_reads_freq</span><span class="o">=</span><span class="mf">0.9</span><span class="p">,</span>
+        <span class="n">mod_bases_freq</span> <span class="o">=</span> <span class="mf">0.25</span><span class="p">,</span>
+        <span class="n">pos_rand_seed</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+</pre></div>
+
+<div class="codehilite"><pre><span></span><span class="nt">Import</span> <span class="nt">RNA</span> <span class="nt">model</span> <span class="nt">file</span>
+<span class="nt">Read</span> <span class="nt">Fasta</span> <span class="nt">file</span> <span class="nt">and</span> <span class="nt">simulate</span> <span class="nt">corresponding</span> <span class="nt">data</span>
+<span class="nt">100</span><span class="o">%|</span><span class="err">██████████</span><span class="o">|</span> <span class="nt">5</span><span class="o">/</span><span class="nt">5</span> <span class="cp">[</span><span class="mi">00</span><span class="p">:</span><span class="mi">01</span><span class="o">&amp;</span><span class="nx nx-Member">lt</span><span class="p">;</span><span class="mi">00</span><span class="p">:</span><span class="mi">00</span><span class="p">,</span>  <span class="mf">4.82</span> <span class="nx">References</span><span class="p">/</span><span class="nx">s</span><span class="cp">]</span>
+<span class="nt">All</span> <span class="nt">done</span>
+<span class="nt">Import</span> <span class="nt">RNA</span> <span class="nt">model</span> <span class="nt">file</span>
+<span class="nt">Read</span> <span class="nt">Fasta</span> <span class="nt">file</span> <span class="nt">and</span> <span class="nt">simulate</span> <span class="nt">corresponding</span> <span class="nt">data</span>
+<span class="nt">100</span><span class="o">%|</span><span class="err">██████████</span><span class="o">|</span> <span class="nt">5</span><span class="o">/</span><span class="nt">5</span> <span class="cp">[</span><span class="mi">00</span><span class="p">:</span><span class="mi">00</span><span class="o">&amp;</span><span class="nx nx-Member">lt</span><span class="p">;</span><span class="mi">00</span><span class="p">:</span><span class="mi">00</span><span class="p">,</span>  <span class="mf">5.06</span> <span class="nx">References</span><span class="p">/</span><span class="nx">s</span><span class="cp">]</span>
+<span class="nt">All</span> <span class="nt">done</span>
+<span class="nt">Import</span> <span class="nt">RNA</span> <span class="nt">model</span> <span class="nt">file</span>
+<span class="nt">Read</span> <span class="nt">Fasta</span> <span class="nt">file</span> <span class="nt">and</span> <span class="nt">simulate</span> <span class="nt">corresponding</span> <span class="nt">data</span>
+<span class="nt">100</span><span class="o">%|</span><span class="err">██████████</span><span class="o">|</span> <span class="nt">5</span><span class="o">/</span><span class="nt">5</span> <span class="cp">[</span><span class="mi">00</span><span class="p">:</span><span class="mi">01</span><span class="o">&amp;</span><span class="nx nx-Member">lt</span><span class="p">;</span><span class="mi">00</span><span class="p">:</span><span class="mi">00</span><span class="p">,</span>  <span class="mf">4.70</span> <span class="nx">References</span><span class="p">/</span><span class="nx">s</span><span class="cp">]</span>
+<span class="nt">All</span> <span class="nt">done</span>
+<span class="nt">Import</span> <span class="nt">RNA</span> <span class="nt">model</span> <span class="nt">file</span>
+<span class="nt">Read</span> <span class="nt">Fasta</span> <span class="nt">file</span> <span class="nt">and</span> <span class="nt">simulate</span> <span class="nt">corresponding</span> <span class="nt">data</span>
+<span class="nt">100</span><span class="o">%|</span><span class="err">██████████</span><span class="o">|</span> <span class="nt">5</span><span class="o">/</span><span class="nt">5</span> <span class="cp">[</span><span class="mi">00</span><span class="p">:</span><span class="mi">00</span><span class="o">&amp;</span><span class="nx nx-Member">lt</span><span class="p">;</span><span class="mi">00</span><span class="p">:</span><span class="mi">00</span><span class="p">,</span>  <span class="mf">5.50</span> <span class="nx">References</span><span class="p">/</span><span class="nx">s</span><span class="cp">]</span>
+<span class="nt">All</span> <span class="nt">done</span>
+</pre></div>
+                
+                  
+                
+              
+              
+                
+
+
+              
+            </article>
+          </div>
+        </div>
+      </main>
+      
+        
+<footer class="md-footer">
+  
+    <div class="md-footer-nav">
+      <nav class="md-footer-nav__inner md-grid">
+        
+          <a href="../SampCompDB_usage/" title="Generate plots and tables with SampCompDB" class="md-flex md-footer-nav__link md-footer-nav__link--prev" rel="prev">
+            <div class="md-flex__cell md-flex__cell--shrink">
+              <i class="md-icon md-icon--arrow-back md-footer-nav__button"></i>
+            </div>
+            <div class="md-flex__cell md-flex__cell--stretch md-footer-nav__title">
+              <span class="md-flex__ellipsis">
+                <span class="md-footer-nav__direction">
+                  Previous
+                </span>
+                Generate plots and tables with SampCompDB
+              </span>
+            </div>
+          </a>
+        
+        
+          <a href="../../alternative/" title="Alternative and complementary packages" class="md-flex md-footer-nav__link md-footer-nav__link--next" rel="next">
+            <div class="md-flex__cell md-flex__cell--stretch md-footer-nav__title">
+              <span class="md-flex__ellipsis">
+                <span class="md-footer-nav__direction">
+                  Next
+                </span>
+                Alternative and complementary packages
+              </span>
+            </div>
+            <div class="md-flex__cell md-flex__cell--shrink">
+              <i class="md-icon md-icon--arrow-forward md-footer-nav__button"></i>
+            </div>
+          </a>
+        
+      </nav>
+    </div>
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-footer-copyright">
+        
+          <div class="md-footer-copyright__highlight">
+            Copyright &copy; 2019 Adrien Leger & Tommaso Leonardi
+          </div>
+        
+        powered by
+        <a href="https://www.mkdocs.org">MkDocs</a>
+        and
+        <a href="https://squidfunk.github.io/mkdocs-material/">
+          Material for MkDocs</a>
+      </div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    
+      <script src="../../assets/javascripts/application.d9aa80ab.js"></script>
+      
+      <script>app.initialize({version:"1.0.4",url:{base:"../.."}})</script>
+      
+    
+  </body>
+</html>

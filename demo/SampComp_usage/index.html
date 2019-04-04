@@ -1,0 +1,1236 @@
+
+
+
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      <meta http-equiv="x-ua-compatible" content="ie=edge">
+      
+        <meta name="description" content="Compare nanopore signal to find modifications">
+      
+      
+        <link rel="canonical" href="https://tleonardi.github.io/nanocompore/demo/SampComp_usage/">
+      
+      
+        <meta name="author" content="Adrien Leger & Tommaso Leonardi">
+      
+      
+        <meta name="lang:clipboard.copy" content="Copy to clipboard">
+      
+        <meta name="lang:clipboard.copied" content="Copied to clipboard">
+      
+        <meta name="lang:search.language" content="en">
+      
+        <meta name="lang:search.pipeline.stopwords" content="True">
+      
+        <meta name="lang:search.pipeline.trimmer" content="True">
+      
+        <meta name="lang:search.result.none" content="No matching documents">
+      
+        <meta name="lang:search.result.one" content="1 matching document">
+      
+        <meta name="lang:search.result.other" content="# matching documents">
+      
+        <meta name="lang:search.tokenizer" content="[\s\-]+">
+      
+      <link rel="shortcut icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.0.4, mkdocs-material-4.0.2">
+    
+    
+      
+        <title>Compare samples with SampComp - Nanocompore</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/application.982221ab.css">
+      
+      
+    
+    
+      <script src="../../assets/javascripts/modernizr.1f0bcf2b.js"></script>
+    
+    
+      
+    
+    <link rel="stylesheet" href="../../assets/fonts/material-icons.css">
+    
+    
+    
+      
+    
+    
+  </head>
+  
+    <body dir="ltr">
+  
+    <svg class="md-svg">
+      <defs>
+        
+        
+          <svg xmlns="http://www.w3.org/2000/svg" width="416" height="448"
+    viewBox="0 0 416 448" id="__github">
+  <path fill="currentColor" d="M160 304q0 10-3.125 20.5t-10.75 19-18.125
+        8.5-18.125-8.5-10.75-19-3.125-20.5 3.125-20.5 10.75-19 18.125-8.5
+        18.125 8.5 10.75 19 3.125 20.5zM320 304q0 10-3.125 20.5t-10.75
+        19-18.125 8.5-18.125-8.5-10.75-19-3.125-20.5 3.125-20.5 10.75-19
+        18.125-8.5 18.125 8.5 10.75 19 3.125 20.5zM360
+        304q0-30-17.25-51t-46.75-21q-10.25 0-48.75 5.25-17.75 2.75-39.25
+        2.75t-39.25-2.75q-38-5.25-48.75-5.25-29.5 0-46.75 21t-17.25 51q0 22 8
+        38.375t20.25 25.75 30.5 15 35 7.375 37.25 1.75h42q20.5 0
+        37.25-1.75t35-7.375 30.5-15 20.25-25.75 8-38.375zM416 260q0 51.75-15.25
+        82.75-9.5 19.25-26.375 33.25t-35.25 21.5-42.5 11.875-42.875 5.5-41.75
+        1.125q-19.5 0-35.5-0.75t-36.875-3.125-38.125-7.5-34.25-12.875-30.25-20.25-21.5-28.75q-15.5-30.75-15.5-82.75
+        0-59.25 34-99-6.75-20.5-6.75-42.5 0-29 12.75-54.5 27 0 47.5 9.875t47.25
+        30.875q36.75-8.75 77.25-8.75 37 0 70 8 26.25-20.5
+        46.75-30.25t47.25-9.75q12.75 25.5 12.75 54.5 0 21.75-6.75 42 34 40 34
+        99.5z" />
+</svg>
+        
+      </defs>
+    </svg>
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" data-md-component="overlay" for="__drawer"></label>
+    
+      <a href="#compare-samples-with-sampcomp" tabindex="1" class="md-skip">
+        Skip to content
+      </a>
+    
+    
+      <header class="md-header" data-md-component="header">
+  <nav class="md-header-nav md-grid">
+    <div class="md-flex">
+      <div class="md-flex__cell md-flex__cell--shrink">
+        <a href="https://tleonardi.github.io/nanocompore/" title="Nanocompore" class="md-header-nav__button md-logo">
+          
+            <i class="md-icon"></i>
+          
+        </a>
+      </div>
+      <div class="md-flex__cell md-flex__cell--shrink">
+        <label class="md-icon md-icon--menu md-header-nav__button" for="__drawer"></label>
+      </div>
+      <div class="md-flex__cell md-flex__cell--stretch">
+        <div class="md-flex__ellipsis md-header-nav__title" data-md-component="title">
+          
+            <span class="md-header-nav__topic">
+              Nanocompore
+            </span>
+            <span class="md-header-nav__topic">
+              Compare samples with SampComp
+            </span>
+          
+        </div>
+      </div>
+      <div class="md-flex__cell md-flex__cell--shrink">
+        
+      </div>
+      
+        <div class="md-flex__cell md-flex__cell--shrink">
+          <div class="md-header-nav__source">
+            
+
+
+  
+
+<a href="https://github.com/tleonardi/nanocompore/" title="Go to repository" class="md-source" data-md-source="github">
+  
+    <div class="md-source__icon">
+      <svg viewBox="0 0 24 24" width="24" height="24">
+        <use xlink:href="#__github" width="24" height="24"></use>
+      </svg>
+    </div>
+  
+  <div class="md-source__repository">
+    tleonardi/nanocompore
+  </div>
+</a>
+          </div>
+        </div>
+      
+    </div>
+  </nav>
+</header>
+    
+    <div class="md-container">
+      
+        
+      
+      
+      <main class="md-main">
+        <div class="md-main__inner md-grid" data-md-component="container">
+          
+            
+              <div class="md-sidebar md-sidebar--primary" data-md-component="navigation">
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    <nav class="md-nav md-nav--primary" data-md-level="0">
+  <label class="md-nav__title md-nav__title--site" for="__drawer">
+    <a href="https://tleonardi.github.io/nanocompore/" title="Nanocompore" class="md-nav__button md-logo">
+      
+        <i class="md-icon"></i>
+      
+    </a>
+    Nanocompore
+  </label>
+  
+    <div class="md-nav__source">
+      
+
+
+  
+
+<a href="https://github.com/tleonardi/nanocompore/" title="Go to repository" class="md-source" data-md-source="github">
+  
+    <div class="md-source__icon">
+      <svg viewBox="0 0 24 24" width="24" height="24">
+        <use xlink:href="#__github" width="24" height="24"></use>
+      </svg>
+    </div>
+  
+  <div class="md-source__repository">
+    tleonardi/nanocompore
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+      
+
+
+  <li class="md-nav__item">
+    <a href="../.." title="Home" class="md-nav__link">
+      Home
+    </a>
+  </li>
+
+    
+      
+      
+      
+
+
+  <li class="md-nav__item">
+    <a href="../../installation/" title="Installation instructions" class="md-nav__link">
+      Installation instructions
+    </a>
+  </li>
+
+    
+      
+      
+      
+
+
+  <li class="md-nav__item">
+    <a href="../../data_preparation/" title="Data preparation" class="md-nav__link">
+      Data preparation
+    </a>
+  </li>
+
+    
+      
+      
+      
+
+  
+
+
+  <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+    
+      <input class="md-toggle md-nav__toggle" data-md-toggle="nav-4" type="checkbox" id="nav-4" checked>
+    
+    <label class="md-nav__link" for="nav-4">
+      Usage
+    </label>
+    <nav class="md-nav" data-md-component="collapsible" data-md-level="1">
+      <label class="md-nav__title" for="nav-4">
+        Usage
+      </label>
+      <ul class="md-nav__list" data-md-scrollfix>
+        
+        
+          
+          
+          
+
+
+  <li class="md-nav__item">
+    <a href="../../usage/" title="How to use Nanocompore" class="md-nav__link">
+      How to use Nanocompore
+    </a>
+  </li>
+
+        
+          
+          
+          
+
+  
+
+
+  <li class="md-nav__item md-nav__item--active">
+    
+    <input class="md-toggle md-nav__toggle" data-md-toggle="toc" type="checkbox" id="__toc">
+    
+      
+    
+    
+      <label class="md-nav__link md-nav__link--active" for="__toc">
+        Compare samples with SampComp
+      </label>
+    
+    <a href="./" title="Compare samples with SampComp" class="md-nav__link md-nav__link--active">
+      Compare samples with SampComp
+    </a>
+    
+      
+<nav class="md-nav md-nav--secondary">
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">Table of contents</label>
+    <ul class="md-nav__list" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#in-brief" title="In brief" class="md-nav__link">
+    In brief
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#quick-start" title="Quick start" class="md-nav__link">
+    Quick start
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#description-of-main-options" title="Description of main options" class="md-nav__link">
+    Description of main options
+  </a>
+  
+    <nav class="md-nav">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#sample-files" title="Sample files" class="md-nav__link">
+    Sample files
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#transcriptome-reference-fasta-file" title="Transcriptome reference FASTA file" class="md-nav__link">
+    Transcriptome reference FASTA file
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#output-folder" title="Output folder" class="md-nav__link">
+    Output folder
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#genome-annotation-bed-file" title="Genome annotation BED file" class="md-nav__link">
+    Genome annotation BED file
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#statistical-options" title="Statistical options" class="md-nav__link">
+    Statistical options
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#coverage-options" title="Coverage options" class="md-nav__link">
+    Coverage options
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#manually-exclude-or-include-references-api-only" title="Manually exclude or include references (API only)" class="md-nav__link">
+    Manually exclude or include references (API only)
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#advanced-api-usage" title="Advanced API Usage" class="md-nav__link">
+    Advanced API Usage
+  </a>
+  
+    <nav class="md-nav">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#import-the-package" title="Import the package" class="md-nav__link">
+    Import the package
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#using-a-python-dictionary-to-specify-the-locations-of-the-eventalign-files" title="Using a Python dictionary to specify the locations of the eventalign files" class="md-nav__link">
+    Using a Python dictionary to specify the locations of the eventalign files
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#using-a-yaml-file-instead-to-specify-the-files-location" title="Using a YAML file instead to specify the files location" class="md-nav__link">
+    Using a YAML file instead to specify the files location
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tweaking-the-statistical-tests" title="Tweaking the statistical tests" class="md-nav__link">
+    Tweaking the statistical tests
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#explore-the-database-object-returned-by-sampcomp" title="Explore the database object returned by Sampcomp" class="md-nav__link">
+    Explore the database object returned by Sampcomp
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#full-cli-and-api-documentations" title="Full CLI and API documentations" class="md-nav__link">
+    Full CLI and API documentations
+  </a>
+  
+    <nav class="md-nav">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#api-documentation" title="API documentation" class="md-nav__link">
+    API documentation
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cli-documentation" title="CLI documentation" class="md-nav__link">
+    CLI documentation
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+      
+      
+      
+      
+    </ul>
+  
+</nav>
+    
+  </li>
+
+        
+          
+          
+          
+
+
+  <li class="md-nav__item">
+    <a href="../SampCompDB_usage/" title="Generate plots and tables with SampCompDB" class="md-nav__link">
+      Generate plots and tables with SampCompDB
+    </a>
+  </li>
+
+        
+          
+          
+          
+
+
+  <li class="md-nav__item">
+    <a href="../SimReads_usage/" title="Generate simulated reads" class="md-nav__link">
+      Generate simulated reads
+    </a>
+  </li>
+
+        
+      </ul>
+    </nav>
+  </li>
+
+    
+      
+      
+      
+
+
+  <li class="md-nav__item">
+    <a href="../../alternative/" title="Alternative and complementary packages" class="md-nav__link">
+      Alternative and complementary packages
+    </a>
+  </li>
+
+    
+      
+      
+      
+
+
+  <li class="md-nav__item md-nav__item--nested">
+    
+      <input class="md-toggle md-nav__toggle" data-md-toggle="nav-6" type="checkbox" id="nav-6">
+    
+    <label class="md-nav__link" for="nav-6">
+      Getting involved and finding help
+    </label>
+    <nav class="md-nav" data-md-component="collapsible" data-md-level="1">
+      <label class="md-nav__title" for="nav-6">
+        Getting involved and finding help
+      </label>
+      <ul class="md-nav__list" data-md-scrollfix>
+        
+        
+          
+          
+          
+
+
+  <li class="md-nav__item">
+    <a href="../../contributing/" title="Contributing" class="md-nav__link">
+      Contributing
+    </a>
+  </li>
+
+        
+          
+          
+          
+
+
+  <li class="md-nav__item">
+    <a href="../../code_of_conduct/" title="Code of conduct" class="md-nav__link">
+      Code of conduct
+    </a>
+  </li>
+
+        
+          
+          
+          
+
+
+  <li class="md-nav__item">
+    <a href="../../licence/" title="Licence" class="md-nav__link">
+      Licence
+    </a>
+  </li>
+
+        
+      </ul>
+    </nav>
+  </li>
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="toc">
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+<nav class="md-nav md-nav--secondary">
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">Table of contents</label>
+    <ul class="md-nav__list" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#in-brief" title="In brief" class="md-nav__link">
+    In brief
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#quick-start" title="Quick start" class="md-nav__link">
+    Quick start
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#description-of-main-options" title="Description of main options" class="md-nav__link">
+    Description of main options
+  </a>
+  
+    <nav class="md-nav">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#sample-files" title="Sample files" class="md-nav__link">
+    Sample files
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#transcriptome-reference-fasta-file" title="Transcriptome reference FASTA file" class="md-nav__link">
+    Transcriptome reference FASTA file
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#output-folder" title="Output folder" class="md-nav__link">
+    Output folder
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#genome-annotation-bed-file" title="Genome annotation BED file" class="md-nav__link">
+    Genome annotation BED file
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#statistical-options" title="Statistical options" class="md-nav__link">
+    Statistical options
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#coverage-options" title="Coverage options" class="md-nav__link">
+    Coverage options
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#manually-exclude-or-include-references-api-only" title="Manually exclude or include references (API only)" class="md-nav__link">
+    Manually exclude or include references (API only)
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#advanced-api-usage" title="Advanced API Usage" class="md-nav__link">
+    Advanced API Usage
+  </a>
+  
+    <nav class="md-nav">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#import-the-package" title="Import the package" class="md-nav__link">
+    Import the package
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#using-a-python-dictionary-to-specify-the-locations-of-the-eventalign-files" title="Using a Python dictionary to specify the locations of the eventalign files" class="md-nav__link">
+    Using a Python dictionary to specify the locations of the eventalign files
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#using-a-yaml-file-instead-to-specify-the-files-location" title="Using a YAML file instead to specify the files location" class="md-nav__link">
+    Using a YAML file instead to specify the files location
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tweaking-the-statistical-tests" title="Tweaking the statistical tests" class="md-nav__link">
+    Tweaking the statistical tests
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#explore-the-database-object-returned-by-sampcomp" title="Explore the database object returned by Sampcomp" class="md-nav__link">
+    Explore the database object returned by Sampcomp
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#full-cli-and-api-documentations" title="Full CLI and API documentations" class="md-nav__link">
+    Full CLI and API documentations
+  </a>
+  
+    <nav class="md-nav">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#api-documentation" title="API documentation" class="md-nav__link">
+    API documentation
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cli-documentation" title="CLI documentation" class="md-nav__link">
+    CLI documentation
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+      
+      
+      
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          <div class="md-content">
+            <article class="md-content__inner md-typeset">
+              
+                
+                  <a href="https://github.com/tleonardi/nanocompore/edit/master/docs/demo/SampComp_usage.ipynb" title="Edit this page" class="md-icon md-content__icon">&#xE3C9;</a>
+                
+                
+                <h1 id="compare-samples-with-sampcomp">Compare samples with SampComp</h1>
+<h2 id="in-brief">In brief</h2>
+<p><code class="codehilite">SampComp</code> first parses the sample eventalign collapse files and pileups the observed results per reference at position level. Then, positions are compared using various statistical methods and the statistics are stored in a shelve DBM database containing the results for all positions with sufficient coverage. The API returns a <code class="codehilite">SampCompDB</code> database wrapper object that can be subsequently interrogated to extract data and plots.</p>
+<h2 id="quick-start">Quick start</h2>
+<p>Example CLI call</p>
+<div class="codehilite"><pre><span></span>nanocompore sampcomp <span class="se">\</span>
+    --file_list1 ./data/S1_R1.tsv,./data/S1_R2.tsv <span class="se">\</span>
+    --file_list2 ./data/S2_R1.tsv,./data/S2_R2.tsv <span class="se">\</span>
+    --label1 S1 <span class="se">\</span>
+    --label2 S2 <span class="se">\</span>
+    --fasta ./reference/ref.fa <span class="se">\</span>
+    --outpath ./results/ <span class="se">\</span>
+</pre></div>
+
+<p>Example API call</p>
+<div class="codehilite"><pre><span></span><span class="c1"># Import package</span>
+<span class="kn">from</span> <span class="nn">nanocompore.SampComp</span> <span class="kn">import</span> <span class="n">SampComp</span>
+
+<span class="c1"># Init the object</span>
+<span class="n">s</span> <span class="o">=</span> <span class="n">SampComp</span><span class="p">(</span>
+    <span class="n">eventalign_fn_dict</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s1">&#39;S1&#39;</span><span class="p">:{</span><span class="s1">&#39;rep1&#39;</span><span class="p">:</span><span class="s1">&#39;./data/S1_R1.tsv&#39;</span><span class="p">,</span> <span class="s1">&#39;rep2&#39;</span><span class="p">:</span><span class="s1">&#39;./data/S1_R2.tsv&#39;</span><span class="p">},</span>
+        <span class="s1">&#39;S2&#39;</span><span class="p">:{</span><span class="s1">&#39;rep1&#39;</span><span class="p">:</span><span class="s1">&#39;./data/S2_R1.tsv&#39;</span><span class="p">,</span> <span class="s1">&#39;rep2&#39;</span><span class="p">:</span><span class="s1">&#39;./data/S2_R2.tsv&#39;</span><span class="p">}},</span>
+    <span class="n">outpath</span> <span class="o">=</span> <span class="s2">&quot;./results/&quot;</span><span class="p">,</span>
+    <span class="n">fasta_fn</span> <span class="o">=</span> <span class="s2">&quot;./reference/ref.fa&quot;</span><span class="p">)</span>
+
+<span class="c1"># Run the analysis</span>
+<span class="n">s</span><span class="p">()</span>
+</pre></div>
+
+<h2 id="description-of-main-options">Description of main options</h2>
+<p><code class="codehilite">SampComp</code> provides a very flexible analysis framework with a few mandatory options and many optional parameters. The full CLI and API documentations are provided at the bottom of this page.</p>
+<h4 id="sample-files">Sample files</h4>
+<p><code class="codehilite">SampComp</code> requires sample files obtained with <code class="codehilite">NanopolishComp EventalignCollapse</code> as explained before (see <a href="data_preparation.md">data preparation</a>) for both the control and the experimental conditions. 2 conditions are expected, and at least 2 sample replicates per conditions are highly recommended. If <code class="codehilite">SampComp</code> is called through the CLI the files can be provides using either relevant command options or a YAML file. If using the Python API, one can pass either a python dictionary or a YAML file.</p>
+<div class="admonition info">
+<p class="admonition-title">YAML file option (CLI or API)</p>
+<p>This option allows to pass a YAML formatted file indicating the sample condition labels and paths to data files with the option <code class="codehilite">--sample_yaml</code> for the CLI or directly to <code class="codehilite">eventalign_fn_dict</code> for the API. The file should be formatted as follow:</p>
+<div class="codehilite"><pre><span></span><span class="l l-Scalar l-Scalar-Plain">WT</span><span class="p p-Indicator">:</span>
+    <span class="l l-Scalar l-Scalar-Plain">rep1</span><span class="p p-Indicator">:</span>   <span class="l l-Scalar l-Scalar-Plain">./data/S1_R1.tsv</span>
+    <span class="l l-Scalar l-Scalar-Plain">rep2</span><span class="p p-Indicator">:</span>   <span class="l l-Scalar l-Scalar-Plain">./data/S1_R2.tsv</span>
+
+<span class="l l-Scalar l-Scalar-Plain">KO</span><span class="p p-Indicator">:</span>
+    <span class="l l-Scalar l-Scalar-Plain">rep1</span><span class="p p-Indicator">:</span>   <span class="l l-Scalar l-Scalar-Plain">./data/S2_R1.tsv</span>
+    <span class="l l-Scalar l-Scalar-Plain">rep2</span><span class="p p-Indicator">:</span>   <span class="l l-Scalar l-Scalar-Plain">./data/S1_R2.tsv</span>
+</pre></div>
+
+</div>
+<div class="admonition info">
+<p class="admonition-title">Command line option (CLI only)</p>
+<p>This option requires to provide a comma separated list of files per condition using <code class="codehilite">--file_list1</code> and <code class="codehilite">--file_list2</code> arguments as well as the labels for condition each conditions using <code class="codehilite">--label1</code> and <code class="codehilite">--label2</code>.</p>
+</div>
+<div class="admonition info">
+<p class="admonition-title">Python dictionary (API only)</p>
+<p>This option allows to pass a multi-level python dictionary containing the sample condition labels and paths to data files. The dictionary should be formatted as follow:</p>
+<div class="codehilite"><pre><span></span><span class="n">eventalign_fn_dict</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;WT&quot;</span><span class="p">:</span>  <span class="p">{</span><span class="s2">&quot;rep1&quot;</span><span class="p">:</span><span class="s2">&quot;./data/S1_R1.tsv&quot;</span><span class="p">,</span> <span class="s2">&quot;rep2&quot;</span><span class="p">:</span><span class="s2">&quot;./data/S1_R2.tsv&quot;</span><span class="p">},</span>
+    <span class="s2">&quot;KO&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;rep1&quot;</span><span class="p">:</span><span class="s2">&quot;./data/S2_R1.tsv&quot;</span><span class="p">,</span> <span class="s2">&quot;rep2&quot;</span><span class="p">:</span><span class="s2">&quot;./data/S1_R2.tsv&quot;</span><span class="p">}</span>
+    <span class="p">}</span>
+</pre></div>
+
+</div>
+<h4 id="transcriptome-reference-fasta-file">Transcriptome reference FASTA file</h4>
+<p>A transcriptome FASTA reference file is required to extract kmer sequences during the analyses. The reference has to be the same as the one used at the mapping step. (CLI: <code class="codehilite">--fasta</code>, API: <code class="codehilite">fasta_fn</code>)</p>
+<h4 id="output-folder">Output folder</h4>
+<p>Although it is not mandatory, it is recommended to provide a path to a directory where the program will output the result files  (CLI: <code class="codehilite">--outpath</code>, API: <code class="codehilite">outpath</code>). In addition, users can also specify a prefix for the files to be generated (CLI: <code class="codehilite">--outprefix</code>, API: <code class="codehilite">outprefix</code>). Finally, if the outpath directory already exists, the program will raise an error to prevent erasing result files accidentally. To ignore the error one as to specify to overwrite previous results (CLI: <code class="codehilite">--outprefix</code>, API: <code class="codehilite">outprefix</code>).</p>
+<h4 id="genome-annotation-bed-file">Genome annotation BED file</h4>
+<p>Optionally, a BED file containing the genome annotations corresponding to the transcriptome fasta file can be provided. If this file is given, Nanocompore will also convert the transcript coordinates into the genome space (CLI: <code class="codehilite">--bed</code>, API: <code class="codehilite">bed_fn</code>)</p>
+<h4 id="statistical-options">Statistical options</h4>
+<p><code class="codehilite">SampComp</code> implements several statistical methods to evaluate the difference between the 2 conditions (<code class="codehilite">comparison_method</code>).</p>
+<ul>
+<li>Gaussian Mixture Model = GMM (default)</li>
+<li>Kolmogorov–Smirnov test = KS (default)</li>
+<li>Mann–Whitney U test = MW</li>
+<li>T-test = TT</li>
+</ul>
+<p>In addition, it is also possible to specify the number of adjacent positions to take into account for the pvalue calculation (<code class="codehilite">sequence_context</code>) as well as the weights to give to adjacent position, using either an "uniform" or a "harmonic" distribution (<code class="codehilite">sequence_context_weights</code>).</p>
+<h4 id="coverage-options">Coverage options</h4>
+<p>The default coverage threshold for <code class="codehilite">SampComp</code> to perform a statistical test is 50 reads in each replicates. This is quite conservative and can be modified if needed (<code class="codehilite">min_coverage</code>). In addition, to reduce the computational burden it is possible to randomly down-sample the number of reads for high coverage references (<code class="codehilite">downsample_high_coverage</code>).</p>
+<h4 id="manually-exclude-or-include-references-api-only">Manually exclude or include references (API only)</h4>
+<p>The API allows to specify references to be included or excluded from the analysis (<code class="codehilite">select_ref_id</code> and
+<code class="codehilite">exclude_ref_id</code>). This can be useful to analyse a specific transcripts set only or to run a small test before analysing the entire dataset.</p>
+<h2 id="advanced-api-usage">Advanced API Usage</h2>
+<h3 id="import-the-package">Import the package</h3>
+<div class="codehilite"><pre><span></span><span class="kn">from</span> <span class="nn">nanocompore.SampComp</span> <span class="kn">import</span> <span class="n">SampComp</span>
+</pre></div>
+
+<h3 id="using-a-python-dictionary-to-specify-the-locations-of-the-eventalign-files">Using a Python dictionary to specify the locations of the eventalign files</h3>
+<p>Default option using a multilevel dictionary.</p>
+<div class="codehilite"><pre><span></span><span class="c1"># Init the object</span>
+<span class="n">s</span> <span class="o">=</span> <span class="n">SampComp</span> <span class="p">(</span> 
+    <span class="n">eventalign_fn_dict</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;KO&quot;</span><span class="p">:{</span>
+            <span class="s2">&quot;rep1&quot;</span><span class="p">:</span><span class="s1">&#39;./eventalign_files/yeast/KO_1_eventalign_collapsed.tsv&#39;</span><span class="p">,</span> 
+            <span class="s2">&quot;rep2&quot;</span><span class="p">:</span><span class="s2">&quot;./eventalign_files/yeast/KO_2_eventalign_collapsed.tsv&quot;</span><span class="p">},</span>
+        <span class="s2">&quot;WT&quot;</span><span class="p">:{</span>
+            <span class="s2">&quot;rep1&quot;</span><span class="p">:</span><span class="s1">&#39;./eventalign_files/yeast/WT_1_eventalign_collapsed.tsv&#39;</span><span class="p">,</span> 
+            <span class="s2">&quot;rep2&quot;</span><span class="p">:</span><span class="s2">&quot;./eventalign_files/yeast/WT_2_eventalign_collapsed.tsv&quot;</span><span class="p">}},</span>
+    <span class="n">outpath</span> <span class="o">=</span> <span class="s2">&quot;./results&quot;</span><span class="p">,</span>
+    <span class="n">outprefix</span><span class="o">=</span> <span class="s2">&quot;yeast_&quot;</span><span class="p">,</span>
+    <span class="n">fasta_fn</span> <span class="o">=</span> <span class="s2">&quot;./references/yeast/Yeast_transcriptome.fa&quot;</span><span class="p">,</span>
+    <span class="n">overwrite</span> <span class="o">=</span> <span class="bp">True</span><span class="p">)</span>
+
+<span class="c1"># Run the analysis</span>
+<span class="n">db</span> <span class="o">=</span> <span class="n">s</span><span class="p">()</span>
+</pre></div>
+
+<div class="codehilite"><pre><span></span><span class="nt">Initialising</span> <span class="nt">SampComp</span> <span class="nt">and</span> <span class="nt">checking</span> <span class="nt">options</span>
+<span class="nt">Initialising</span> <span class="nt">Whitelist</span> <span class="nt">and</span> <span class="nt">checking</span> <span class="nt">options</span>
+<span class="nt">Reading</span> <span class="nt">eventalign</span> <span class="nt">index</span> <span class="nt">files</span>
+    <span class="nt">References</span> <span class="nt">found</span> <span class="nt">in</span> <span class="nt">index</span><span class="o">:</span> <span class="nt">125</span>
+<span class="nt">Filtering</span> <span class="nt">out</span> <span class="nt">references</span> <span class="nt">with</span> <span class="nt">low</span> <span class="nt">coverage</span>
+    <span class="nt">References</span> <span class="nt">remaining</span> <span class="nt">after</span> <span class="nt">reference</span> <span class="nt">coverage</span> <span class="nt">filtering</span><span class="o">:</span> <span class="nt">1</span>
+<span class="nt">Starting</span> <span class="nt">data</span> <span class="nt">processing</span>
+<span class="nt">100</span><span class="o">%|</span><span class="err">██████████</span><span class="o">|</span> <span class="nt">1</span><span class="o">/</span><span class="nt">1</span> <span class="cp">[</span><span class="mi">00</span><span class="p">:</span><span class="mi">38</span><span class="o">&amp;</span><span class="nx nx-Member">lt</span><span class="p">;</span><span class="mi">00</span><span class="p">:</span><span class="mi">00</span><span class="p">,</span> <span class="mf">38.25</span><span class="nx">s</span><span class="o">/</span> <span class="nx">Processed</span> <span class="nx">References</span><span class="cp">]</span>
+<span class="nt">Loading</span> <span class="nt">SampCompDB</span>
+<span class="nt">Calculate</span> <span class="nt">results</span>
+</pre></div>
+
+
+<h3 id="using-a-yaml-file-instead-to-specify-the-files-location">Using a YAML file instead to specify the files location</h3>
+<p>To use a YAML file, just pass a path to the file instead of a dictionary. In this example we also specify to use 10 threads to speed-up the data processing (<code class="codehilite">nthreads = 10</code>). </p>
+<div class="codehilite"><pre><span></span><span class="c1"># Read YAML file to display structure</span>
+<span class="k">print</span><span class="p">(</span><span class="nb">open</span><span class="p">(</span><span class="s2">&quot;./samples.yaml&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">read</span><span class="p">())</span>
+</pre></div>
+
+<div class="codehilite"><pre><span></span><span class="n">Modified</span><span class="o">:</span>
+    <span class="n">rep1</span><span class="o">:</span>   <span class="o">./</span><span class="n">eventalign_files</span><span class="sr">/simulated/</span><span class="n">modified_rep_1</span><span class="o">.</span><span class="na">tsv</span>
+    <span class="n">rep2</span><span class="o">:</span>   <span class="o">./</span><span class="n">eventalign_files</span><span class="sr">/simulated/</span><span class="n">modified_rep_2</span><span class="o">.</span><span class="na">tsv</span>
+<span class="n">Unmodified</span><span class="o">:</span>
+    <span class="n">rep1</span><span class="o">:</span>   <span class="o">./</span><span class="n">eventalign_files</span><span class="sr">/simulated/</span><span class="n">unmodified_rep_1</span><span class="o">.</span><span class="na">tsv</span>
+    <span class="n">rep2</span><span class="o">:</span>   <span class="o">./</span><span class="n">eventalign_files</span><span class="sr">/simulated/</span><span class="n">unmodified_rep_2</span><span class="o">.</span><span class="na">tsv</span>
+</pre></div>
+
+
+<div class="codehilite"><pre><span></span><span class="c1"># Init the object</span>
+<span class="n">s</span> <span class="o">=</span> <span class="n">SampComp</span> <span class="p">(</span>
+    <span class="n">eventalign_fn_dict</span> <span class="o">=</span> <span class="s2">&quot;./samples.yaml&quot;</span><span class="p">,</span>
+    <span class="n">outpath</span><span class="o">=</span> <span class="s2">&quot;./results&quot;</span><span class="p">,</span>
+    <span class="n">outprefix</span><span class="o">=</span> <span class="s2">&quot;simulated_&quot;</span><span class="p">,</span>
+    <span class="n">fasta_fn</span> <span class="o">=</span> <span class="s2">&quot;./references/simulated/ref.fa&quot;</span><span class="p">,</span>
+    <span class="n">overwrite</span> <span class="o">=</span> <span class="bp">True</span><span class="p">,</span>
+    <span class="n">nthreads</span> <span class="o">=</span> <span class="mi">10</span><span class="p">)</span>
+
+<span class="c1"># Run the analysis</span>
+<span class="n">db</span> <span class="o">=</span> <span class="n">s</span> <span class="p">()</span>
+</pre></div>
+
+<div class="codehilite"><pre><span></span><span class="nt">Initialising</span> <span class="nt">SampComp</span> <span class="nt">and</span> <span class="nt">checking</span> <span class="nt">options</span>
+<span class="nt">Initialising</span> <span class="nt">Whitelist</span> <span class="nt">and</span> <span class="nt">checking</span> <span class="nt">options</span>
+<span class="nt">Reading</span> <span class="nt">eventalign</span> <span class="nt">index</span> <span class="nt">files</span>
+    <span class="nt">References</span> <span class="nt">found</span> <span class="nt">in</span> <span class="nt">index</span><span class="o">:</span> <span class="nt">5</span>
+<span class="nt">Filtering</span> <span class="nt">out</span> <span class="nt">references</span> <span class="nt">with</span> <span class="nt">low</span> <span class="nt">coverage</span>
+    <span class="nt">References</span> <span class="nt">remaining</span> <span class="nt">after</span> <span class="nt">reference</span> <span class="nt">coverage</span> <span class="nt">filtering</span><span class="o">:</span> <span class="nt">5</span>
+<span class="nt">Starting</span> <span class="nt">data</span> <span class="nt">processing</span>
+<span class="nt">100</span><span class="o">%|</span><span class="err">██████████</span><span class="o">|</span> <span class="nt">5</span><span class="o">/</span><span class="nt">5</span> <span class="cp">[</span><span class="mi">00</span><span class="p">:</span><span class="mi">07</span><span class="o">&amp;</span><span class="nx nx-Member">lt</span><span class="p">;</span><span class="mi">00</span><span class="p">:</span><span class="mi">00</span><span class="p">,</span>  <span class="mf">1.43</span><span class="nx">s</span><span class="o">/</span> <span class="nx">Processed</span> <span class="nx">References</span><span class="cp">]</span>
+<span class="nt">Loading</span> <span class="nt">SampCompDB</span>
+<span class="nt">Calculate</span> <span class="nt">results</span>
+</pre></div>
+
+
+<h3 id="tweaking-the-statistical-tests">Tweaking the statistical tests</h3>
+<p>In this example, we require all 4 possible statistical tests to be performed (<code class="codehilite">comparison_methods=[&quot;GMM&quot;, &quot;MW&quot;, &quot;KS&quot;, &quot;TT&quot;]</code>), and we want a pvalue that takes into account 2 adjacent positions(<code class="codehilite">sequence_context=2</code>). In addition we also specify that the weights for adjacent position should follow a harmonic distribution (<code class="codehilite">sequence_context_weights=&quot;harmonic&quot;</code>). Finally, we also want the Gaussian mixture model to use the logistic regression test on top of the ANOVA (<code class="codehilite">logit = True</code>). </p>
+<div class="codehilite"><pre><span></span><span class="c1"># Init the object</span>
+<span class="n">s</span> <span class="o">=</span> <span class="n">SampComp</span> <span class="p">(</span>
+    <span class="n">eventalign_fn_dict</span> <span class="o">=</span> <span class="s2">&quot;./samples.yaml&quot;</span><span class="p">,</span>
+    <span class="n">outpath</span> <span class="o">=</span> <span class="s2">&quot;./results/&quot;</span><span class="p">,</span>
+    <span class="n">outprefix</span><span class="o">=</span> <span class="s2">&quot;simulated_stats_&quot;</span><span class="p">,</span>
+    <span class="n">fasta_fn</span> <span class="o">=</span> <span class="s2">&quot;./references/simulated/ref.fa&quot;</span><span class="p">,</span>
+    <span class="n">overwrite</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span>
+    <span class="n">comparison_methods</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;GMM&quot;</span><span class="p">,</span> <span class="s2">&quot;MW&quot;</span><span class="p">,</span> <span class="s2">&quot;KS&quot;</span><span class="p">,</span> <span class="s2">&quot;TT&quot;</span><span class="p">],</span>
+    <span class="n">sequence_context</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
+    <span class="n">sequence_context_weights</span><span class="o">=</span><span class="s2">&quot;harmonic&quot;</span><span class="p">,</span>
+    <span class="n">logit</span> <span class="o">=</span> <span class="bp">True</span><span class="p">)</span>
+
+<span class="c1"># Run the analysis</span>
+<span class="n">db</span> <span class="o">=</span> <span class="n">s</span> <span class="p">()</span>
+</pre></div>
+
+<div class="codehilite"><pre><span></span><span class="nt">Initialising</span> <span class="nt">SampComp</span> <span class="nt">and</span> <span class="nt">checking</span> <span class="nt">options</span>
+<span class="nt">Initialising</span> <span class="nt">Whitelist</span> <span class="nt">and</span> <span class="nt">checking</span> <span class="nt">options</span>
+<span class="nt">Reading</span> <span class="nt">eventalign</span> <span class="nt">index</span> <span class="nt">files</span>
+    <span class="nt">References</span> <span class="nt">found</span> <span class="nt">in</span> <span class="nt">index</span><span class="o">:</span> <span class="nt">5</span>
+<span class="nt">Filtering</span> <span class="nt">out</span> <span class="nt">references</span> <span class="nt">with</span> <span class="nt">low</span> <span class="nt">coverage</span>
+    <span class="nt">References</span> <span class="nt">remaining</span> <span class="nt">after</span> <span class="nt">reference</span> <span class="nt">coverage</span> <span class="nt">filtering</span><span class="o">:</span> <span class="nt">5</span>
+<span class="nt">Starting</span> <span class="nt">data</span> <span class="nt">processing</span>
+<span class="nt">100</span><span class="o">%|</span><span class="err">██████████</span><span class="o">|</span> <span class="nt">5</span><span class="o">/</span><span class="nt">5</span> <span class="cp">[</span><span class="mi">00</span><span class="p">:</span><span class="mi">18</span><span class="o">&amp;</span><span class="nx nx-Member">lt</span><span class="p">;</span><span class="mi">00</span><span class="p">:</span><span class="mi">00</span><span class="p">,</span>  <span class="mf">3.69</span><span class="nx">s</span><span class="o">/</span> <span class="nx">Processed</span> <span class="nx">References</span><span class="cp">]</span>
+<span class="nt">Loading</span> <span class="nt">SampCompDB</span>
+<span class="nt">Calculate</span> <span class="nt">results</span>
+</pre></div>
+
+
+<h3 id="explore-the-database-object-returned-by-sampcomp">Explore the database object returned by Sampcomp</h3>
+<p>The database object returned by <code class="codehilite">Sampcomp</code> is a Python GDBM object database indexed by reference id. Although we highly recommend to used <code class="codehilite">SampCompDB</code> to extract information, it is also possible to open the database directly using the python standard library module <a href="https://docs.python.org/3.6/library/shelve.html">shelve</a>.</p>
+<div class="codehilite"><pre><span></span><span class="kn">import</span> <span class="nn">shelve</span>
+
+<span class="k">with</span> <span class="n">shelve</span><span class="o">.</span><span class="n">open</span> <span class="p">(</span><span class="s2">&quot;./results/simulated_SampComp.db&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">db</span><span class="p">:</span>
+    <span class="c1"># Read metadata stored in metadata slot</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">db</span><span class="p">[</span><span class="s2">&quot;__metadata&quot;</span><span class="p">])</span>
+    <span class="c1"># Read list of references ids stored in ref_id_list slot</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">db</span><span class="p">[</span><span class="s2">&quot;__ref_id_list&quot;</span><span class="p">])</span>
+    <span class="c1"># Access stats for reference &#39;ref_0000&#39; in position 1</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">db</span><span class="p">[</span><span class="s2">&quot;ref_0000&quot;</span><span class="p">][</span><span class="mi">1</span><span class="p">][</span><span class="s2">&quot;txComp&quot;</span><span class="p">])</span>
+</pre></div>
+
+<div class="codehilite"><pre><span></span>{&#39;package_name&#39;: &#39;nanocompore&#39;, &#39;package_version&#39;: &#39;1.0.0b7&#39;, &#39;timestamp&#39;: &#39;2019-04-04 11:05:23.270305&#39;, &#39;comparison_methods&#39;: [&#39;GMM&#39;, &#39;KS&#39;], &#39;pvalue_tests&#39;: [&#39;GMM_anova_pvalue&#39;, &#39;KS_dwell_pvalue&#39;, &#39;KS_intensity_pvalue&#39;], &#39;sequence_context&#39;: 0, &#39;min_coverage&#39;: 30, &#39;n_samples&#39;: 4}
+[&#39;ref_0000&#39;, &#39;ref_0002&#39;, &#39;ref_0001&#39;, &#39;ref_0003&#39;, &#39;ref_0004&#39;]
+{&#39;GMM_model&#39;: {&#39;model&#39;: GaussianMixture(covariance_type=&#39;full&#39;, init_params=&#39;kmeans&#39;, max_iter=100,
+        means_init=None, n_components=1, n_init=1, precisions_init=None,
+        random_state=None, reg_covar=1e-06, tol=0.001, verbose=0,
+        verbose_interval=10, warm_start=False, weights_init=None), &#39;cluster_counts&#39;: &#39;NC&#39;}, &#39;GMM_anova_pvalue&#39;: nan, &#39;GMM_anova_model&#39;: {&#39;pvalue&#39;: nan, &#39;delta_logit&#39;: nan, &#39;table&#39;: &#39;NC&#39;, &#39;cluster_counts&#39;: &#39;NC&#39;}, &#39;KS_intensity_pvalue&#39;: 3.7287484663033005e-05, &#39;KS_dwell_pvalue&#39;: 1.0710695605586046e-06, &#39;shift_stats&#39;: OrderedDict([(&#39;c1_mean_intensity&#39;, 96.7664495688658), (&#39;c2_mean_intensity&#39;, 93.30314251960446), (&#39;c1_median_intensity&#39;, 96.68643642629507), (&#39;c2_median_intensity&#39;, 92.51131988672478), (&#39;c1_sd_intensity&#39;, 5.8780944486585796), (&#39;c2_sd_intensity&#39;, 6.171076388645928), (&#39;c1_mean_dwell&#39;, 0.015404843314673239), (&#39;c2_mean_dwell&#39;, 0.01214317740242181), (&#39;c1_median_dwell&#39;, 0.013114720664132318), (&#39;c2_median_dwell&#39;, 0.008641179824670851), (&#39;c1_sd_dwell&#39;, 0.010809858199277447), (&#39;c2_sd_dwell&#39;, 0.01127622771848488)])}
+</pre></div>
+
+
+<h2 id="full-cli-and-api-documentations">Full CLI and API documentations</h2>
+<h3 id="api-documentation">API documentation</h3>
+<p>API help can be obtained with conventional python methods (help or ?) or rendered nicely in Jupyter with the jhelp function from nanocompore </p>
+<div class="codehilite"><pre><span></span><span class="kn">from</span> <span class="nn">nanocompore.SampComp</span> <span class="kn">import</span> <span class="n">SampComp</span>
+<span class="kn">from</span> <span class="nn">nanocompore.common</span> <span class="kn">import</span> <span class="n">jhelp</span>
+<span class="n">jhelp</span><span class="p">(</span><span class="n">SampComp</span><span class="p">)</span>
+</pre></div>
+
+<hr />
+<p><strong>nanocompore.SampComp._<em>init_</em></strong></p>
+<p>Initialise a <code class="codehilite">SampComp</code> object and generates a white list of references with sufficient coverage for subsequent analysis. The retuned object can then be called to start the analysis.</p>
+<hr />
+<ul>
+<li><strong>eventalign_fn_dict</strong> <em>: dict or str (required)</em></li>
+</ul>
+<p>Multilevel dictionnary indicating the condition_label, sample_label and file name of the eventalign_collapse output. 2 conditions are expected and at least 2 sample replicates per condition are highly recommended. One can also pass YAML file describing the samples instead. Example <code class="codehilite">d = {&quot;S1&quot;: {&quot;R1&quot;:&quot;path1.tsv&quot;, &quot;R2&quot;:&quot;path2.tsv&quot;}, &quot;S2&quot;: {&quot;R1&quot;:&quot;path3.tsv&quot;, &quot;R2&quot;:&quot;path4.tsv&quot;}}</code></p>
+<ul>
+<li><strong>outpath</strong> <em>: directory_path (default = results)</em></li>
+</ul>
+<p>Path to the output folder.</p>
+<ul>
+<li><strong>outprefix</strong> <em>: str (default = out_)</em></li>
+</ul>
+<p>text outprefix for all the files generated by the function.</p>
+<ul>
+<li><strong>overwrite</strong> <em>: bool (default = False)</em></li>
+</ul>
+<p>If the output directory already exists, the standard behaviour is to raise an error to prevent overwriting existing data This option ignore the error and overwrite data if they have the same outpath and outprefix.</p>
+<ul>
+<li><strong>fasta_fn</strong> <em>: file_path (required)</em></li>
+</ul>
+<p>Path to a fasta file corresponding to the reference used for read alignment.</p>
+<ul>
+<li><strong>bed_fn</strong> <em>: file_path (default = None)</em></li>
+</ul>
+<p>Path to a BED file containing the annotation of the transcriptome used as reference when mapping.</p>
+<ul>
+<li><strong>whitelist</strong> <em>: nancocompore.Whitelist object (default = None)</em></li>
+</ul>
+<p>Whitelist object previously generated with nanocompore Whitelist. If not given, will be automatically generated.</p>
+<ul>
+<li><strong>comparison_methods</strong> <em>: list of str from {MW,KS,TT,GMM} (default = ['GMM', 'KS'])</em></li>
+</ul>
+<p>Statistical method to compare the 2 samples (mann_whitney or MW, kolmogorov_smirnov or KS, t_test or TT, gaussian_mixture_model or GMM). This can be a list or a comma separated string.</p>
+<ul>
+<li><strong>logit</strong> <em>: bool (default = False)</em></li>
+</ul>
+<p>Force logistic regression even if we have less than 2 replicates in any condition.</p>
+<ul>
+<li><strong>allow_warnings</strong> <em>: bool (default = False)</em></li>
+</ul>
+<p>If True runtime warnings during the ANOVA tests don't raise an error.</p>
+<ul>
+<li><strong>sequence_context</strong> <em>: int (default = 0)</em></li>
+</ul>
+<p>Extend statistical analysis to contigous adjacent base if available.</p>
+<ul>
+<li><strong>sequence_context_weights</strong> <em>: str {uniform,harmonic} (default = uniform)</em></li>
+</ul>
+<p>type of weights to used for combining p-values.</p>
+<ul>
+<li><strong>min_coverage</strong> <em>: int (default = 30)</em></li>
+</ul>
+<p>minimal read coverage required in all sample.</p>
+<ul>
+<li><strong>downsample_high_coverage</strong> <em>: int (default = 0)</em></li>
+</ul>
+<p>For reference with higher coverage, downsample by randomly selecting reads.</p>
+<ul>
+<li><strong>max_invalid_kmers_freq</strong> <em>: float (default = 0.1)</em></li>
+</ul>
+<p>maximum frequency of NNNNN, mismatching and missing kmers in reads.</p>
+<ul>
+<li><strong>select_ref_id</strong> <em>: list or str (default = [])</em></li>
+</ul>
+<p>if given, only reference ids in the list will be selected for the analysis.</p>
+<ul>
+<li><strong>exclude_ref_id</strong> <em>: list or str (default = [])</em></li>
+</ul>
+<p>if given, refid in the list will be excluded from the analysis.</p>
+<ul>
+<li><strong>nthreads</strong> <em>: int &lt;= 3 (default = 3)</em></li>
+</ul>
+<p>Number of threads (two are used for reading and writing, all the others for parallel processing).</p>
+<ul>
+<li><strong>log_level</strong> <em>: str {warning,info,debug} (default = info)</em></li>
+</ul>
+<p>Set the log level.</p>
+<h3 id="cli-documentation">CLI documentation</h3>
+<div class="codehilite"><pre><span></span>nanocompore sampcomp --help
+</pre></div>
+
+<div class="codehilite"><pre><span></span>usage: nanocompore sampcomp [-h] [--sample_yaml sample_yaml]
+                            [--file_list1 /path/to/Condition1_rep1,/path/to/Codition1_rep2]
+                            [--file_list2 /path/to/Condition2_rep1,/path/to/Codition2_rep2]
+                            [--label1 Condition1] [--label2 Condition2]
+                            --fasta FASTA [--bed BED] [--outpath OUTPATH]
+                            [--outprefix OUTPREFIX] [--overwrite]
+                            [--max_invalid_kmers_freq MAX_INVALID_KMERS_FREQ]
+                            [--min_coverage MIN_COVERAGE]
+                            [--downsample_high_coverage DOWNSAMPLE_HIGH_COVERAGE]
+                            [--min_ref_length MIN_REF_LENGTH]
+                            [--comparison_methods COMPARISON_METHODS]
+                            [--sequence_context {0,1,2,3,4}]
+                            [--sequence_context_weights {uniform,harmonic}]
+                            [--pvalue_thr PVALUE_THR] [--logit]
+                            [--allow_warnings] [--nthreads NTHREADS]
+                            [--log_level {warning,info,debug}]
+
+Compare 2 samples and find significant signal
+
+* Minimal example with file_list arguments
+    nanocompore sampcomp -1 f1.tsv,f2.tsv -2 f3.tsv,f4.tsv -f ref.fa -o results
+* Minimal example with sample YAML file
+    nanocompore sampcomp -y samples.yaml -f ref -o results
+
+optional arguments:
+  -h, --help            show this help message and exit
+
+YAML sample files:
+  Option allowing to describe sample files in a YAML file
+
+  --sample_yaml sample_yaml, -y sample_yaml
+                        YAML file containing the sample file labels. See
+                        formatting in documentation. (required if --file_list1
+                        and --file_list2 not given)
+
+Arguments sample files:
+  Option allowing to describe sample files directly as command line arguments
+
+  --file_list1 /path/to/Condition1_rep1,/path/to/Codition1_rep2, -1 /path/to/Condition1_rep1,/path/to/Codition1_rep2
+                        Comma separated list of NanopolishComp files for label
+                        1. (required if --sample_yaml not given)
+  --file_list2 /path/to/Condition2_rep1,/path/to/Codition2_rep2, -2 /path/to/Condition2_rep1,/path/to/Codition2_rep2
+                        Comma separated list of NanopolishComp files for label
+                        2. (required if --sample_yaml not given)
+  --label1 Condition1   Label for files in --file_list1 (default: Condition1)
+  --label2 Condition2   Label for files in --file_list2 (default: Condition2)
+
+Input/Output options:
+  --fasta FASTA, -f FASTA
+                        Fasta file used for mapping (required)
+  --bed BED             BED file with annotation of transcriptome used for
+                        mapping (optional)
+  --outpath OUTPATH, -o OUTPATH
+                        Path to the output folder (default: results)
+  --outprefix OUTPREFIX, -p OUTPREFIX
+                        text outprefix for all the files generated by the
+                        function (default: out_)
+  --overwrite           Use --outpath even if it exists already (default:
+                        False)
+
+Transcript filtering options:
+  --max_invalid_kmers_freq MAX_INVALID_KMERS_FREQ
+                        Max fequency of invalid kmers (default: 0.1)
+  --min_coverage MIN_COVERAGE
+                        Minimum coverage required in each condition to do the
+                        comparison (default: 30)
+  --downsample_high_coverage DOWNSAMPLE_HIGH_COVERAGE
+                        Used for debug: transcripts with high covergage will
+                        be downsampled (default: 0)
+  --min_ref_length MIN_REF_LENGTH
+                        Minimum length of a reference transcript to include it
+                        in the analysis (default: 100)
+
+Statistical testing options:
+  --comparison_methods COMPARISON_METHODS
+                        Comma separated list of comparison methods. Valid
+                        methods are: GMM,KS,TT,MW. (default: GMM,KS)
+  --sequence_context {0,1,2,3,4}
+                        Sequence context for combining p-values (default: 0)
+  --sequence_context_weights {uniform,harmonic}
+                        Type of weights to use for combining p-values
+  --pvalue_thr PVALUE_THR
+                        Adjusted p-value threshold for reporting significant
+                        sites (default: 0.05)
+  --logit               Use logistic regression testing also when all
+                        conditions have replicates (default: False)
+  --allow_warnings      If True runtime warnings during the ANOVA tests don&#39;t
+                        raise an error (default: False)
+
+Other options:
+  --nthreads NTHREADS, -t NTHREADS
+                        Number of threads (default: 3)
+  --log_level {warning,info,debug}
+                        log level (default: info)
+</pre></div>
+                
+                  
+                
+              
+              
+                
+
+
+              
+            </article>
+          </div>
+        </div>
+      </main>
+      
+        
+<footer class="md-footer">
+  
+    <div class="md-footer-nav">
+      <nav class="md-footer-nav__inner md-grid">
+        
+          <a href="../../usage/" title="How to use Nanocompore" class="md-flex md-footer-nav__link md-footer-nav__link--prev" rel="prev">
+            <div class="md-flex__cell md-flex__cell--shrink">
+              <i class="md-icon md-icon--arrow-back md-footer-nav__button"></i>
+            </div>
+            <div class="md-flex__cell md-flex__cell--stretch md-footer-nav__title">
+              <span class="md-flex__ellipsis">
+                <span class="md-footer-nav__direction">
+                  Previous
+                </span>
+                How to use Nanocompore
+              </span>
+            </div>
+          </a>
+        
+        
+          <a href="../SampCompDB_usage/" title="Generate plots and tables with SampCompDB" class="md-flex md-footer-nav__link md-footer-nav__link--next" rel="next">
+            <div class="md-flex__cell md-flex__cell--stretch md-footer-nav__title">
+              <span class="md-flex__ellipsis">
+                <span class="md-footer-nav__direction">
+                  Next
+                </span>
+                Generate plots and tables with SampCompDB
+              </span>
+            </div>
+            <div class="md-flex__cell md-flex__cell--shrink">
+              <i class="md-icon md-icon--arrow-forward md-footer-nav__button"></i>
+            </div>
+          </a>
+        
+      </nav>
+    </div>
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-footer-copyright">
+        
+          <div class="md-footer-copyright__highlight">
+            Copyright &copy; 2019 Adrien Leger & Tommaso Leonardi
+          </div>
+        
+        powered by
+        <a href="https://www.mkdocs.org">MkDocs</a>
+        and
+        <a href="https://squidfunk.github.io/mkdocs-material/">
+          Material for MkDocs</a>
+      </div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    
+      <script src="../../assets/javascripts/application.d9aa80ab.js"></script>
+      
+      <script>app.initialize({version:"1.0.4",url:{base:"../.."}})</script>
+      
+    
+  </body>
+</html>
