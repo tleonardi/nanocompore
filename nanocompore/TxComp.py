@@ -19,11 +19,10 @@ import pandas as pd
 # Local package
 from nanocompore.common import *
 
-# Init randon seed
-np.random.seed(42)
 
 def txCompare(
     ref_pos_list,
+    random_state,
     methods=None,
     sequence_context=0,
     min_coverage=20,
@@ -74,7 +73,7 @@ def txCompare(
                     tests.add("{}_intensity_pvalue".format(met))
                     tests.add("{}_dwell_pvalue".format(met))
                 elif met == "GMM":
-                    gmm_results = gmm_test(data, anova=anova, logit=logit, allow_warnings=allow_warnings)
+                    gmm_results = gmm_test(data, anova=anova, logit=logit, allow_warnings=allow_warnings, random_state=random_state)
                     res["GMM_model"] = gmm_results['gmm']
                     if anova:
                         res["GMM_anova_pvalue"] = gmm_results['anova']['pvalue']
@@ -150,7 +149,7 @@ def nonparametric_test(condition1_intensity, condition2_intensity, condition1_dw
     return(pval_intensity, pval_dwell)
 
 
-def gmm_test(data, anova=True, logit=False, verbose=True, allow_warnings=False):
+def gmm_test(data, random_state, anova=True, logit=False, verbose=True, allow_warnings=False):
     # Condition labels
     condition_labels = tuple(data.keys())
     # List of sample labels
@@ -175,7 +174,7 @@ def gmm_test(data, anova=True, logit=False, verbose=True, allow_warnings=False):
     # Generate an array of sample labels
     Y = [ k for k,v in data[condition_labels[0]].items() for _ in v['intensity'] ] + [ k for k,v in data[condition_labels[1]].items() for _ in v['intensity'] ]
 
-    gmm_fit = fit_best_gmm(X, max_components=2, cv_types=['full'])
+    gmm_fit = fit_best_gmm(X, max_components=2, cv_types=['full'], random_state=random_state)
     gmm_mod, gmm_type, gmm_ncomponents = gmm_fit
 
     # If the best GMM has 2 clusters do an anova test on the log odd ratios
@@ -206,7 +205,7 @@ def gmm_test(data, anova=True, logit=False, verbose=True, allow_warnings=False):
 
     return({'anova':aov_results, 'logit': logit_results, 'gmm':{'model': gmm_mod, 'cluster_counts': cluster_counts}})
 
-def fit_best_gmm(X, max_components=2, cv_types=['spherical', 'tied', 'diag', 'full']):
+def fit_best_gmm(X, random_state, max_components=2, cv_types=['spherical', 'tied', 'diag', 'full']):
    # Loop over multiple cv_types and n_components and for each fit a GMM
     # calculate the BIC and retain the lowest
     lowest_bic = np.infty
@@ -215,7 +214,7 @@ def fit_best_gmm(X, max_components=2, cv_types=['spherical', 'tied', 'diag', 'fu
     for cv_type in cv_types:
         for n_components in n_components_range:
         # Fit a Gaussian mixture with EM
-            gmm = GaussianMixture(n_components=n_components, covariance_type=cv_type)
+            gmm = GaussianMixture(n_components=n_components, covariance_type=cv_type, random_state=random_state)
             gmm.fit(X)
             bic.append(gmm.bic(X))
             if bic[-1] < lowest_bic:

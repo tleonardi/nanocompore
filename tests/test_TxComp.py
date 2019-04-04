@@ -85,7 +85,7 @@ def test_ref_pos_list():
                                   }
                                  }
     # These expected values have been checked against the R implementations of aov() and glm(family="binomial")
-    expected = {'GMM_anova': [0.0008574768473501677, 0.0036329291397528157, 0.007312047981252302, 0.0017335646468135102, np.nan, 0.004197519576768562, 0.004730678586860965, 0.0029247769925892517, 0.0023262178697710987, 0.00020764199465021126],
+    expected = {'GMM_anova': [0.0008574768473501677, 0.0036329291397528157, 0.007312047981252302, 0.0010906844025473576, np.nan, 0.004197519576768562, 0.004730678586860965, 0.0028228474915020945, 0.0023262178697710987, 0.00020764199465021126],
 		'GMM_logit': [1.274245328765287e-39, 3.3968653938213694e-40, 1.9321679678623975e-36, 8.482777798353687e-40, np.nan, 7.06503867181238e-40, 1.839272092115274e-40, 9.162002495725215e-32, 5.922884891638699e-34, 3.1972432623454785e-40] 
 		}
     return((test_ref_pos_list, expected))
@@ -93,15 +93,15 @@ def test_ref_pos_list():
 
 def test_txComp_GMM_anova(test_ref_pos_list):
     ml = mock.Mock()
-    tol=0.000000001
-    res = txCompare(test_ref_pos_list[0], methods=['GMM'], logit=False, sequence_context=2, min_coverage=3, logger=ml, allow_warnings=False)
+    tol=0.00000001
+    res = txCompare(test_ref_pos_list[0], methods=['GMM'], logit=False, sequence_context=2, min_coverage=3, logger=ml, allow_warnings=False, random_state=np.random.RandomState(seed=42))
     GMM_pvalues = [pos['txComp']['GMM_anova_pvalue'] for pos in res ]
     assert GMM_pvalues == [pytest.approx(i, abs=tol, nan_ok=True) for i in test_ref_pos_list[1]['GMM_anova']] 
 
 def test_txComp_GMM_logit(test_ref_pos_list):
     ml = mock.Mock()
     tol=0.000000001
-    res = txCompare(test_ref_pos_list[0], methods=['GMM'], logit=True, anova=False, sequence_context=2, min_coverage=3, logger=ml, allow_warnings=False)
+    res = txCompare(test_ref_pos_list[0], methods=['GMM'], logit=True, anova=False, sequence_context=2, min_coverage=3, logger=ml, allow_warnings=False, random_state=np.random.RandomState(seed=42))
     GMM_logit = [pos['txComp']['GMM_logit_pvalue'] for pos in res ]
     print(GMM_logit)
     print(test_ref_pos_list[1]['GMM_logit'])
@@ -151,7 +151,7 @@ def test_txComp_GMM_anova_0_var(test_ref_pos_list_0_var):
     ml = mock.Mock()
     tol=0.000000001
     with pytest.raises(NanocomporeError):
-        txCompare(test_ref_pos_list_0_var, methods=['GMM'], logit=False, sequence_context=2, min_coverage=3, logger=ml, allow_warnings=False)
+        txCompare(test_ref_pos_list_0_var, methods=['GMM'], logit=False, sequence_context=2, min_coverage=3, logger=ml, allow_warnings=False, random_state=np.random.RandomState(seed=42))
 
 @pytest.fixture
 def test_ref_pos_list_dup_lab():
@@ -188,4 +188,4 @@ def test_ref_pos_list_dup_lab():
 def test_txComp_GMM_dup_lab(test_ref_pos_list_dup_lab):
     ml = mock.Mock()
     with pytest.raises(NanocomporeError):
-        txCompare(test_ref_pos_list_dup_lab, methods=['GMM'], logit=False, sequence_context=2, min_coverage=3, logger=ml, allow_warnings=False)
+        txCompare(test_ref_pos_list_dup_lab, methods=['GMM'], logit=False, sequence_context=2, min_coverage=3, logger=ml, allow_warnings=False, random_state=np.random.RandomState(seed=42))
