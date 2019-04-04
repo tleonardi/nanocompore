@@ -25,13 +25,9 @@ nav:
     - Data preparation: data_preparation.md
     - Usage:
         - How to use Nanocompore: usage.md
-        - Compare samples with SampComp: sampcomp_usage.md
-        - Generate plots and tables with SampCompDB: sampcompdb_usage.md
-        - Read Simulator Usage: simulate_reads_usage.md
-    - Python API Jupyter Notebooks:
-        - Sample Comparison API demo: demo/SampComp_demo.ipynb
-        - Sample Comparison Database API demo: demo/SampCompDB_demo.ipynb
-        - Simulate reads API demo: demo/SimReads_demo.ipynb
+        - Compare samples with SampComp: demo/SampComp_usage.ipynb
+        - Generate plots and tables with SampCompDB: demo/SampCompDB_usage.ipynb
+        - Generate simulated reads: demo/SimReads_usage.ipynb
     - Alternative and complementary packages: alternative.md
     - Getting involved and finding help:
         - Contributing: contributing.md

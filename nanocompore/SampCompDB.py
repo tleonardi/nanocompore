@@ -72,8 +72,12 @@ class SampCompDB(object):
                 except KeyError:
                     raise NanocomporeError("The result database does not contain metadata")
                 # Try to load read_ids
-                logger.debug("\tLoading list of reference ids")
-                self.ref_id_list = [k for k in db.keys() if k!='__metadata']
+                try:
+                    logger.debug("\tLoading list of reference ids")
+                    self.ref_id_list = db['__ref_id_list']
+                except KeyError:
+                    logger.debug("\tCannot find the ref_id_list in shelve. Try to build the list from entries")
+                    self.ref_id_list = [k for k in db.keys() if k not in  ['__metadata', '__ref_id_list']]
                 if not self.ref_id_list:
                     raise NanocomporeError("The result database is empty")
         except dbm_error:
@@ -119,7 +123,7 @@ class SampCompDB(object):
     def __iter__(self):
         with shelve.open(self._db_fn, flag = "r") as db:
             for k, v in db.items():
-                if not k == '__metadata':
+                if not k in  ['__metadata', '__ref_id_list']:
                     yield(k, v)
 
     def __getitem__(self, items):
@@ -220,7 +224,7 @@ class SampCompDB(object):
         0.45714286, 0.016     , 0.008     ,        nan,        nan,
         0.016     ,        nan])
         """
-        if all([np.isnan(p) for p in pvalues]): 
+        if all([np.isnan(p) for p in pvalues]):
             return pvalues
 
         pvalues_no_nan = [p for p in pvalues if not np.isnan(p)]
@@ -233,9 +237,10 @@ class SampCompDB(object):
     #~~~~~~~~~~~~~~PUBLIC METHODS~~~~~~~~~~~~~~#
     def save_all (self, outpath_prefix=None, pvalue_thr=0.01):
         """
-        This function saves all text reports including genomic coordinate if a bed file was provided
+        Save all text reports including genomic coordinate if a bed file was provided
         * outpath_prefix
-            outpath + prefix to use as a basename for output files
+            outpath + prefix to use as a basename for output files.
+            If not given, it will use the same prefix as the database.
         * pvalue_thr
             pvalue threshold to report significant sites in bed files
         """
@@ -262,7 +267,11 @@ class SampCompDB(object):
 
     def save_to_bed(self, output_fn=None, bedgraph=False, pvalue_field=None, pvalue_thr=0.01, span=5, convert=None, assembly=None, title=None):
         """
-        Saves the results object to BED6 format.
+        Save the position of significant positions in the genome space in BED6 or BEDGRAPH format.
+        The resulting file can be used in a genome browser to visualise significant genomic locations.
+        The option is only available if `SampCompDB` if initialised with a BED file containing genome annotations.
+        * output_fn
+            Path to file where to write the data
         * bedgraph
             save file in bedgraph format instead of bed
         * pvalue_field
@@ -331,8 +340,12 @@ class SampCompDB(object):
                         line=line.translateChr(assembly=assembly, target="ens", patches=True)
                     bed_file.write("%s\t%s\t%s\t%s\n" % (line.chr, line.start, line.end, line.score))
 
-    def save_report(self, output_fn=None):
-        """Saves an extended tabular report"""
+    def save_report(self, output_fn:"str"=None):
+        """
+        Saves a tabulated text dump of the database containing all the statistical results for all the positions
+        * output_fn
+            Path to file where to write the data. If None, data is returned to the standard output.
+        """
         if output_fn is None:
             fp = sys.stdout
         elif isinstance(output_fn, str):
@@ -382,7 +395,12 @@ class SampCompDB(object):
         fp.close()
 
     def save_shift_stats(self, output_fn=None):
-        """"""
+        """
+        Save the mean, median and sd intensity and dwell time for each condition and for each position.
+        This can be used to evaluate the intensity of the shift for significant positions.
+        * output_fn
+            Path to file where to write the data. If None, data is returned to the standard output.
+        """
         if output_fn is None:
             fp = sys.stdout
         elif isinstance(output_fn, str):
@@ -423,30 +441,37 @@ class SampCompDB(object):
             raise NanocomporeError("The reference requested ({}) is not in the DB".format(ref_id))
         sig = list(self.results[(self.results['ref_id'] == ref_id) & (self.results[test] <= thr)]['pos'])
         return(sig)
-    
+
     # def list_most_significant_references(self, n=10):
     #     pass
 
     #~~~~~~~~~~~~~~PLOTTING METHODS~~~~~~~~~~~~~~#
-    def plot_pvalue( self, ref_id, start=None, end=None, kind="lineplot", threshold=0.01, figsize=(30,10), palette="Set2", plot_style="ggplot", tests=None):
+    def plot_pvalue( self,
+        ref_id:"str",
+        start:"int"=None,
+        end:"int"=None,
+        kind:"{lineplot,barplot}"="lineplot",
+        threshold:"float"=0.01,
+        figsize:"tuple of 2 int"=(30,10),
+        palette:"str"="Set2",
+        plot_style:"str"="ggplot",
+        tests:"str, list or None"=None):
         """
         Plot pvalues per position (by default plot all fields starting by "pvalue")
         * ref_id
             Valid reference id name in the database
         * start
-            Start coordinate. Default=0
+            Start coordinate
         * end
-            End coordinate (included). Default=reference length
+            End coordinate (included)
         * kind
-            kind of plot to represent the data (lineplot or barplot)
+            kind of plot to represent the data
         * figsize
-            length and heigh of the output plot. Default=(30,10)
+            Length and heigh of the output plot
         * palette
-            Colormap. Default="Set2"
-            see https://matplotlib.org/users/colormaps.html, https://matplotlib.org/examples/color/named_colors.html
+            Colormap. See https://matplotlib.org/users/colormaps.html, https://matplotlib.org/examples/color/named_colors.html
         * plot_style
-            Matplotlib plotting style. Default="ggplot"
-            See https://matplotlib.org/users/style_sheets.html
+            Matplotlib plotting style. See https://matplotlib.org/users/style_sheets.html
         * tests
             Limit the pvalue methods shown in the plot. Either a list of methods or a string coresponding to a part of the name
         """
@@ -516,30 +541,34 @@ class SampCompDB(object):
             pl.tight_layout()
             return(fig, ax)
 
-    def plot_signal(self, ref_id, start=None, end=None, kind="violinplot", split_samples=False, figsize=(30,10), palette="Set2", plot_style="ggplot"):
+    def plot_signal(self,
+        ref_id:"str",
+        start:"int"=None,
+        end:"int"=None,
+        kind:"{violinplot, boxenplot, swarmplot}"="violinplot",
+        split_samples:"bool"=False,
+        figsize:"tuple of 2 int"=(30,10),
+        palette:"str"="Set2",
+        plot_style:"str"="ggplot"):
         """
-        Plot the dwell time and median intensity distribution position per positon in a split violin plot representation.
-        It is pointless to plot more than 50 positions at once as it becomes hard to distiguish
+        Plot the dwell time and median intensity distribution position per position
+        Pointless for more than 50 positions at once as it becomes hard to distinguish
         * ref_id
             Valid reference id name in the database
         * start
-            Start coordinate (Must be higher or equal to 0)
+            Start coordinate
         * end
-            End coordinate (included) (must be lower or equal to the reference length)
+            End coordinate (included)
         * kind
-            Kind of plot. Can be violinplot, boxenplot or swarmplot
+            Kind of plot
         * split_samples
             If samples for a same condition are represented separatly. If false they are merged per condition
         * figsize
-            length and heigh of the output plot. Default=(30,10)
+            Length and heigh of the output plot
         * palette
-            Colormap. Default="Set2"
-            see https://matplotlib.org/users/colormaps.html, https://matplotlib.org/examples/color/named_colors.html
+            Colormap. See https://matplotlib.org/users/colormaps.html, https://matplotlib.org/examples/color/named_colors.html
         * plot_style
-            Matplotlib plotting style
-            . See https://matplotlib.org/users/style_sheets.html
-        * bw
-            Scale factor to use when computing the kernel bandwidth
+            Matplotlib plotting style. See https://matplotlib.org/users/style_sheets.html
         """
 
         # Extract data for ref_id
@@ -607,23 +636,29 @@ class SampCompDB(object):
             pl.tight_layout()
             return(fig, (ax1, ax2))
 
-    def plot_coverage(self, ref_id, start=None, end=None, scale=False, split_samples=False, figsize=(30,5), palette="Set2", plot_style="ggplot"):
+    def plot_coverage(self,
+        ref_id:"str",
+        start:"int"=None,
+        end:"int"=None,
+        scale:"bool"=False,
+        split_samples:"bool"=False,
+        figsize:"tuple of 2 int"=(30,5),
+        palette:"str"="Set2",
+        plot_style:"str"="ggplot"):
         """
-        #########################################################
+        Plot the read coverage over a reference for all samples analysed
         * ref_id
             Valid reference id name in the database
         * start
-            Start coordinate. Default=0
+            Start coordinate
         * end
-            End coordinate (included). Default=reference length
+            End coordinate (included)
         * figsize
-            length and heigh of the output plot. Default=(30,10)
+            Length and heigh of the output plot
         * palette
-            Colormap. Default="Set2"
-            see https://matplotlib.org/users/colormaps.html, https://matplotlib.org/examples/color/named_colors.html
+            Colormap. See https://matplotlib.org/users/colormaps.html, https://matplotlib.org/examples/color/named_colors.html
         * plot_style
-            Matplotlib plotting style. Default="ggplot"
-            See https://matplotlib.org/users/style_sheets.html
+            Matplotlib plotting style. See https://matplotlib.org/users/style_sheets.html
         """
         # Extract data for ref_id
         ref_data = self[ref_id]
@@ -661,23 +696,28 @@ class SampCompDB(object):
     def plot_bleeding_hulk(self, ref_id, start=None, end=None, split_samples=False, figsize=(30,10)):
         self.plot_kmers_stats(ref_id, start, end, split_samples, figsize, "Accent")
 
-    def plot_kmers_stats(self, ref_id, start=None, end=None, split_samples=False, figsize=(30,10), palette="Accent", plot_style="ggplot"):
+    def plot_kmers_stats(self,
+        ref_id:"str",
+        start:"int"=None,
+        end:"int"=None,
+        split_samples:"bool"=False,
+        figsize:"tuple of 2 int"=(30,10),
+        palette:"str"="Accent",
+        plot_style:"str"="ggplot"):
         """
-        #########################################################
+        Fancy version of `plot_coverage` that also report missing, mismatching and undefined kmers status from Nanopolish
         * ref_id
             Valid reference id name in the database
         * start
-            Start coordinate. Default=0
+            Start coordinate
         * end
-            End coordinate (included). Default=reference length
+            End coordinate (included)
         * figsize
-            length and heigh of the output plot. Default=(30,10)
+            Length and heigh of the output plot
         * palette
-            Colormap. Default="Set2"
-            see https://matplotlib.org/users/colormaps.html, https://matplotlib.org/examples/color/named_colors.html
+            Colormap. See https://matplotlib.org/users/colormaps.html, https://matplotlib.org/examples/color/named_colors.html
         * plot_style
-            Matplotlib plotting style. Default="ggplot"
-            See https://matplotlib.org/users/style_sheets.html
+            Matplotlib plotting style. See https://matplotlib.org/users/style_sheets.html
         """
         # Extract data for ref_id
         ref_data = self[ref_id]
@@ -719,7 +759,21 @@ class SampCompDB(object):
 
         return(fig, axes)
 
-    def plot_position(self, ref_id, pos=None, split_samples=False, figsize=(30,10), palette="Set2",  plot_style="ggplot", xlim=(None,None), ylim=(None,None), alpha=0.3, pointSize=20, scatter=True, kde=True, model=False, gmm_levels=50):
+    def plot_position(self,
+        ref_id:"str",
+        pos:"int"=None,
+        split_samples=False,
+        figsize:"tuple of 2 int"=(30,10),
+        palette:"str"="Set2",
+        plot_style:"str"="ggplot",
+        xlim:"tuple of 2 int"=(None,None),
+        ylim:"tuple of 2 int"=(None,None),
+        alpha:"float"=0.3,
+        pointSize:"int"=20,
+        scatter:"bool"=True,
+        kde:"bool"=True,
+        model:"bool"=False,
+        gmm_levels:"int"=50):
         """
         Plot the dwell time and median intensity at the given position as a scatter plot.
         * ref_id
@@ -729,13 +783,11 @@ class SampCompDB(object):
         * split_samples
             If True, samples for a same condition are represented separately. If False, they are merged per condition
         * figsize
-            length and heigh of the output plot. Default=(30,10)
+            Length and heigh of the output plot
         * palette
-            Colormap. Default="Set2"
-            see https://matplotlib.org/users/colormaps.html, https://matplotlib.org/examples/color/named_colors.html
+            Colormap. See https://matplotlib.org/users/colormaps.html, https://matplotlib.org/examples/color/named_colors.html
         * plot_style
-            Matplotlib plotting style.
-            See https://matplotlib.org/users/style_sheets.html
+            Matplotlib plotting style. See https://matplotlib.org/users/style_sheets.html
         * xlim
             A tuple of explicit limits for the x axis
         * ylim
@@ -838,24 +890,27 @@ class SampCompDB(object):
 
             return(fig, ax)
 
-    def plot_volcano(self, ref_id, threshold=0.01, figsize=(30,10), palette="Set2", plot_style="ggplot", method="GMM_anova_pvalue"):
+    def plot_volcano(self,
+        ref_id:"str",
+        threshold:"float"=0.01,
+        figsize:"tuple of 2 int"=(30,10),
+        palette:"str"="Set2",
+        plot_style:"str"="ggplot",
+        method:"str"="GMM_anova_pvalue"):
         """
-        Plot pvalues per position (by default plot all fields starting by "pvalue")
-        It is pointless to plot more than 50 positions at once as it becomes hard to distiguish
+        ###
         * ref_id
             Valid reference id name in the database
         * start
-            Start coordinate. Default=0
+            Start coordinate
         * end
-            End coordinate (included). Default=reference length
+            End coordinate (included)
         * figsize
-            length and heigh of the output plot. Default=(30,10)
+            Length and heigh of the output plot
         * palette
-            Colormap. Default="Set2"
-            see https://matplotlib.org/users/colormaps.html, https://matplotlib.org/examples/color/named_colors.html
+            Colormap. See https://matplotlib.org/users/colormaps.html, https://matplotlib.org/examples/color/named_colors.html
         * plot_style
-            Matplotlib plotting style. Default="ggplot"
-            See https://matplotlib.org/users/style_sheets.html
+            Matplotlib plotting style. See https://matplotlib.org/users/style_sheets.html
         * method
             Limit the pvalue methods shown in the plot. Either a list of methods or a regular expression as a string.
         * barplot

@@ -34,7 +34,7 @@ minimap2 -ax map-ont -L {transcriptome_fasta} {basecalled_fastq} | samtools view
 samtools index {aligned_reads_bam}
 ```
 
-### Read indexing and resquiggling with
+### Read indexing and resquiggling
 
 Nanopolish is required to realign raw signal to the expected reference sequence. Reads have to be indexed first with nanopolish index, realigned with nanopolish eventalign and finally the data has to be collapsed per kmer and indexed by NanopolishComp Eventalign_collapse.
 

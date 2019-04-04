@@ -1,6 +1,6 @@
 Modified:
-    rep1:   ./sample_files/modified_rep_1.tsv
-    rep2:   ./sample_files/modified_rep_2.tsv
+    rep1:   ./eventalign_files/simulated/modified_rep_1.tsv
+    rep2:   ./eventalign_files/simulated/modified_rep_2.tsv
 Unmodified:
-    rep1:   ./sample_files/unmodified_rep_1.tsv
-    rep2:   ./sample_files/unmodified_rep_2.tsv
+    rep1:   ./eventalign_files/simulated/unmodified_rep_1.tsv
+    rep2:   ./eventalign_files/simulated/unmodified_rep_2.tsv
