@@ -27,7 +27,7 @@ nav:
         - How to use Nanocompore: usage.md
         - Compare samples with SampComp: demo/SampComp_usage.ipynb
         - Generate plots and tables with SampCompDB: demo/SampCompDB_usage.ipynb
-        - Read Simulator Usage: demo/SimReads_usage.ipynb
+        - Generate simulated reads: demo/SimReads_usage.ipynb
     - Alternative and complementary packages: alternative.md
     - Getting involved and finding help:
         - Contributing: contributing.md
