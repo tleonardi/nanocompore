@@ -7,10 +7,9 @@ import warnings
 
 
 # Third party
-from scipy.stats import mannwhitneyu, ks_2samp, ttest_ind, chi2
-import statsmodels.api as sm
+from scipy.stats import mannwhitneyu, ttest_ind, chi2, f_oneway
+from scipy.stats.mstats import ks_twosamp
 import statsmodels.discrete.discrete_model as dm
-from statsmodels.formula.api import ols
 from statsmodels.tools.sm_exceptions import ConvergenceWarning
 from sklearn.preprocessing import StandardScaler
 from sklearn.mixture import GaussianMixture
@@ -18,23 +17,32 @@ import numpy as np
 import pandas as pd
 
 # Local package
-from nanocompore.common import NanocomporeError
+from nanocompore.common import *
 
-# Init randon seed
-np.random.seed(42)
 
-def txCompare(ref_pos_list, methods=None, sequence_context=0, min_coverage=20, logger=None, ref=None, sequence_context_weights="uniform", force_logit=False):
+def txCompare(
+    ref_pos_list,
+    random_state,
+    methods=None,
+    sequence_context=0,
+    min_coverage=20,
+    logger=None,
+    ref=None,
+    sequence_context_weights="uniform",
+    anova=True,
+    logit=False,
+    allow_warnings=False):
 
     if sequence_context_weights != "uniform" and sequence_context_weights != "harmonic":
         raise NanocomporeError("Invalid sequence_context_weights (uniform or harmonic)")
 
     n_lowcov = 0
     tests = set()
-    # If we have less than 2 replicates in any condition force logit method
+    # If we have less than 2 replicates in any condition skip anova and force logit method
     if not all([ len(i)>1 for i in ref_pos_list[0]['data'].values() ]):
-        force_logit=True
+        anova=False
+        logit=True
     for pos, pos_dict in enumerate(ref_pos_list):
-
         # Filter out low coverage positions
         lowcov = False
         for cond_dict in pos_dict["data"].values():
@@ -49,22 +57,35 @@ def txCompare(ref_pos_list, methods=None, sequence_context=0, min_coverage=20, l
         else:
             res = dict()
             data = pos_dict['data']
+            condition_labels = tuple(data.keys())
+            if len(condition_labels) != 2:
+                raise NanocomporeError("The %s method only supports two conditions" % method)
+            condition1_intensity = np.concatenate([ rep['intensity'] for rep in data[condition_labels[0]].values() ])
+            condition2_intensity = np.concatenate([ rep['intensity'] for rep in data[condition_labels[1]].values() ])
+            condition1_dwell = np.concatenate([ rep['dwell'] for rep in data[condition_labels[0]].values() ])
+            condition2_dwell = np.concatenate([ rep['dwell'] for rep in data[condition_labels[1]].values() ])
+
             for met in methods:
                 if met in ["MW", "KS", "TT"] :
-                    pvalues = nonparametric_test(data, method=met)
+                    pvalues = nonparametric_test(condition1_intensity, condition2_intensity, condition1_dwell, condition2_dwell, method=met)
                     res["{}_intensity_pvalue".format(met)]=pvalues[0]
                     res["{}_dwell_pvalue".format(met)]=pvalues[1]
                     tests.add("{}_intensity_pvalue".format(met))
                     tests.add("{}_dwell_pvalue".format(met))
                 elif met == "GMM":
-                    if force_logit:
-                        gmm_results = gmm_test_logit(data, verbose=True)
-                    else:
-                        gmm_results = gmm_test_anova(data, verbose=True)
-                    res["GMM_pvalue"] = gmm_results[0]
-                    res["GMM_model"] = gmm_results ################################# optional ?
-                    tests.add("GMM_pvalue")
+                    gmm_results = gmm_test(data, anova=anova, logit=logit, allow_warnings=allow_warnings, random_state=random_state)
+                    res["GMM_model"] = gmm_results['gmm']
+                    if anova:
+                        res["GMM_anova_pvalue"] = gmm_results['anova']['pvalue']
+                        res["GMM_anova_model"] = gmm_results['anova']
+                        tests.add("GMM_anova_pvalue")
+                    if logit:
+                        res["GMM_logit_pvalue"] = gmm_results['logit']['pvalue']
+                        res["GMM_logit_model"] = gmm_results['logit']
+                        tests.add("GMM_logit_pvalue")
 
+            # Calculate shift statistics
+            res['shift_stats'] = shift_stats(condition1_intensity, condition2_intensity, condition1_dwell, condition2_dwell)
             # Save results in main
             ref_pos_list[pos]['txComp'] = res
     logger.debug("Skipping {} positions because not present in all samples with sufficient coverage".format(n_lowcov))
@@ -112,58 +133,88 @@ def txCompare(ref_pos_list, methods=None, sequence_context=0, min_coverage=20, l
 
     return ref_pos_list
 
-def nonparametric_test(data, method=None):
+def nonparametric_test(condition1_intensity, condition2_intensity, condition1_dwell, condition2_dwell, method=None):
 
     if method in ["mann_whitney", "MW"]:
-        stat_test = mannwhitneyu
+        stat_test = lambda x,y: mannwhitneyu(x, y, alternative='two-sided')
     elif method in ["kolmogorov_smirnov", "KS"]:
-        stat_test = ks_2samp
+        stat_test = ks_twosamp
     elif method in ["t_test", "TT"]:
-        stat_test = ttest_ind
+        stat_test = lambda x,y: ttest_ind(x, y, equal_var=False)
     else:
         raise NanocomporeError("Invalid statistical method name (MW, KS, ttest)")
-
-    condition_labels = tuple(data.keys())
-    if len(condition_labels) != 2:
-        raise NanocomporeError("The %s method only supports two conditions" % method)
-    condition1_intensity = np.concatenate([ rep['intensity'] for rep in data[condition_labels[0]].values() ])
-    condition2_intensity = np.concatenate([ rep['intensity'] for rep in data[condition_labels[1]].values() ])
-    condition1_dwell = np.concatenate([ rep['dwell'] for rep in data[condition_labels[0]].values() ])
-    condition2_dwell = np.concatenate([ rep['dwell'] for rep in data[condition_labels[1]].values() ])
 
     pval_intensity = stat_test(condition1_intensity, condition2_intensity)[1]
     pval_dwell = stat_test(condition1_dwell, condition2_dwell)[1]
     return(pval_intensity, pval_dwell)
 
-def gmm_test_anova(data, log_dwell=True, verbose=False):
 
+def gmm_test(data, random_state, anova=True, logit=False, verbose=True, allow_warnings=False):
+    # Condition labels
     condition_labels = tuple(data.keys())
+    # List of sample labels
+    sample_labels = list(data[condition_labels[0]].keys()) + list(data[condition_labels[1]].keys())
+
+    if len(sample_labels) != len(set(sample_labels)):
+        raise NanocomporeError("Sample labels have to be unique and it looks like some are not.")
+
+    # Dictionary Sample_label:Condition_label
+    sample_condition_labels = { sk:k for k,v in data.items() for sk in v.keys() }
     if len(condition_labels) != 2:
         raise NanocomporeError("gmm_test only supports two conditions")
-    
+
     # Merge the intensities and dwell times of all samples in a single array
     global_intensity = np.concatenate(([v['intensity'] for v in data[condition_labels[0]].values()]+[v['intensity'] for v in data[condition_labels[1]].values()]), axis=None)
     global_dwell = np.concatenate(([v['dwell'] for v in data[condition_labels[0]].values()]+[v['dwell'] for v in data[condition_labels[1]].values()]), axis=None)
+    global_dwell = np.log10(global_dwell)
 
-    if log_dwell:
-        global_dwell = np.log10(global_dwell)
-        
     # Scale the intensity and dwell time arrays
     X = StandardScaler().fit_transform([(i, d) for i,d in zip(global_intensity, global_dwell)])
 
-    # Generate an array of of sample labels 
-    Y = [ k for k,v in data[condition_labels[0]].items() for _ in v['intensity'] ] + [ k for k,v in data[condition_labels[1]].items() for _ in v['intensity'] ] 
-    
-    # Loop over multiple cv_types and n_components and for each fit a GMM
+    # Generate an array of sample labels
+    Y = [ k for k,v in data[condition_labels[0]].items() for _ in v['intensity'] ] + [ k for k,v in data[condition_labels[1]].items() for _ in v['intensity'] ]
+
+    gmm_fit = fit_best_gmm(X, max_components=2, cv_types=['full'], random_state=random_state)
+    gmm_mod, gmm_type, gmm_ncomponents = gmm_fit
+
+    # If the best GMM has 2 clusters do an anova test on the log odd ratios
+    if gmm_ncomponents == 2:
+        # Assign data points to the clusters
+        y_pred = gmm_mod.predict(X)
+        counters = dict()
+        # Count how many reads in each cluster for each sample
+        for lab in sample_labels:
+            counters[lab] = Counter(y_pred[[i==lab for i in Y]])
+        cluster_counts = count_reads_in_cluster(counters)
+        if anova:
+            aov_results = gmm_anova_test(counters, sample_condition_labels, condition_labels, gmm_ncomponents, allow_warnings)
+        else:
+            aov_results=None
+
+        if logit:
+            logit_results = gmm_logit_test(Y, y_pred, sample_condition_labels, condition_labels)
+        else:
+            logit_results=None
+
+    elif gmm_ncomponents == 1:
+        aov_results = {'pvalue': np.nan, 'delta_logit': np.nan, 'table': "NC", 'cluster_counts': "NC"}
+        logit_results = {'pvalue': np.nan, 'coef': "NC", 'model': "NC"}
+        cluster_counts = "NC"
+    else:
+        raise NanocomporeError("GMM models with n_component>2 are not supported")
+
+    return({'anova':aov_results, 'logit': logit_results, 'gmm':{'model': gmm_mod, 'cluster_counts': cluster_counts}})
+
+def fit_best_gmm(X, random_state, max_components=2, cv_types=['spherical', 'tied', 'diag', 'full']):
+   # Loop over multiple cv_types and n_components and for each fit a GMM
     # calculate the BIC and retain the lowest
     lowest_bic = np.infty
     bic = []
-    n_components_range = range(1, 3)
-    cv_types = ['spherical', 'tied', 'diag', 'full']
+    n_components_range = range(1, max_components+1)
     for cv_type in cv_types:
         for n_components in n_components_range:
         # Fit a Gaussian mixture with EM
-            gmm = GaussianMixture(n_components=n_components, covariance_type=cv_type)
+            gmm = GaussianMixture(n_components=n_components, covariance_type=cv_type, random_state=random_state)
             gmm.fit(X)
             bic.append(gmm.bic(X))
             if bic[-1] < lowest_bic:
@@ -171,108 +222,107 @@ def gmm_test_anova(data, log_dwell=True, verbose=False):
                 best_gmm = gmm
                 best_gmm_type = cv_type
                 best_gmm_ncomponents = n_components
+    return((best_gmm, best_gmm_type, best_gmm_ncomponents))
 
-    # If the best GMM has 2 clusters do an anova test on the log odd ratios
-    if best_gmm_ncomponents == 2:
-        # Assign data points to the clusters
-        y_pred = best_gmm.predict(X)  
-
-        # List of sample labels
-        sample_labels = list(data[condition_labels[0]].keys()) + list(data[condition_labels[1]].keys())
-
-        # Dictionary Sample_label:Condition_label
-        sample_condition_labels = { sk:k for k,v in data.items() for sk in v.keys() }
-        counters = dict()
-        # Count how many reads in each cluster for each sample
-        for lab in sample_labels:
-            counters[lab] = Counter(y_pred[[i==lab for i in Y]])
-        labels= []
-        logr = []
-        for sample,counter in counters.items():
-            # Save the condition label the corresponds to the current sample
-            labels.append(sample_condition_labels[sample])
-            # The Counter dictionaries in counters are not ordered
-            # The following line enforces the order and adds 1 to avoid empty clusters
-            ordered_counter = [ counter[i]+1 for i in range(best_gmm_ncomponents)]
-            total = sum(ordered_counter)
-            normalised_ordered_counter = [ i/total for i in ordered_counter ]
-            # Loop through ordered_counter and divide each value by the first
-            logr.append(np.log(normalised_ordered_counter[0]/(1-normalised_ordered_counter[0])))
-        logr = np.array(logr)
-        #r = manova.MANOVA(logr, labels).mv_test([("manova", "x1")])
-        #pvalue = r.results['manova']['stat']['Pr > F']["Pillai's trace"]
-
-        # statsmodels ols requires the use of the formula api,
-        # therefore we convert the data to a df
-        df = pd.DataFrame.from_dict({'condition':labels, 'logr':logr})
-        mod = ols("logr~C(condition)", data=df).fit() 
-        aov_table = sm.stats.anova_lm(mod, typ=2)
-        pvalue = aov_table['PR(>F)']['C(condition)']
-        # Calculate the delta log odds ratio, i.e. the difference of the means of the log odds rations between the two conditions
-        delta_logit = float(df.groupby('condition').mean().loc[condition_labels[1]] - df.groupby('condition').mean().loc[condition_labels[0]])
-        # Convert the counters to a string
-        cluster_counts = list()
-        for k,v in counters.items():
-            cluster_counts.append("%s:%s/%s" % (k, v[0], v[1]))
-        cluster_counts="__".join(cluster_counts)
-    elif best_gmm_ncomponents == 1:
-            pvalue = np.nan
-            logr = "NC"
-            aov_table = "NC"
-            cluster_counts = "NC"
-            delta_logit = np.nan
+def gmm_anova_test(counters, sample_condition_labels, condition_labels, gmm_ncomponents, allow_warnings=False):
+    labels= []
+    logr = []
+    for sample,counter in counters.items():
+        # Save the condition label the corresponds to the current sample
+        labels.append(sample_condition_labels[sample])
+        # The Counter dictionaries in counters are not ordered
+        # The following line enforces the order and adds 1 to avoid empty clusters
+        ordered_counter = [ counter[i]+1 for i in range(gmm_ncomponents)]
+        total = sum(ordered_counter)
+        normalised_ordered_counter = [ i/total for i in ordered_counter ]
+        # Loop through ordered_counter and divide each value by the first
+        logr.append(np.log(normalised_ordered_counter[0]/(1-normalised_ordered_counter[0])))
+    logr = np.around(np.array(logr), decimals=9)
+    logr_s1 = [logr[i] for i,l in enumerate(labels) if l==condition_labels[0]]
+    logr_s2 = [logr[i] for i,l in enumerate(labels) if l==condition_labels[1]]
+    # If the SS for either array is 0, skip the anova test
+    if sum_of_squares(logr_s1-np.mean(logr_s1)) == 0 and sum_of_squares(logr_s2-np.mean(logr_s2)) == 0:
+        if not allow_warnings:
+            raise NanocomporeError("While doing the Anova test we found a sample with within variance = 0. Use --allow_warnings to ignore.")
+        else:
+            aov_table = "Within variance is 0"
+            aov_pvalue = np.finfo(np.float).tiny
     else:
-        raise NanocomporeError("GMM models with n_component>2 are not supported")
+        with warnings.catch_warnings():
+            # Convert warnings to errors in order to catch them
+            warnings.filterwarnings('error')
+            try:
+                aov_table = f_oneway(logr_s1, logr_s2)
+                aov_pvalue = aov_table.pvalue
+            except RuntimeWarning:
+                if not allow_warnings:
+                    raise NanocomporeError("While doing the Anova test a runtime warning was raised. Use --allow_warnings to ignore.")
+                else:
+                    warnings.filterwarnings('default')
+                    aov_table = f_oneway(logr_s1, logr_s2)
+                    aov_pvalue = np.finfo(np.float).tiny
+    if aov_pvalue == 0:
+        raise NanocomporeError("The Anova test returned a p-value of 0. This is most likely an error somewhere")
+    # Calculate the delta log odds ratio, i.e. the difference of the means of the log odds ratios between the two conditions
+    aov_delta_logit=float(np.mean(logr_s1)-np.mean(logr_s2))
+    aov_results = {'pvalue': aov_pvalue, 'delta_logit': aov_delta_logit, 'table': aov_table, 'log_ratios':logr}
+    return(aov_results)
 
-    if verbose:
-        return(pvalue, delta_logit, aov_table, cluster_counts, best_gmm, best_gmm_type, best_gmm_ncomponents)
-    else:
-        return(pvalue, delta_logit)
-
-
-def gmm_test_logit(data, log_dwell=True, verbose=False):
-    condition_labels = tuple(data.keys())
-    if len(condition_labels) != 2:
-        raise NanocomporeError("gmm_test only supports two conditions")
-
-    global_intensity = np.concatenate(([v['intensity'] for v in data[condition_labels[0]].values()]+[v['intensity'] for v in data[condition_labels[1]].values()]), axis=None)
-    global_dwell = np.concatenate(([v['dwell'] for v in data[condition_labels[0]].values()]+[v['dwell'] for v in data[condition_labels[1]].values()]), axis=None)
-
-    if log_dwell:
-        global_dwell = np.log10(global_dwell)
-
-    Y = [ condition_labels[0] for v in data[condition_labels[0]].values() for _ in v['intensity'] ] + [ condition_labels[1] for v in data[condition_labels[1]].values() for _ in v['intensity'] ]
-    X = StandardScaler().fit_transform([(i, d) for i,d in zip(global_intensity, global_dwell)])
-    gmm_mod = GaussianMixture(n_components=2, covariance_type="full", random_state=146)
-    y_pred = gmm_mod.fit_predict(X)
-    # Add one to each group to avoid empty clusters
+def gmm_logit_test(Y, y_pred, sample_condition_labels, condition_labels):
+    Y = [ sample_condition_labels[i] for i in Y]
     y_pred=np.append(y_pred, [0,0,1,1])
     Y.extend([condition_labels[0], condition_labels[1], condition_labels[0], condition_labels[1]])
-    S1_counts = Counter(y_pred[[i==condition_labels[0] for i in Y]])
-    S2_counts = Counter(y_pred[[i==condition_labels[1] for i in Y]])
-    contingency_table = "%s:%s/%s__%s:%s/%s" % (condition_labels[0], S1_counts[0], S1_counts[1], condition_labels[1], S2_counts[0], S2_counts[2])
     Y = pd.get_dummies(Y)
     Y['intercept']=1
     logit = dm.Logit(y_pred,Y[['intercept',condition_labels[1]]] )
     with warnings.catch_warnings():
         warnings.filterwarnings('error')
         try:
-            fitmod=logit.fit(disp=0)
-            pvalue, coef = fitmod.pvalues[1], fitmod.params[1]
+            logit_mod=logit.fit(disp=0)
+            logit_pvalue, logit_coef = logit_mod.pvalues[1], logit_mod.params[1]
         except ConvergenceWarning:
-            fitmod, pvalue, coef = "NC", 1, "NC"
-    # Return model, real_labels (w/ intercept), GMM clusters, contingency table
-    if verbose:
-        return (pvalue, coef, fitmod, contingency_table, gmm_mod)
-    else:
-        return (pvalue, coef)
+            logit_mod, logit_pvalue, logit_coef = "NC", 1, "NC"
+    logit_results = {'pvalue': logit_pvalue, 'coef': logit_coef, 'model': logit_mod}
+    return(logit_results)
+
+def count_reads_in_cluster(counters):
+    cluster_counts = list()
+    for k,v in counters.items():
+        cluster_counts.append("%s:%s/%s" % (k, v[0], v[1]))
+    cluster_counts="__".join(cluster_counts)
+    return(cluster_counts)
+
+def shift_stats(condition1_intensity, condition2_intensity, condition1_dwell, condition2_dwell):
+    """Calculate shift statistics"""
+    shift_stats = OrderedDict([
+        ('c1_mean_intensity', np.mean(condition1_intensity)),
+        ('c2_mean_intensity', np.mean(condition2_intensity)),
+        ('c1_median_intensity', np.median(condition1_intensity)),
+        ('c2_median_intensity', np.median(condition2_intensity)),
+        ('c1_sd_intensity', np.std(condition1_intensity)),
+        ('c2_sd_intensity', np.std(condition2_intensity)),
+        ('c1_mean_dwell', np.mean(condition1_dwell)),
+        ('c2_mean_dwell', np.mean(condition2_dwell)),
+        ('c1_median_dwell', np.median(condition1_dwell)),
+        ('c2_median_dwell', np.median(condition2_dwell)),
+        ('c1_sd_dwell', np.std(condition1_dwell)),
+        ('c2_sd_dwell', np.std(condition2_dwell))
+    ])
+    return(shift_stats)
+
 
 def cross_corr_matrix(pvalues_vector, context=2):
-    """Calculate the cross correlation matrix of the
+    """ Calculate the cross correlation matrix of the
         pvalues for a given context.
     """
-    matrix=[]
+    if len(pvalues_vector)<(context*3)+3:
+        raise NanocomporeError("Not enough p-values for a context of order %s"%context)
+
     pvalues_vector = np.array([ i if not np.isnan(i) else 1 for i in pvalues_vector ])
+    if any(pvalues_vector==0) or any(np.isinf(pvalues_vector)) or any(pvalues_vector>1):
+        raise NanocomporeError("At least one p-value is invalid")
+
+    matrix=[]
     s=pvalues_vector.size
     if all(p==1 for p in pvalues_vector):
         return(np.ones((context*2+1, context*2+1)))
@@ -301,6 +351,9 @@ def combine_pvalues_hou(pvalues, weights, cor_mat):
         raise NanocomporeError("The correlation matrix needs to be squared, with each dimension equal to the length of the pvalued vector.")
     if all(p==1 for p in pvalues):
         return 1
+    if any((p==0 or np.isinf(p) or p>1) for p in pvalues):
+        raise NanocomporeError("At least one p-value is invalid")
+
     # Covariance estimation as in Kost and McDermott (eq:8)
     # https://doi.org/10.1016/S0167-7152(02)00310-3
     cov = lambda r: (3.263*r)+(0.710*r**2)+(0.027*r**3)
@@ -322,9 +375,9 @@ def combine_pvalues_hou(pvalues, weights, cor_mat):
     f = (4*w_sum**2) / (2*sw_sum+cov_sum)
     # chi2.sf is the same as 1-chi2.cdf but is more accurate
     combined_p_value = chi2.sf(tau/c,f)
-    # Return a very small number if pvalue =0
+    # Return a very small number if pvalue = 0
     if combined_p_value == 0:
-        combined_p_value = np.finfo(np.float).min
+        combined_p_value = np.finfo(np.float).tiny
     return combined_p_value
 
 def harmomic_series(sequence_context):
@@ -332,3 +385,10 @@ def harmomic_series(sequence_context):
     for i in range(-sequence_context, sequence_context+1):
         weights.append(1/(abs(i)+1))
     return weights
+
+def sum_of_squares(x):
+    """
+    Square each element of the input array and return the sum
+    """
+    x = np.atleast_1d(x)
+    return np.sum(x*x)

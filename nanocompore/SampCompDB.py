@@ -2,7 +2,8 @@
 
 #~~~~~~~~~~~~~~IMPORTS~~~~~~~~~~~~~~#
 # Std lib
-from collections import OrderedDict, namedtuple
+import logging
+from collections import *
 import shelve
 from dbm import error as dbm_error
 from math import log
@@ -22,53 +23,78 @@ from statsmodels.stats.multitest import multipletests
 from sklearn.mixture.gaussian_mixture import GaussianMixture
 from sklearn.preprocessing import scale as scale
 
-
 # Local package
-from nanocompore.common import counter_to_str, access_file, NanocomporeError
+from nanocompore.common import *
+
+# Logger setup
+logging.basicConfig(level=logging.INFO, format='%(message)s')
+logger = logging.getLogger(__name__)
+log_level_dict = {"debug":logging.DEBUG, "info":logging.INFO, "warning":logging.WARNING}
 
 #~~~~~~~~~~~~~~MAIN CLASS~~~~~~~~~~~~~~#
 class SampCompDB(object):
     """ Wrapper over the result shelve SampComp """
 
     #~~~~~~~~~~~~~~FUNDAMENTAL METHODS~~~~~~~~~~~~~~#
-    def __init__(self, db_fn, fasta_fn, bed_fn=None, run_type="RNA"):
+    def __init__(self,
+        db_prefix:"file_prefix_path",
+        fasta_fn:"file_path",
+        bed_fn:"file_path" = None,
+        run_type:"str {RNA,DNA}" = "RNA",
+        log_level:"str {warning,info,debug}" = "info"):
         """
         Import a shelve db and a fasta reference file. Automatically returned by SampComp
         Can also be manually created from an existing shelve db output
-        db_fn: Path where to write the result database
-        fasta_fn: Path to a fasta file corresponding to the reference used for read alignemnt
-        bed_fn: Path to a BED file containing the annotation of the transcriptome used as reference when mapping
+        * db_prefix
+            Prefix of the database. For example if the path to the db file is "/outpath/out.db" the db_prefix is "/outpath/out"
+        * fasta_fn
+            Path to a fasta file corresponding to the reference used for read alignemnt
+        * bed_fn
+            Path to a BED file containing the annotation of the transcriptome used as reference when mapping
+        * run_type
+            Define the run type model to import (RNA or DNA)
+        * log_level
+            Set the log level.
         """
+
+        # Set logging level
+        logger.setLevel(log_level_dict.get(log_level, logging.WARNING))
+        logger.info("Loading SampCompDB")
 
         # Try to get ref_id list and metadata from shelve db
         try:
+            db_fn = db_prefix+"SampComp.db"
             with shelve.open(db_fn, flag='r') as db:
                 # Try to get metadata from db
                 try:
-                    metadata = db['__metadata']
-                    self._comparison_method = metadata['comparison_method']
-                    self._sequence_context = metadata['sequence_context']
-                    self._min_coverage = metadata['min_coverage']
-                    self._n_samples = metadata['n_samples']
-                    self._pvalue_tests = metadata['pvalue_tests']
+                    logger.debug("\tReading Metadata")
+                    self._metadata = db['__metadata']
                 except KeyError:
                     raise NanocomporeError("The result database does not contain metadata")
                 # Try to load read_ids
-                self.ref_id_list = [k for k in db.keys() if k!='__metadata']
+                try:
+                    logger.debug("\tLoading list of reference ids")
+                    self.ref_id_list = db['__ref_id_list']
+                except KeyError:
+                    logger.debug("\tCannot find the ref_id_list in shelve. Try to build the list from entries")
+                    self.ref_id_list = [k for k in db.keys() if k not in  ['__metadata', '__ref_id_list']]
                 if not self.ref_id_list:
                     raise NanocomporeError("The result database is empty")
-                # finally save db path
-                self._db_fn = db_fn
-
         except dbm_error:
             raise NanocomporeError("The result database cannot be opened")
 
-        # Test is Fasta can be opened
-        try:
-            with Fasta(fasta_fn):
-                self._fasta_fn = fasta_fn
-        except IOError:
-            raise NanocomporeError("The fasta file cannot be opened")
+        # Save db prefix and db path
+        self._db_prefix = db_prefix
+        self._db_fn = db_fn
+
+        logger.debug("Checking files and arg values")
+        # Check if fasta and bed files exist
+        if not access_file(fasta_fn):
+            raise NanocomporeError("{} is not a valid FASTA file".format(fasta_fn))
+        self._fasta_fn = fasta_fn
+        if bed_fn and not access_file(bed_fn):
+            raise NanocomporeError("{} is not a valid BED file".format(bed_fn))
+        self._bed_fn = bed_fn
 
         # Define model depending on run_type
         if run_type == "RNA":
@@ -77,24 +103,27 @@ class SampCompDB(object):
         else:
             raise NanocomporeError("Only RNA is implemented at the moment")
 
-        self.bed_fn = bed_fn
-
-        #Create results df with adjusted p-values
-        if self._pvalue_tests:
+        # Create results df with adjusted p-values
+        if self._metadata["pvalue_tests"]:
+            logger.info("Calculate results")
             self.results = self.__calculate_results(adjust=True)
 
     def __repr__(self):
         """readable description of the object"""
-        return "[{}] Number of references: {}\n".format(self.__class__.__name__, len(self))
+        s = "[{}]\n".format(self.__class__.__name__)
+        for i,j in self._metadata.items():
+            s+= "\t{}: {}\n".format(i,j)
+        s+= "\tNumber of references: {}\n".format(len(self))
+        return s
 
     #~~~~~~~~~~~~~~MAGIC METHODS~~~~~~~~~~~~~~#
     def __len__(self):
-        return len(self.ref_id_list)-1
+        return len(self.ref_id_list)
 
     def __iter__(self):
         with shelve.open(self._db_fn, flag = "r") as db:
             for k, v in db.items():
-                if not k == '__metadata':
+                if not k in  ['__metadata', '__ref_id_list']:
                     yield(k, v)
 
     def __getitem__(self, items):
@@ -108,7 +137,6 @@ class SampCompDB(object):
 
     def __calculate_results(self, adjust=True):
         """"""
-
         # Collect all pvalue results in a dataframe
         l = []
         for ref_id, ref_pos_list in self:
@@ -118,17 +146,17 @@ class SampCompDB(object):
                     row_dict["ref_id"] = ref_id
                     row_dict["pos"] = pos
                     row_dict["ref_kmer"] = pos_dict["ref_kmer"]
-                    for test in self._pvalue_tests:
+                    for test in self._metadata["pvalue_tests"]:
                         if test in pos_dict["txComp"]:
                             pval = pos_dict["txComp"][test]
                             row_dict[test] = pval
                     l.append(row_dict)
         df = pd.DataFrame(l)
 
-        if self.bed_fn:
+        if self._bed_fn:
             bed_annot={}
             try:
-                with open(self.bed_fn) as tsvfile:
+                with open(self._bed_fn) as tsvfile:
                     for line in tsvfile:
                         record_name=line.split('\t')[3]
                         if( record_name in self.ref_id_list):
@@ -138,16 +166,16 @@ class SampCompDB(object):
             if len(bed_annot) != len(self.ref_id_list):
                 raise NanocomporeError("Some references are missing from the BED file provided")
 
-            df['genomicPos'] = df.apply(lambda row: bed_annot[row['ref_id']].tx2genome(coord=row['pos']),axis=1)
+            df['genomicPos'] = df.apply(lambda row: bed_annot[row['ref_id']].tx2genome(coord=row['pos'], stranded=True),axis=1)
             # This is very inefficient. We should get chr and strand only once per transcript, ideally when writing the BED file
             df['chr'] = df.apply(lambda row: bed_annot[row['ref_id']].chr,axis=1)
             df['strand'] = df.apply(lambda row: bed_annot[row['ref_id']].strand,axis=1)
-            df=df[['ref_id', 'pos', 'chr', 'strand', 'genomicPos', 'ref_kmer']+self._pvalue_tests]
+            df=df[['ref_id', 'pos', 'chr', 'strand', 'genomicPos', 'ref_kmer']+self._metadata["pvalue_tests"]]
         else:
-            df=df[['ref_id', 'pos', 'ref_kmer']+tests]
+            df=df[['ref_id', 'pos', 'ref_kmer']+self._metadata["pvalue_tests"]]
 
         if adjust:
-            for col in self._pvalue_tests:
+            for col in self._metadata["pvalue_tests"]:
                 df[col] = self.__multipletests_filter_nan(df[col], method="fdr_bh")
         return df
 
@@ -196,6 +224,9 @@ class SampCompDB(object):
         0.45714286, 0.016     , 0.008     ,        nan,        nan,
         0.016     ,        nan])
         """
+        if all([np.isnan(p) for p in pvalues]):
+            return pvalues
+
         pvalues_no_nan = [p for p in pvalues if not np.isnan(p)]
         corrected_p_values = multipletests(pvalues_no_nan, method=method)[1]
         for i, p in enumerate(pvalues):
@@ -204,18 +235,59 @@ class SampCompDB(object):
         return(corrected_p_values)
 
     #~~~~~~~~~~~~~~PUBLIC METHODS~~~~~~~~~~~~~~#
-
-    def save_to_bed(self, output_fn, bedgraph=False, pvalue_field=None, pvalue_thr=0.01, span=5, convert=None, assembly=None, title=None):
-        """Saves the results object to BED6 format.
-            bedgraph: save file in bedgraph format instead of bed
-            pvalue_field: specifies what column to use as BED score (field 5, as -log10)
-            pvalue_thr: only report positions with pvalue<=thr
-            span: The size of each BED feature.
-                  If size=5 (default) features correspond to kmers. If size=1 features correspond to the first base of each kmer.
-            convert: one of 'ensembl_to_ucsc' or 'ucsc_to_ensembl". Convert chromosome named between Ensembl and Ucsc conventions
-            assembly: required if convert is used. One of "hg38" or "mm10"
+    def save_all (self, outpath_prefix=None, pvalue_thr=0.01):
         """
-        if self.bed_fn is None:
+        Save all text reports including genomic coordinate if a bed file was provided
+        * outpath_prefix
+            outpath + prefix to use as a basename for output files.
+            If not given, it will use the same prefix as the database.
+        * pvalue_thr
+            pvalue threshold to report significant sites in bed files
+        """
+        if not outpath_prefix:
+            outpath_prefix = self._db_prefix
+        logger.debug("Save reports to {}".format(outpath_prefix))
+
+        # Save reports
+        logger.debug("\tSaving extended tabular report")
+        self.save_report(output_fn = outpath_prefix+"nanocompore_results.tsv")
+        logger.debug("\tSaving shift results")
+        self.save_shift_stats(output_fn = outpath_prefix+"nanocompore_shift_stats.tsv")
+
+        # Save bed and bedgraph files for each method used
+        if self._bed_fn:
+            logger.debug("\tSaving significant genomic coordinates in Bed and Bedgraph format")
+            for m in self._metadata["pvalue_tests"]:
+                self.save_to_bed(
+                    output_fn = outpath_prefix+"sig_sites_{}_thr_{}.bed".format(m, pvalue_thr),
+                    bedgraph=False, pvalue_field=m, pvalue_thr=pvalue_thr, span=5, title="Nanocompore Significant Sites")
+                self.save_to_bed(
+                    output_fn = outpath_prefix+"sig_sites_{}_thr_{}.bedgraph".format(m, pvalue_thr),
+                    bedgraph=True, pvalue_field=m, pvalue_thr=pvalue_thr, title="Nanocompore Significant Sites")
+
+    def save_to_bed(self, output_fn=None, bedgraph=False, pvalue_field=None, pvalue_thr=0.01, span=5, convert=None, assembly=None, title=None):
+        """
+        Save the position of significant positions in the genome space in BED6 or BEDGRAPH format.
+        The resulting file can be used in a genome browser to visualise significant genomic locations.
+        The option is only available if `SampCompDB` if initialised with a BED file containing genome annotations.
+        * output_fn
+            Path to file where to write the data
+        * bedgraph
+            save file in bedgraph format instead of bed
+        * pvalue_field
+            specifies what column to use as BED score (field 5, as -log10)
+        * pvalue_thr
+            only report positions with pvalue<=thr
+        * span
+            The size of each BED feature.
+            If size=5 (default) features correspond to kmers.
+            If size=1 features correspond to the first base of each kmer.
+        * convert
+            one of 'ensembl_to_ucsc' or 'ucsc_to_ensembl". Convert chromosome named between Ensembl and Ucsc conventions
+        * assembly
+            required if convert is used. One of "hg38" or "mm10"
+        """
+        if self._bed_fn is None:
             raise NanocomporeError("In order to generate a BED file SampCompDB needs to be initialised with a transcriptome BED")
         if span < 1:
             raise NanocomporeError("span has to be >=1")
@@ -242,25 +314,37 @@ class SampCompDB(object):
                 pvalue = getattr(record, pvalue_field)
                 if np.isnan(pvalue):
                     pvalue=0
+                elif pvalue < sys.float_info.min:
+                    pvalue = -log(sys.float_info.min, 10)
                 else:
                     pvalue=-log(pvalue, 10)
                 if not bedgraph and pvalue >= -log(pvalue_thr, 10):
-                    line=bedline([record.chr, record.genomicPos, record.genomicPos+span, f"{record.ref_id}_{record.ref_kmer}", pvalue, record.strand])
+                    if record.strand == "+":
+                        line=bedline([record.chr, record.genomicPos, record.genomicPos+span, "%s_%s" % (record.ref_id, record.ref_kmer), pvalue, record.strand])
+                    else:
+                        line=bedline([record.chr, record.genomicPos-(span-1), record.genomicPos+1, "%s_%s" % (record.ref_id, record.ref_kmer), pvalue, record.strand])
+
                     if convert is "ensembl_to_ucsc":
                         line=line.translateChr(assembly=assembly, target="ucsc", patches=True)
                     elif convert is "ucsc_to_ensembl":
                         line=line.translateChr(assembly=assembly, target="ens", patches=True)
                     bed_file.write("%s\t%s\t%s\t%s\t%s\t%s\n" % (line.chr, line.start, line.end, line.name, line.score, line.strand))
                 elif bedgraph:
-                    line=bedline([record.chr, record.genomicPos+2, record.genomicPos+3, f"{record.ref_id}_{record.ref_kmer}", pvalue, record.strand])
+                    if record.strand == "+":
+                        line=bedline([record.chr, record.genomicPos+2, record.genomicPos+3, "%s_%s" % (record.ref_id, record.ref_kmer), pvalue, record.strand])
+                    else:
+                        line=bedline([record.chr, record.genomicPos-2, record.genomicPos-1, "%s_%s" % (record.ref_id, record.ref_kmer), pvalue, record.strand])
                     if convert is "ensembl_to_ucsc":
                         line=line.translateChr(assembly=assembly, target="ucsc", patches=True)
                     elif convert is "ucsc_to_ensembl":
                         line=line.translateChr(assembly=assembly, target="ens", patches=True)
                     bed_file.write("%s\t%s\t%s\t%s\n" % (line.chr, line.start, line.end, line.score))
 
-    def save_report(self, output_fn=None):
-        """Saves an extended tabular report
+    def save_report(self, output_fn:"str"=None):
+        """
+        Saves a tabulated text dump of the database containing all the statistical results for all the positions
+        * output_fn
+            Path to file where to write the data. If None, data is returned to the standard output.
         """
         if output_fn is None:
             fp = sys.stdout
@@ -272,49 +356,124 @@ class SampCompDB(object):
         else:
             raise NanocomporeError("output_fn needs to be a string or None")
 
-        headers = ['chr', 'pos', 'ref_id','strand', 'ref_kmer']+self._pvalue_tests
+        headers = ['pos', 'chr', 'genomicPos', 'ref_id', 'strand', 'ref_kmer']+self._metadata["pvalue_tests"]
+
         # Read extra GMM info from the shelve
-        if "GMM" in self._comparison_method:
-            headers += ['LOR', 'clusters']
-            gmm_info=OrderedDict()
-            for tx, refpos in self:
-                gmm_info[tx] = {k:{'lor': v['txComp']['GMM_model'][1], 'clusters':v['txComp']['GMM_model'][3]} for k,v in enumerate(refpos) if "txComp" in v and "GMM_model" in v['txComp']}
+        if "GMM" in self._metadata["comparison_methods"]:
+            headers.extend(["GMM_cov_type", "GMM_n_clust", "cluster_counts"])
+            # Conditional add if logit or Anova
+            if "GMM_anova_pvalue" in self._metadata["pvalue_tests"]:
+                headers.append("Anova_delta_logit")
+            if "GMM_logit_pvalue" in self._metadata["pvalue_tests"]:
+                headers.append("Logit_LOR")
+
+        # Write headers to file
         fp.write('\t'.join([ str(i) for i in headers ])+'\n')
-        for record in self.results[['chr', 'pos', 'ref_id','strand', 'ref_kmer']+self._pvalue_tests].values.tolist():
-            if "GMM" in self._comparison_method:
-                try:
-                    lor = gmm_info[record[2]][record[1]]['lor']
-                    clusters = gmm_info[record[2]][record[1]]['clusters']
-                    record += [lor, clusters]
-                except KeyError:
-                    record += ["nan", "nan"]
-            fp.write('\t'.join([ str(i) for i in record ])+'\n')
+
+        # We loop over the IDs so that ref_pos_list can be prefetched for each transcript
+        for cur_id in self.ref_id_list:
+            cur_ref_pos_list = self[cur_id]
+            for record in self.results[self.results.ref_id == cur_id ].itertuples():
+                if "GMM" in self._metadata["comparison_methods"]:
+                    record_txComp = cur_ref_pos_list[record.pos]['txComp']
+                line = []
+                for f in headers:
+                    if f in record._fields:
+                        line.append(getattr(record, f))
+                    elif f == "GMM_cov_type":
+                        line.append(record_txComp['GMM_model']['model'].covariance_type)
+                    elif f == "GMM_n_clust":
+                        line.append(record_txComp['GMM_model']['model'].n_components)
+                    elif f == "cluster_counts":
+                        line.append(record_txComp['GMM_model']['cluster_counts'])
+                    elif f == "Anova_delta_logit":
+                        line.append(record_txComp['GMM_anova_model']['delta_logit'])
+                    elif f == "Logit_LOR":
+                        line.append(record_txComp['GMM_logit_model']['coef'])
+                    else: line.append("NA")
+                fp.write('\t'.join([ str(i) for i in line ])+'\n')
         fp.close()
 
+    def save_shift_stats(self, output_fn=None):
+        """
+        Save the mean, median and sd intensity and dwell time for each condition and for each position.
+        This can be used to evaluate the intensity of the shift for significant positions.
+        * output_fn
+            Path to file where to write the data. If None, data is returned to the standard output.
+        """
+        if output_fn is None:
+            fp = sys.stdout
+        elif isinstance(output_fn, str):
+            try:
+                fp = open(output_fn, "w")
+            except:
+                raise NanocomporeError("Error opening output file %s"%output_fn)
+        else:
+            raise NanocomporeError("output_fn needs to be a string or None")
 
-    def list_most_significant_positions(self, n=10):
-        pass
 
-    def list_most_significant_references(self, n=10):
-        pass
+        headers = ['c1_mean_intensity', 'c2_mean_intensity', 'c1_median_intensity', 'c2_median_intensity', 'c1_sd_intensity', 'c2_sd_intensity', 'c1_mean_dwell', 'c2_mean_dwell', 'c1_median_dwell', 'c2_median_dwell', 'c1_sd_dwell', 'c2_sd_dwell']
+        fp.write('\t'.join([ str(i) for i in ["red_if", "pos"]+headers ])+'\n')
+        for tx, refpos in self:
+            for pos, refpos_list in enumerate(refpos):
+                if "txComp" in refpos_list:
+                    ss = refpos_list['txComp']['shift_stats']
+                    if list(ss.keys()) != headers:
+                        raise NanocomporeError("Mismatch in shift_stats headers")
+                    line = [tx, pos, *ss.values()]
+                    fp.write('\t'.join([ str(i) for i in line ])+'\n')
+        fp.close()
 
+    def list_significant_positions(self, ref_id=None, test=None, thr=0.05):
+        """
+        Return a list of positions of ref_id with p-value <= threshold for
+        statistical test specified
+        * ref_id
+            Valid reference id name in the database
+        * test
+            Name of the test of interest
+        * thr
+            p-value threshold
+        """
+        if not test in self._metadata["pvalue_tests"]:
+            raise NanocomporeError("The test requested ({}) does not exist".format(test))
+        if not ref_id in self.ref_id_list:
+            raise NanocomporeError("The reference requested ({}) is not in the DB".format(ref_id))
+        sig = list(self.results[(self.results['ref_id'] == ref_id) & (self.results[test] <= thr)]['pos'])
+        return(sig)
 
+    # def list_most_significant_references(self, n=10):
+    #     pass
 
     #~~~~~~~~~~~~~~PLOTTING METHODS~~~~~~~~~~~~~~#
-    def plot_pvalue( self, ref_id, start=None, end=None, kind="lineplot", threshold=0.01, figsize=(30,10), palette="Set2", plot_style="ggplot", tests=None):
+    def plot_pvalue( self,
+        ref_id:"str",
+        start:"int"=None,
+        end:"int"=None,
+        kind:"{lineplot,barplot}"="lineplot",
+        threshold:"float"=0.01,
+        figsize:"tuple of 2 int"=(30,10),
+        palette:"str"="Set2",
+        plot_style:"str"="ggplot",
+        tests:"str, list or None"=None):
         """
         Plot pvalues per position (by default plot all fields starting by "pvalue")
-        It is pointless to plot more than 50 positions at once as it becomes hard to distiguish
-        ref_id: Valid reference id name in the database
-        start: Start coordinate. Default=0
-        end: End coordinate (included). Default=reference length
-        kind: kind of plot to represent the data (lineplot or barplot)
-        figsize: length and heigh of the output plot. Default=(30,10)
-        palette: Colormap. Default="Set2"
-            see https://matplotlib.org/users/colormaps.html, https://matplotlib.org/examples/color/named_colors.html
-        plot_style: Matplotlib plotting style. Default="ggplot"
-            . See https://matplotlib.org/users/style_sheets.html
-        tests: Limit the pvalue methods shown in the plot. Either a list of methods or a string coresponding to a part of the name
+        * ref_id
+            Valid reference id name in the database
+        * start
+            Start coordinate
+        * end
+            End coordinate (included)
+        * kind
+            kind of plot to represent the data
+        * figsize
+            Length and heigh of the output plot
+        * palette
+            Colormap. See https://matplotlib.org/users/colormaps.html, https://matplotlib.org/examples/color/named_colors.html
+        * plot_style
+            Matplotlib plotting style. See https://matplotlib.org/users/style_sheets.html
+        * tests
+            Limit the pvalue methods shown in the plot. Either a list of methods or a string coresponding to a part of the name
         """
         # Extract fasta and positions
         start, end = self.__get_positions(ref_id, start, end)
@@ -328,7 +487,7 @@ class SampCompDB(object):
 
         # list tests methods
         if not tests:
-            tests = self._pvalue_tests
+            tests = self._metadata["pvalue_tests"]
         else:
             if isinstance(tests, str):
                 tests = tests.split(",")
@@ -336,18 +495,22 @@ class SampCompDB(object):
                 raise NanocomporeError("Method must be either a string or a list")
             tests_set = set()
             for test in tests:
-                for available_test in self._pvalue_tests:
+                for available_test in self._metadata["pvalue_tests"]:
                     if test in available_test:
                         tests_set.add(available_test)
             if not tests_set:
-                raise NanocomporeError("No matching tests found in the list of available tests: {}".format(self._pvalue_tests))
+                raise NanocomporeError("No matching tests found in the list of available tests: {}".format(self._metadata["pvalue_tests"]))
             tests = sorted(list(tests_set))
 
         # Collect data for interval in a numpy array
         array = np.zeros(end-start, dtype=[(test, np.float) for test in tests])
         for id, row in df.iterrows():
             for test in tests:
-                array[row["pos"]-start][test] = -np.log10(row[test])
+                if np.isnan(row[test]):
+                    v = 0
+                else:
+                    v = -np.log10(row[test])
+                array[row["pos"]-start][test] = v
         # Cast collected results to dataframe
         df = pd.DataFrame(array, index=pos_list)
 
@@ -378,21 +541,34 @@ class SampCompDB(object):
             pl.tight_layout()
             return(fig, ax)
 
-    def plot_signal(self, ref_id, start=None, end=None, kind="violinplot", split_samples=False, figsize=(30,10), palette="Set2", plot_style="ggplot"):
+    def plot_signal(self,
+        ref_id:"str",
+        start:"int"=None,
+        end:"int"=None,
+        kind:"{violinplot, boxenplot, swarmplot}"="violinplot",
+        split_samples:"bool"=False,
+        figsize:"tuple of 2 int"=(30,10),
+        palette:"str"="Set2",
+        plot_style:"str"="ggplot"):
         """
-        Plot the dwell time and median intensity distribution position per positon in a split violin plot representation.
-        It is pointless to plot more than 50 positions at once as it becomes hard to distiguish
-        ref_id: Valid reference id name in the database
-        start: Start coordinate (Must be higher or equal to 0)
-        end: End coordinate (included) (must be lower or equal to the reference length)
-        kind: Kind of plot. Can be violinplot, boxenplot or swarmplot
-        split_samples: If samples for a same condition are represented separatly. If false they are merged per condition
-        figsize: length and heigh of the output plot. Default=(30,10)
-        palette: Colormap. Default="Set2"
-            see https://matplotlib.org/users/colormaps.html, https://matplotlib.org/examples/color/named_colors.html
-        plot_style: Matplotlib plotting style
-            . See https://matplotlib.org/users/style_sheets.html
-        bw: Scale factor to use when computing the kernel bandwidth
+        Plot the dwell time and median intensity distribution position per position
+        Pointless for more than 50 positions at once as it becomes hard to distinguish
+        * ref_id
+            Valid reference id name in the database
+        * start
+            Start coordinate
+        * end
+            End coordinate (included)
+        * kind
+            Kind of plot
+        * split_samples
+            If samples for a same condition are represented separatly. If false they are merged per condition
+        * figsize
+            Length and heigh of the output plot
+        * palette
+            Colormap. See https://matplotlib.org/users/colormaps.html, https://matplotlib.org/examples/color/named_colors.html
+        * plot_style
+            Matplotlib plotting style. See https://matplotlib.org/users/style_sheets.html
         """
 
         # Extract data for ref_id
@@ -460,16 +636,29 @@ class SampCompDB(object):
             pl.tight_layout()
             return(fig, (ax1, ax2))
 
-    def plot_coverage(self, ref_id, start=None, end=None, scale=False, split_samples=False, figsize=(30,5), palette="Set2", plot_style="ggplot"):
+    def plot_coverage(self,
+        ref_id:"str",
+        start:"int"=None,
+        end:"int"=None,
+        scale:"bool"=False,
+        split_samples:"bool"=False,
+        figsize:"tuple of 2 int"=(30,5),
+        palette:"str"="Set2",
+        plot_style:"str"="ggplot"):
         """
-        ref_id: Valid reference id name in the database
-        start: Start coordinate. Default=0
-        end: End coordinate (included). Default=reference length
-        figsize: length and heigh of the output plot. Default=(30,10)
-        palette: Colormap. Default="Set2"
-            see https://matplotlib.org/users/colormaps.html, https://matplotlib.org/examples/color/named_colors.html
-        plot_style: Matplotlib plotting style. Default="ggplot"
-            . See https://matplotlib.org/users/style_sheets.html
+        Plot the read coverage over a reference for all samples analysed
+        * ref_id
+            Valid reference id name in the database
+        * start
+            Start coordinate
+        * end
+            End coordinate (included)
+        * figsize
+            Length and heigh of the output plot
+        * palette
+            Colormap. See https://matplotlib.org/users/colormaps.html, https://matplotlib.org/examples/color/named_colors.html
+        * plot_style
+            Matplotlib plotting style. See https://matplotlib.org/users/style_sheets.html
         """
         # Extract data for ref_id
         ref_data = self[ref_id]
@@ -492,7 +681,7 @@ class SampCompDB(object):
             fig, ax = pl.subplots(figsize=figsize)
             _ = sns.lineplot( x="pos", y="cov", hue="sample", data=df, ax=ax, palette=palette, drawstyle="steps")
             if not scale:
-                _ = ax.axhline(y=self._min_coverage, linestyle=":", color="grey", label="minimal coverage")
+                _ = ax.axhline(y=self._metadata["min_coverage"], linestyle=":", color="grey", label="minimal coverage")
 
             _ = ax.set_ylim(0, None)
             _ = ax.set_xlim(start, end-1)
@@ -505,18 +694,30 @@ class SampCompDB(object):
             return(fig, ax)
 
     def plot_bleeding_hulk(self, ref_id, start=None, end=None, split_samples=False, figsize=(30,10)):
-        self.plot_event_stats(ref_id, start, end, split_samples, figsize, "Accent")
+        self.plot_kmers_stats(ref_id, start, end, split_samples, figsize, "Accent")
 
-    def plot_event_stats(self, ref_id, start=None, end=None, split_samples=False, figsize=(30,10), palette="Accent", plot_style="ggplot"):
+    def plot_kmers_stats(self,
+        ref_id:"str",
+        start:"int"=None,
+        end:"int"=None,
+        split_samples:"bool"=False,
+        figsize:"tuple of 2 int"=(30,10),
+        palette:"str"="Accent",
+        plot_style:"str"="ggplot"):
         """
-        ref_id: Valid reference id name in the database
-        start: Start coordinate. Default=0
-        end: End coordinate (included). Default=reference length
-        figsize: length and heigh of the output plot. Default=(30,10)
-        palette: Colormap. Default="Set2"
-            see https://matplotlib.org/users/colormaps.html, https://matplotlib.org/examples/color/named_colors.html
-        plot_style: Matplotlib plotting style. Default="ggplot"
-            . See https://matplotlib.org/users/style_sheets.html
+        Fancy version of `plot_coverage` that also report missing, mismatching and undefined kmers status from Nanopolish
+        * ref_id
+            Valid reference id name in the database
+        * start
+            Start coordinate
+        * end
+            End coordinate (included)
+        * figsize
+            Length and heigh of the output plot
+        * palette
+            Colormap. See https://matplotlib.org/users/colormaps.html, https://matplotlib.org/examples/color/named_colors.html
+        * plot_style
+            Matplotlib plotting style. See https://matplotlib.org/users/style_sheets.html
         """
         # Extract data for ref_id
         ref_data = self[ref_id]
@@ -536,10 +737,10 @@ class SampCompDB(object):
                         d[lab][pos] = {"valid":0,"NNNNN":0,"mismatching":0,"missing":0}
 
                     # Fill-in with values
-                    d[lab][pos]["valid"] += sample_val["events_stats"]["valid"]
-                    d[lab][pos]["NNNNN"] += sample_val["events_stats"]["NNNNN"]
-                    d[lab][pos]["mismatching"] += sample_val["events_stats"]["mismatching"]
-                    d[lab][pos]["missing"] += sample_val["events_stats"]["missing"]
+                    d[lab][pos]["valid"] += sample_val["kmers_stats"]["valid"]
+                    d[lab][pos]["NNNNN"] += sample_val["kmers_stats"]["NNNNN"]
+                    d[lab][pos]["mismatching"] += sample_val["kmers_stats"]["mismatching"]
+                    d[lab][pos]["missing"] += sample_val["kmers_stats"]["missing"]
 
         with pl.style.context(plot_style):
             fig, axes = pl.subplots(len(d),1, figsize=figsize)
@@ -558,24 +759,49 @@ class SampCompDB(object):
 
         return(fig, axes)
 
-    def plot_position(self, ref_id, pos=None, split_samples=False, figsize=(30,10), palette="Set2",  plot_style="ggplot", xlim=(None,None), ylim=(None,None), alpha=0.3, pointSize=20, scatter=True, kde=True, model=False, gmm_levels=50):
+    def plot_position(self,
+        ref_id:"str",
+        pos:"int"=None,
+        split_samples=False,
+        figsize:"tuple of 2 int"=(30,10),
+        palette:"str"="Set2",
+        plot_style:"str"="ggplot",
+        xlim:"tuple of 2 int"=(None,None),
+        ylim:"tuple of 2 int"=(None,None),
+        alpha:"float"=0.3,
+        pointSize:"int"=20,
+        scatter:"bool"=True,
+        kde:"bool"=True,
+        model:"bool"=False,
+        gmm_levels:"int"=50):
         """
         Plot the dwell time and median intensity at the given position as a scatter plot.
-        ref_id: Valid reference id name in the database
-        pos: Position of interest
-        split_samples: If True, samples for a same condition are represented separately. If False, they are merged per condition
-        figsize: length and heigh of the output plot. Default=(30,10)
-        palette: Colormap. Default="Set2"
-            see https://matplotlib.org/users/colormaps.html, https://matplotlib.org/examples/color/named_colors.html
-        plot_style: Matplotlib plotting style.
-            See https://matplotlib.org/users/style_sheets.html
-        xlim: A tuple of explicit limits for the x axis
-        ylim: A tuple of explicit limits for the y axis
-        kde: plot the KDE of the intensity/dwell bivarariate distributions in the two samples
-        scatter: if True, plot the individual data points
-        pointSize: int specifying the point size for the scatter plot
-        model: If true, plot the GMM density estimate
-        gmm_levels: number of contour lines to use for the GMM countour plot
+        * ref_id
+            Valid reference id name in the database
+        * pos
+            Position of interest
+        * split_samples
+            If True, samples for a same condition are represented separately. If False, they are merged per condition
+        * figsize
+            Length and heigh of the output plot
+        * palette
+            Colormap. See https://matplotlib.org/users/colormaps.html, https://matplotlib.org/examples/color/named_colors.html
+        * plot_style
+            Matplotlib plotting style. See https://matplotlib.org/users/style_sheets.html
+        * xlim
+            A tuple of explicit limits for the x axis
+        * ylim
+            A tuple of explicit limits for the y axis
+        * kde
+            plot the KDE of the intensity/dwell bivarariate distributions in the two samples
+        * scatter
+            if True, plot the individual data points
+        * pointSize
+            int specifying the point size for the scatter plot
+        * model
+            If true, plot the GMM density estimate
+        * gmm_levels
+            number of contour lines to use for the GMM countour plot
         """
         # Extract data for ref_id
         ref_data = self[ref_id]
@@ -593,7 +819,7 @@ class SampCompDB(object):
         data = ref_data[pos]['data']
 
         # Sample colors in palette
-        col_gen = self.__color_generator(palette=palette, n=self._n_samples if split_samples else 2)
+        col_gen = self.__color_generator(palette=palette, n=self._metadata["n_samples"] if split_samples else 2)
 
         # Collect and transform data in dict
         plot_data_dict = OrderedDict()
@@ -664,20 +890,31 @@ class SampCompDB(object):
 
             return(fig, ax)
 
-    def plot_volcano(self, ref_id, threshold=0.01, figsize=(30,10), palette="Set2", plot_style="ggplot", method="GMM_pvalue"):
+    def plot_volcano(self,
+        ref_id:"str",
+        threshold:"float"=0.01,
+        figsize:"tuple of 2 int"=(30,10),
+        palette:"str"="Set2",
+        plot_style:"str"="ggplot",
+        method:"str"="GMM_anova_pvalue"):
         """
-        Plot pvalues per position (by default plot all fields starting by "pvalue")
-        It is pointless to plot more than 50 positions at once as it becomes hard to distiguish
-        ref_id: Valid reference id name in the database
-        start: Start coordinate. Default=0
-        end: End coordinate (included). Default=reference length
-        figsize: length and heigh of the output plot. Default=(30,10)
-        palette: Colormap. Default="Set2"
-            see https://matplotlib.org/users/colormaps.html, https://matplotlib.org/examples/color/named_colors.html
-        plot_style: Matplotlib plotting style. Default="ggplot"
-            . See https://matplotlib.org/users/style_sheets.html
-        method: Limit the pvalue methods shown in the plot. Either a list of methods or a regular expression as a string.
-        barplot: plot p-value bars instead of lines
+        ###
+        * ref_id
+            Valid reference id name in the database
+        * start
+            Start coordinate
+        * end
+            End coordinate (included)
+        * figsize
+            Length and heigh of the output plot
+        * palette
+            Colormap. See https://matplotlib.org/users/colormaps.html, https://matplotlib.org/examples/color/named_colors.html
+        * plot_style
+            Matplotlib plotting style. See https://matplotlib.org/users/style_sheets.html
+        * method
+            Limit the pvalue methods shown in the plot. Either a list of methods or a regular expression as a string.
+        * barplot
+            plot p-value bars instead of lines
         """
         # Extract fasta and positions
         start, end = self.__get_positions(ref_id)
@@ -689,8 +926,8 @@ class SampCompDB(object):
 
         # Make a list with all methods available
         methods=list(self.results)
-        if method not in self._pvalue_tests:
-            raise NanocomporeError("Method %s is not in the results dataframe. Please chose one of %s "%(method, self._pvalue_tests))
+        if method not in self._metadata["pvalue_tests"]:
+            raise NanocomporeError("Method %s is not in the results dataframe. Please chose one of %s "%(method, self._metadata["pvalue_tests"]))
 
         # Parse line position per position
         d = OrderedDict()

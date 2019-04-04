@@ -100,8 +100,11 @@ venv.bak/
 # mkdocs documentation
 /site
 
-# data
-tests
-
 # mypy
 .mypy_cache/
+site/
+
+# Results and data folder
+data
+docs/demo/results
+tmp
