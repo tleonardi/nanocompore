@@ -8,8 +8,8 @@ from nanocompore.Whitelist import Whitelist
 
 
 @pytest.fixture(scope="module")
-def fasta_file(tmpdir_factory):
-    fasta_file = tmpdir_factory.mktemp("fasta").join("reference.fa")
+def fasta_file(tmp_path_factory):
+    fasta_file = tmp_path_factory.mktemp("fasta") / "reference.fa"
     with open(fasta_file, 'w') as f:
         f.write('>Ref_001\n')
         f.write('A'*1000+'\n')
@@ -18,8 +18,8 @@ def fasta_file(tmpdir_factory):
     return(str(fasta_file))
 
 @pytest.fixture(scope="module")
-def nanopolishcomp_test_files(tmpdir_factory, fasta_file):
-    tmp_path=tmpdir_factory.mktemp("generated_data")
+def nanopolishcomp_test_files(tmp_path_factory, fasta_file):
+    tmp_path=tmp_path_factory.mktemp("generated_data")
     SimReads(fasta_fn=fasta_file, outpath=str(tmp_path), outprefix="reads", overwrite=True)
     fn_dict={"S1": {
             "R1": str(tmp_path / "reads.tsv"),

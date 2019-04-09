@@ -10,8 +10,8 @@ import sys
 import random
 
 @pytest.fixture(scope="module")
-def fasta_file(tmpdir_factory):
-    fasta_file = tmpdir_factory.mktemp("fasta").join("reference.fa")
+def fasta_file(tmp_path_factory):
+    fasta_file = tmp_path_factory.mktemp("fasta") / "reference.fa"
     random.seed(42)
     with open(fasta_file, 'w') as f:
         for n in range(0,1):
@@ -20,9 +20,9 @@ def fasta_file(tmpdir_factory):
     return(str(fasta_file))
 
 @pytest.fixture(scope="module")
-def nanopolishcomp_test_files(tmpdir_factory, fasta_file):
+def nanopolishcomp_test_files(tmp_path_factory, fasta_file):
     """ Generate simulated data with SimReads() """
-    tmp_path=tmpdir_factory.mktemp("generated_data")
+    tmp_path=tmp_path_factory.mktemp("generated_data")
     data_rand_seed=869
     fn_dict={'S1':{}, 'S2':{}}
     for rep in [1,2,3,4]:
