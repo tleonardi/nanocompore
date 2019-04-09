@@ -5,16 +5,16 @@ import numpy as np
 tol=10e-6
 
 @pytest.mark.parametrize("pvalues", [
-    (   
-        [0.1,0.2,0.3,0.5], 
+    (
+        [0.1,0.2,0.3,0.5],
         [0.4, 0.4, 0.4, 0.5]
     ),
     (
-        [0.1, 0.01, np.nan, 0.01, 0.5, 0.4, 0.01, 0.001, np.nan, np.nan, 0.01, np.nan], 
+        [0.1, 0.01, np.nan, 0.01, 0.5, 0.4, 0.01, 0.001, np.nan, np.nan, 0.01, np.nan],
         [0.13333333, 0.016, np.nan, 0.016, 0.5, 0.45714286, 0.016, 0.008, np.nan, np.nan, 0.016, np.nan]
     ),
     (
-        [np.nan, np.nan, np.nan],    
+        [np.nan, np.nan, np.nan],
         [np.nan, np.nan, np.nan]
     ),
     (

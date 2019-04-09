@@ -44,7 +44,7 @@ def nanopolishcomp_test_files(tmpdir_factory, fasta_file):
             not_bound=True,
             log_level="debug",
             overwrite=True)
-    
+
         SimReads (
             fasta_fn=fasta_file,
             outpath=str(tmp_path),
