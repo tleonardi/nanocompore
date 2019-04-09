@@ -96,7 +96,7 @@ def test_ref_pos_list():
 def test_txComp_GMM_anova(test_ref_pos_list):
     ml = mock.Mock()
     if sys.version_info < (3, 6):
-        tol = 0.0001
+        tol = 0.0002
     else:
         tol=0.00000001
     res = txCompare(test_ref_pos_list[0], methods=['GMM'], logit=False, sequence_context=2, min_coverage=3, logger=ml, allow_warnings=False, random_state=np.random.RandomState(seed=42))
