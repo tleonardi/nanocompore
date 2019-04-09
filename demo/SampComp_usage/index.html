@@ -756,7 +756,7 @@
                 
                 <h1 id="compare-samples-with-sampcomp">Compare samples with SampComp</h1>
 <h2 id="in-brief">In brief</h2>
-<p><code class="codehilite">SampComp</code> first parses the sample eventalign collapse files and pileups the observed results per reference at position level. Then, positions are compared using various statistical methods and the statistics are stored in a shelve DBM database containing the results for all positions with sufficient coverage. The API returns a <code class="codehilite">SampCompDB</code> database wrapper object that can be subsequently interrogated to extract data and plots.</p>
+<p>First, <code class="codehilite">SampComp</code> parses the sample eventalign collapse files and then the observed results are piled-up per reference at position level. In a second time, positions are compared using various statistical methods and the statistics are stored in a shelve DBM database containing the results for all positions with sufficient coverage. The API returns a <code class="codehilite">SampCompDB</code> database wrapper object that can be subsequently interrogated to extract data and plots.</p>
 <h2 id="quick-start">Quick start</h2>
 <p>Example CLI call</p>
 <div class="codehilite"><pre><span></span>nanocompore sampcomp <span class="se">\</span>
@@ -787,10 +787,10 @@
 <h2 id="description-of-main-options">Description of main options</h2>
 <p><code class="codehilite">SampComp</code> provides a very flexible analysis framework with a few mandatory options and many optional parameters. The full CLI and API documentations are provided at the bottom of this page.</p>
 <h4 id="sample-files">Sample files</h4>
-<p><code class="codehilite">SampComp</code> requires sample files obtained with <code class="codehilite">NanopolishComp EventalignCollapse</code> as explained before (see <a href="data_preparation.md">data preparation</a>) for both the control and the experimental conditions. 2 conditions are expected, and at least 2 sample replicates per conditions are highly recommended. If <code class="codehilite">SampComp</code> is called through the CLI the files can be provides using either relevant command options or a YAML file. If using the Python API, one can pass either a python dictionary or a YAML file.</p>
+<p><code class="codehilite">SampComp</code> requires sample files obtained with <code class="codehilite">NanopolishComp EventalignCollapse</code> as explained before (see <a href="data_preparation.md">data preparation</a>) for both the control and the experimental conditions. 2 conditions are expected and at least 2 replicates per conditions are highly recommended. If <code class="codehilite">SampComp</code> is called through the CLI the files can be provided using either relevant command options or a YAML file. With the Python API you can pass either a python dictionary or a YAML file.</p>
 <div class="admonition info">
 <p class="admonition-title">YAML file option (CLI or API)</p>
-<p>This option allows to pass a YAML formatted file indicating the sample condition labels and paths to data files with the option <code class="codehilite">--sample_yaml</code> for the CLI or directly to <code class="codehilite">eventalign_fn_dict</code> for the API. The file should be formatted as follow:</p>
+<p>This option allows to pass a YAML formatted file indicating the sample condition labels and paths to data files with the option <code class="codehilite">--sample_yaml</code> for the CLI or directly with <code class="codehilite">eventalign_fn_dict</code> for the API. The file should be formatted as follow:</p>
 <div class="codehilite"><pre><span></span><span class="l l-Scalar l-Scalar-Plain">WT</span><span class="p p-Indicator">:</span>
     <span class="l l-Scalar l-Scalar-Plain">rep1</span><span class="p p-Indicator">:</span>   <span class="l l-Scalar l-Scalar-Plain">./data/S1_R1.tsv</span>
     <span class="l l-Scalar l-Scalar-Plain">rep2</span><span class="p p-Indicator">:</span>   <span class="l l-Scalar l-Scalar-Plain">./data/S1_R2.tsv</span>
@@ -818,9 +818,9 @@
 <h4 id="transcriptome-reference-fasta-file">Transcriptome reference FASTA file</h4>
 <p>A transcriptome FASTA reference file is required to extract kmer sequences during the analyses. The reference has to be the same as the one used at the mapping step. (CLI: <code class="codehilite">--fasta</code>, API: <code class="codehilite">fasta_fn</code>)</p>
 <h4 id="output-folder">Output folder</h4>
-<p>Although it is not mandatory, it is recommended to provide a path to a directory where the program will output the result files  (CLI: <code class="codehilite">--outpath</code>, API: <code class="codehilite">outpath</code>). In addition, users can also specify a prefix for the files to be generated (CLI: <code class="codehilite">--outprefix</code>, API: <code class="codehilite">outprefix</code>). Finally, if the outpath directory already exists, the program will raise an error to prevent erasing result files accidentally. To ignore the error one as to specify to overwrite previous results (CLI: <code class="codehilite">--outprefix</code>, API: <code class="codehilite">outprefix</code>).</p>
+<p>Although it is not mandatory, it is recommended to provide a path to a directory where the program will output the result files  (CLI: <code class="codehilite">--outpath</code>, API: <code class="codehilite">outpath</code>). In addition, users can also specify a prefix for the files to be generated (CLI: <code class="codehilite">--outprefix</code>, API: <code class="codehilite">outprefix</code>). Finally, if the outpath directory already exists, the program will raise an error to avoid erasing result files. To ignore the error you can to specify to overwrite previous results (CLI: <code class="codehilite">--overwrite</code>, API: <code class="codehilite">overwrite</code>).</p>
 <h4 id="genome-annotation-bed-file">Genome annotation BED file</h4>
-<p>Optionally, a BED file containing the genome annotations corresponding to the transcriptome fasta file can be provided. If this file is given, Nanocompore will also convert the transcript coordinates into the genome space (CLI: <code class="codehilite">--bed</code>, API: <code class="codehilite">bed_fn</code>)</p>
+<p>Optionally, a BED file containing the genome annotations corresponding to the transcriptome fasta file can be provided. In that case Nanocompore will also convert the transcript coordinates into the genome space (CLI: <code class="codehilite">--bed</code>, API: <code class="codehilite">bed_fn</code>)</p>
 <h4 id="statistical-options">Statistical options</h4>
 <p><code class="codehilite">SampComp</code> implements several statistical methods to evaluate the difference between the 2 conditions (<code class="codehilite">comparison_method</code>).</p>
 <ul>
@@ -831,10 +831,10 @@
 </ul>
 <p>In addition, it is also possible to specify the number of adjacent positions to take into account for the pvalue calculation (<code class="codehilite">sequence_context</code>) as well as the weights to give to adjacent position, using either an "uniform" or a "harmonic" distribution (<code class="codehilite">sequence_context_weights</code>).</p>
 <h4 id="coverage-options">Coverage options</h4>
-<p>The default coverage threshold for <code class="codehilite">SampComp</code> to perform a statistical test is 50 reads in each replicates. This is quite conservative and can be modified if needed (<code class="codehilite">min_coverage</code>). In addition, to reduce the computational burden it is possible to randomly down-sample the number of reads for high coverage references (<code class="codehilite">downsample_high_coverage</code>).</p>
+<p>The default coverage threshold for <code class="codehilite">SampComp</code> to perform a statistical test is 30 reads in each replicates. This is quite conservative and can be modified if needed (<code class="codehilite">min_coverage</code>). In addition, to reduce the computational burden it is possible to randomly down-sample the number of reads for high coverage references (<code class="codehilite">downsample_high_coverage</code>).</p>
 <h4 id="manually-exclude-or-include-references-api-only">Manually exclude or include references (API only)</h4>
 <p>The API allows to specify references to be included or excluded from the analysis (<code class="codehilite">select_ref_id</code> and
-<code class="codehilite">exclude_ref_id</code>). This can be useful to analyse a specific transcripts set only or to run a small test before analysing the entire dataset.</p>
+<code class="codehilite">exclude_ref_id</code>). This can be useful to analyse a specific set of transcripts or to run a small test before analysing the whole dataset.</p>
 <h2 id="advanced-api-usage">Advanced API Usage</h2>
 <h3 id="import-the-package">Import the package</h3>
 <div class="codehilite"><pre><span></span><span class="kn">from</span> <span class="nn">nanocompore.SampComp</span> <span class="kn">import</span> <span class="n">SampComp</span>
