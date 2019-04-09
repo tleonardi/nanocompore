@@ -3,6 +3,7 @@ from nanocompore.TxComp import *
 from scipy.stats import combine_pvalues
 import numpy as np
 from unittest import mock
+import sys
 
 
 @pytest.mark.parametrize("pvalues", [
@@ -94,7 +95,10 @@ def test_ref_pos_list():
 
 def test_txComp_GMM_anova(test_ref_pos_list):
     ml = mock.Mock()
-    tol=0.00000001
+    if sys.version_info < (3, 6):
+        tol = 0.0002
+    else:
+        tol=0.00000001
     res = txCompare(test_ref_pos_list[0], methods=['GMM'], logit=False, sequence_context=2, min_coverage=3, logger=ml, allow_warnings=False, random_state=np.random.RandomState(seed=42))
     GMM_pvalues = [pos['txComp']['GMM_anova_pvalue'] for pos in res ]
     assert GMM_pvalues == [pytest.approx(i, abs=tol, nan_ok=True) for i in test_ref_pos_list[1]['GMM_anova']]
@@ -150,7 +154,6 @@ def test_ref_pos_list_0_var():
 
 def test_txComp_GMM_anova_0_var(test_ref_pos_list_0_var):
     ml = mock.Mock()
-    tol=0.000000001
     with pytest.raises(NanocomporeError):
         txCompare(test_ref_pos_list_0_var, methods=['GMM'], logit=False, sequence_context=2, min_coverage=3, logger=ml, allow_warnings=False, random_state=np.random.RandomState(seed=42))
 
