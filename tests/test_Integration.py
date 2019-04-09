@@ -13,7 +13,7 @@ import random
 def fasta_file(tmp_path_factory):
     fasta_file = tmp_path_factory.mktemp("fasta") / "reference.fa"
     random.seed(42)
-    with open(os.fspath(fasta_file), 'w') as f:
+    with open(str(fasta_file), 'w') as f:
         for n in range(0,1):
             f.write('>Ref_00{}\n'.format(n))
             f.write("".join([random.choice("ACGT") for _ in range(0,random.randint(100, 2000))])+"\n")    

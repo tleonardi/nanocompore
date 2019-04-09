@@ -10,7 +10,7 @@ from nanocompore.Whitelist import Whitelist
 @pytest.fixture(scope="module")
 def fasta_file(tmp_path_factory):
     fasta_file = tmp_path_factory.mktemp("fasta") / "reference.fa"
-    with open(os.fspath(fasta_file), 'w') as f:
+    with open(str(fasta_file), 'w') as f:
         f.write('>Ref_001\n')
         f.write('A'*1000+'\n')
         f.write('>Ref_002\n')
