@@ -13,7 +13,7 @@ setup_dict = {
     "author": 'Tommaso Leonardi and Adrien Leger',
     "author_email": 'tom {at} tleo.io / aleg {at} ebi.ac.uk',
     "license": "MIT",
-    "python_requires":'>=3.3',
+   python_requires":'>=3.5',
     "classifiers": [
         'Development Status :: 3 - Alpha',
         'Intended Audience :: Science/Research',
