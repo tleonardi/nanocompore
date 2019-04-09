@@ -32,6 +32,7 @@ def test_combine_pvalues_raises_exception_with_invalid_pvalues(pvalues):
     with pytest.raises(NanocomporeError):
         combine_pvalues_hou(pvalues, weights, cor_mat)
 
+
 @pytest.mark.parametrize("v1, v2, expected", [
     ( (1,4,3,2,9), (1,7,8,8,5), (0.4619, 0.3277, 0.3291))
 ])
@@ -86,7 +87,7 @@ def test_ref_pos_list():
                                  }
     # These expected values have been checked against the R implementations of aov() and glm(family="binomial")
     expected = {'GMM_anova': [0.0008574768473501677, 0.0036329291397528157, 0.007312047981252302, 0.0010906844025473576, np.nan, 0.004197519576768562, 0.004730678586860965, 0.0028228474915020945, 0.0023262178697710987, 0.00020764199465021126],
-		'GMM_logit': [1.274245328765287e-39, 3.3968653938213694e-40, 1.9321679678623975e-36, 8.482777798353687e-40, np.nan, 7.06503867181238e-40, 1.839272092115274e-40, 9.162002495725215e-32, 5.922884891638699e-34, 3.1972432623454785e-40] 
+		'GMM_logit': [1.274245328765287e-39, 3.3968653938213694e-40, 1.9321679678623975e-36, 8.482777798353687e-40, np.nan, 7.06503867181238e-40, 1.839272092115274e-40, 9.162002495725215e-32, 5.922884891638699e-34, 3.1972432623454785e-40]
 		}
     return((test_ref_pos_list, expected))
 
@@ -96,7 +97,7 @@ def test_txComp_GMM_anova(test_ref_pos_list):
     tol=0.00000001
     res = txCompare(test_ref_pos_list[0], methods=['GMM'], logit=False, sequence_context=2, min_coverage=3, logger=ml, allow_warnings=False, random_state=np.random.RandomState(seed=42))
     GMM_pvalues = [pos['txComp']['GMM_anova_pvalue'] for pos in res ]
-    assert GMM_pvalues == [pytest.approx(i, abs=tol, nan_ok=True) for i in test_ref_pos_list[1]['GMM_anova']] 
+    assert GMM_pvalues == [pytest.approx(i, abs=tol, nan_ok=True) for i in test_ref_pos_list[1]['GMM_anova']]
 
 def test_txComp_GMM_logit(test_ref_pos_list):
     ml = mock.Mock()
@@ -107,7 +108,7 @@ def test_txComp_GMM_logit(test_ref_pos_list):
     print(test_ref_pos_list[1]['GMM_logit'])
     print([pos['txComp']['GMM_model']['cluster_counts'] for pos in res ])
 
-    assert GMM_logit == [pytest.approx(i, abs=tol, nan_ok=True) for i in test_ref_pos_list[1]['GMM_logit']] 
+    assert GMM_logit == [pytest.approx(i, abs=tol, nan_ok=True) for i in test_ref_pos_list[1]['GMM_logit']]
 
 @pytest.fixture
 def test_ref_pos_list_0_var():
@@ -189,3 +190,21 @@ def test_txComp_GMM_dup_lab(test_ref_pos_list_dup_lab):
     ml = mock.Mock()
     with pytest.raises(NanocomporeError):
         txCompare(test_ref_pos_list_dup_lab, methods=['GMM'], logit=False, sequence_context=2, min_coverage=3, logger=ml, allow_warnings=False, random_state=np.random.RandomState(seed=42))
+
+def test_txComp_lowCov(test_ref_pos_list):
+    """ This test ensures that txCompare runs also when the number of covered positions
+        in a reference is below the threshold
+    """
+    test_ref_pos_list = test_ref_pos_list[0]
+    low_cov_positions = [0,1,5]
+    for pos in low_cov_positions:
+        test_ref_pos_list[pos]['data']['WT']['WT1']['coverage'] = 1
+    ml = mock.Mock()
+    results = txCompare(test_ref_pos_list, methods=['GMM'], logit=False, sequence_context=2, min_coverage=30, logger=ml, allow_warnings=False, random_state=np.random.RandomState(seed=42))
+    for pos in results:
+        if 'txComp' in pos:
+            # If the original p-value was nan, the context p-value also has to be nan
+            if np.isnan(pos['txComp']['GMM_anova_pvalue']):
+                assert np.isnan(pos['txComp']['GMM_anova_pvalue_context_2'])
+            else:
+                assert not np.isnan(pos['txComp']['GMM_anova_pvalue_context_2'])

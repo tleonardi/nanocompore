@@ -104,32 +104,37 @@ def txCompare(
         for pos_dict in ref_pos_list:
             if 'txComp' in pos_dict:
                 for test in tests:
-                    if test in pos_dict['txComp']:
-                        pval_list_dict[test].append(pos_dict['txComp'][test])
+                    pval_list_dict[test].append(pos_dict['txComp'][test])
+            elif pos_dict["lowCov"]:
+                for test in tests:
+                    pval_list_dict[test].append(np.nan)
         # Compute cross correlation matrix per test
         corr_matrix_dict = OrderedDict()
         for test in tests:
             corr_matrix_dict[test] = cross_corr_matrix(pval_list_dict[test], sequence_context)
 
         logger.debug("Combine adjacent position pvalues with Hou's method position per position")
-        # Iterate over each positions in previously generated result dictionnary
+        # Iterate over each positions in previously generated result dictionary
         for mid_pos in range(len(ref_pos_list)):
             # Perform test only if middle pos is valid
             if not ref_pos_list[mid_pos]["lowCov"]:
                 pval_list_dict = defaultdict(list)
                 for pos in range(mid_pos-sequence_context, mid_pos+sequence_context+1):
-                    # If any the positions is missing or any of the pvalues in the context is lowCov or NaN, consider it 1
-                    if pos < 0 or pos >= len(ref_pos_list) or ref_pos_list[pos]["lowCov"]:
-                        for test in tests:
+                    for test in tests:
+                        # If any of the positions is missing or any of the pvalues in the context is lowCov or NaN, consider it 1
+                        if pos < 0 or pos >= len(ref_pos_list) or ref_pos_list[pos]["lowCov"] or np.isnan(ref_pos_list[pos]["txComp"][test]):
                             pval_list_dict[test].append(1)
-                    # else just extract the corresponding pvalue
-                    else:
-                        for test in tests:
+                        # else just extract the corresponding pvalue
+                        else:
                             pval_list_dict[test].append(ref_pos_list[pos]["txComp"][test])
-                # Combine collected pvalues add add to dict
+                # Combine collected pvalues and add to dict
                 for test in tests:
                     test_label = "{}_context_{}".format(test, sequence_context)
-                    ref_pos_list[mid_pos]['txComp'][test_label] = combine_pvalues_hou(pval_list_dict[test], weights, corr_matrix_dict[test])
+                    # If the mid p-value is.nan, force to nan also the context p-value
+                    if np.isnan(ref_pos_list[mid_pos]["txComp"][test]):
+                        ref_pos_list[mid_pos]['txComp'][test_label] = np.nan
+                    else:
+                        ref_pos_list[mid_pos]['txComp'][test_label] = combine_pvalues_hou(pval_list_dict[test], weights, corr_matrix_dict[test])
 
     return ref_pos_list
 
@@ -337,6 +342,7 @@ def cross_corr_matrix(pvalues_vector, context=2):
 def combine_pvalues_hou(pvalues, weights, cor_mat):
     """ Hou's method for the approximation for the distribution of the weighted
         combination of non-independent or independent probabilities.
+        If any pvalue is nan, returns nan.
         https://doi.org/10.1016/j.spl.2004.11.028
         pvalues: list of pvalues to be combined
         weights: the weights of the pvalues
