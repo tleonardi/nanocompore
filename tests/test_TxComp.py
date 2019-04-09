@@ -32,6 +32,7 @@ def test_combine_pvalues_raises_exception_with_invalid_pvalues(pvalues):
     with pytest.raises(NanocomporeError):
         combine_pvalues_hou(pvalues, weights, cor_mat)
 
+
 @pytest.mark.parametrize("v1, v2, expected", [
     ( (1,4,3,2,9), (1,7,8,8,5), (0.4619, 0.3277, 0.3291))
 ])
@@ -189,3 +190,21 @@ def test_txComp_GMM_dup_lab(test_ref_pos_list_dup_lab):
     ml = mock.Mock()
     with pytest.raises(NanocomporeError):
         txCompare(test_ref_pos_list_dup_lab, methods=['GMM'], logit=False, sequence_context=2, min_coverage=3, logger=ml, allow_warnings=False, random_state=np.random.RandomState(seed=42))
+
+def test_txComp_lowCov(test_ref_pos_list):
+    """ This test ensures that txCompare runs also when the number of covered positions
+        in a reference is below the threshold
+    """
+    test_ref_pos_list = test_ref_pos_list[0]
+    low_cov_positions = [0,1,5]
+    for pos in low_cov_positions:
+        test_ref_pos_list[pos]['data']['WT']['WT1']['coverage'] = 1
+    ml = mock.Mock()
+    results = txCompare(test_ref_pos_list, methods=['GMM'], logit=False, sequence_context=2, min_coverage=30, logger=ml, allow_warnings=False, random_state=np.random.RandomState(seed=42))
+    for pos in results:
+        if 'txComp' in pos: 
+            # If the original p-value was nan, the context p-value also has to be nan
+            if np.isnan(pos['txComp']['GMM_anova_pvalue']):
+                assert np.isnan(pos['txComp']['GMM_anova_pvalue_context_2'])
+            else:
+                assert not np.isnan(pos['txComp']['GMM_anova_pvalue_context_2'])
