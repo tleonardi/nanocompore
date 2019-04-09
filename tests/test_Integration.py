@@ -8,6 +8,10 @@ from nanocompore.SampComp import SampComp
 import hashlib
 import sys
 import random
+from os import environ
+
+# Check if the tests are running inside Travis
+travis = True if 'TRAVIS' in os.environ else False
 
 @pytest.fixture(scope="module")
 def fasta_file(tmp_path_factory):
@@ -70,6 +74,8 @@ def nanopolishcomp_test_files(tmp_path_factory, fasta_file):
 @pytest.mark.parametrize("context", [2,3])
 @pytest.mark.parametrize("context_weight", ["uniform", "harmonic"])
 def test_sig_sites(nanopolishcomp_test_files, method, context, context_weight):
+    if travis and (method != "GMM" or context != 2 or context_weight != "uniform"):
+        pytest.skip()
     fasta_file, fn_dict, tmp_path = nanopolishcomp_test_files
     s = SampComp(eventalign_fn_dict=fn_dict,
             outpath=tmp_path,
