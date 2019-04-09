@@ -11,5 +11,9 @@ python:
 install:
           - pip install .
 
+branches:
+        only:
+          - master
+          - stable
 script:
           - pytest
