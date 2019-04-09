@@ -22,7 +22,8 @@ matrix:
                   install:
                             - pip install 'pytest>=4.4.0' --upgrade
                             - pip install .
-                            - pip install mkdocs pymdown-extensions nbconvert mknotebooks mkdocs-material
+                            - pip install nbconvert
+                            - pip install mkdocs pymdown-extensions mknotebooks mkdocs-material
                   branches:
                           only:
                             - master
