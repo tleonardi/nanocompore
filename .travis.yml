@@ -1,33 +1,35 @@
+dist: xenial
+language: python
+branches:
+        only:
+          - master
+          - devel
 matrix:
         include:
-                - dist: xenial
-                  language: python
-                  python:
+                - python:
                             - 3.5
                   install:
                             - pip install 'pytest>=4.4.0' --upgrade
                             - pip install .
-                  branches:
-                          only:
-                            - master
-                            - devel
                   script:
                             - pytest
-                
-                - dist: xenial
-                  language: python
-                  python:
+                - python:
                             - 3.6
+                  install:
+                            - pip install 'pytest>=4.4.0' --upgrade
+                            - pip install .
+                            - pip install nbconvert
+                            - pip install mkdocs pymdown-extensions mknotebooks mkdocs-material
+                  script:
+                            - pytest
+                            - mkdocs build
+                - python:
                             - 3.7
                   install:
                             - pip install 'pytest>=4.4.0' --upgrade
                             - pip install .
                             - pip install nbconvert
                             - pip install mkdocs pymdown-extensions mknotebooks mkdocs-material
-                  branches:
-                          only:
-                            - master
-                            - devel
                   script:
                             - pytest
                             - mkdocs build
