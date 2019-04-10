@@ -14,26 +14,24 @@ install:
   - pip install .
 script:
   - pytest
-
+notifications:
+  slack:
+    secure: Hz3J3AluB4lN+YxRxsV93IjL0j5pevTDXflw9YN6VWH99BL7OEJxhsOGtqHLqbUDa4+XPVGgFsAXiHZPO19d4jng5uIRbj7VZNFK7gwn58S3GfyMeGOjdYh0fB/xbgYn2jYM1cWGpanwtXq5aDVEHPL2M803UMyyAM2F/HmysRdr50VFYQJQ4It77H+vajtyZGL7ztuAuY2AD10v5PctGk9JYt/EQWbYwdtCSdUNHublwiLRzvyvT/LT//MzsELuMdKzaVPQn01PMjZNerOsBszgscfBEOCSJtLaCjlQwvONWFCx9xP0kVBfMQo55XQaD9cSyswVnigzTihGaozU+149ZTWpB57Xd0tAsQ05GJIatbB+8FGKmFkFjvkxBSGXkL3AYN0engOpZyR4/KHrmKlSu2oCLbJMqvdnjlm/V41IV8UiMCgRCF/kMvHcHtgnBezV36+0eRMEWW7Vz7GAh7Eeqo3kcSTFG6OHD5kkiVoDW+S64cunHcb6k8sM+N/WxadpFV+jzzK/ovoDOA7G7gxhzgONJ8BYC2azZmRf+JfhosbRTh7PgMEi1srOlmJSZAzbE4IVJYcqOWbIdHO+v+1scYepPvzOuCXlD98UNhOOtAaMKXy9zGz2IYgbcswHOdUFnD2ei53pGz5QLJ0VLh7ZpBYfEEVB7uKbKsGuWB8=
 jobs:
   include:
     - stage: deploy
       python: 3.7
       install: 
-      - pip install nbconvert
-      - pip install mkdocs pymdown-extensions mknotebooks mkdocs-material
+        - pip install nbconvert
+        - pip install mkdocs pymdown-extensions mknotebooks mkdocs-material
       script:
-      - mkdocs build
+        - mkdocs build
       deploy:
         provider: pages
-        local_dir: site/
+        local_dir: site
         skip_cleanup: true
         keep_history: true
         fqdn: nanocompore.rna.rocks
         on:
           branch: master
         secure: 0MQi1mZ+EOsQ+/JfwzAqlPj9kUVdJ5v6y4XwhsMrmSlPYObHcLDTQ6e18y/VilLj28KcwEKo+W6n97NiAmQqGxRVyDCvaBC8bMZ/TVAFNCBxW8WIwWy39bWjp0kzy5DfIMgHW7a07OS8bsAAGcUBEMzUmCogNu6LxtEjhMvqgDQJVfBTJRsatXDQK+6tnMPgayHlzur8AfZbtbOYqTZkQYd0ul0N4d+I3rGAkTs3SYceVWIgb0lf+nZqiMczqs3J6bmIRCk9RyXbRpq0t4/P7LhEy0qWgyLSzx/IVrVQKGu+eLIwDHVL7uQNNivVQJhtzyggchk680Pms9t2+DB8Qf5lz1M51p++IG/SXWRBd0UEcyhyutfvdCDGN0Y9F42jhmAOwZ3s6v3vDZLV8yoQRbGml4xD2miwbVwyrPpnn0bDTVYPbeDe8uXyXkhbRtGnWwi8el+5EfM6tFnc9Lrqg531iKkOfRrkj3YsPOIEgR2H9nvu9J/3aUnjPargm3sHLiHroLQ05UbKOBnfCXgxXN2E8jaeOisRVmzz9kUA8OkH45UjbFwqjV3F804FcqHIqU/adsfpq0PeLE6MLYp9NwdtyeCCHX/WmExqKHCb8MYbqPjBtbXnrhaDcOEuVMc0/wsE5/e5hTQDe8+3smZDop4nEteEB3yzR3Di7cUCIYg=
-
-notifications:
-  slack:
-    secure: Hz3J3AluB4lN+YxRxsV93IjL0j5pevTDXflw9YN6VWH99BL7OEJxhsOGtqHLqbUDa4+XPVGgFsAXiHZPO19d4jng5uIRbj7VZNFK7gwn58S3GfyMeGOjdYh0fB/xbgYn2jYM1cWGpanwtXq5aDVEHPL2M803UMyyAM2F/HmysRdr50VFYQJQ4It77H+vajtyZGL7ztuAuY2AD10v5PctGk9JYt/EQWbYwdtCSdUNHublwiLRzvyvT/LT//MzsELuMdKzaVPQn01PMjZNerOsBszgscfBEOCSJtLaCjlQwvONWFCx9xP0kVBfMQo55XQaD9cSyswVnigzTihGaozU+149ZTWpB57Xd0tAsQ05GJIatbB+8FGKmFkFjvkxBSGXkL3AYN0engOpZyR4/KHrmKlSu2oCLbJMqvdnjlm/V41IV8UiMCgRCF/kMvHcHtgnBezV36+0eRMEWW7Vz7GAh7Eeqo3kcSTFG6OHD5kkiVoDW+S64cunHcb6k8sM+N/WxadpFV+jzzK/ovoDOA7G7gxhzgONJ8BYC2azZmRf+JfhosbRTh7PgMEi1srOlmJSZAzbE4IVJYcqOWbIdHO+v+1scYepPvzOuCXlD98UNhOOtAaMKXy9zGz2IYgbcswHOdUFnD2ei53pGz5QLJ0VLh7ZpBYfEEVB7uKbKsGuWB8=
