@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 # Define self package variable
-__version__ = "1.0.0rc1"
+__version__ = "1.0.0rc2"
 description = 'Software package that identifies raw signal changes between two conditions from https://github.com/jts/nanopolish resquiggled dRNA-Seq data.'
 
 # Collect info in a dictionary for setup.py
@@ -13,7 +13,7 @@ setup_dict = {
     "author": 'Tommaso Leonardi and Adrien Leger',
     "author_email": 'tom {at} tleo.io / aleg {at} ebi.ac.uk',
     "license": "MIT",
-    "python_requires":'>=3.3',
+    "python_requires":'>=3.5',
     "classifiers": [
         'Development Status :: 3 - Alpha',
         'Intended Audience :: Science/Research',
