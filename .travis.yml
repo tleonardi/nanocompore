@@ -41,6 +41,7 @@ matrix:
         local_dir: site/
         skip_cleanup: true
         keep_history: true
+        fqdn: nanocompore.rna.rocks
         on:
           branch: master
         secure: 0MQi1mZ+EOsQ+/JfwzAqlPj9kUVdJ5v6y4XwhsMrmSlPYObHcLDTQ6e18y/VilLj28KcwEKo+W6n97NiAmQqGxRVyDCvaBC8bMZ/TVAFNCBxW8WIwWy39bWjp0kzy5DfIMgHW7a07OS8bsAAGcUBEMzUmCogNu6LxtEjhMvqgDQJVfBTJRsatXDQK+6tnMPgayHlzur8AfZbtbOYqTZkQYd0ul0N4d+I3rGAkTs3SYceVWIgb0lf+nZqiMczqs3J6bmIRCk9RyXbRpq0t4/P7LhEy0qWgyLSzx/IVrVQKGu+eLIwDHVL7uQNNivVQJhtzyggchk680Pms9t2+DB8Qf5lz1M51p++IG/SXWRBd0UEcyhyutfvdCDGN0Y9F42jhmAOwZ3s6v3vDZLV8yoQRbGml4xD2miwbVwyrPpnn0bDTVYPbeDe8uXyXkhbRtGnWwi8el+5EfM6tFnc9Lrqg531iKkOfRrkj3YsPOIEgR2H9nvu9J/3aUnjPargm3sHLiHroLQ05UbKOBnfCXgxXN2E8jaeOisRVmzz9kUA8OkH45UjbFwqjV3F804FcqHIqU/adsfpq0PeLE6MLYp9NwdtyeCCHX/WmExqKHCb8MYbqPjBtbXnrhaDcOEuVMc0/wsE5/e5hTQDe8+3smZDop4nEteEB3yzR3Di7cUCIYg=
