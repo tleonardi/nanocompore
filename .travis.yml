@@ -26,7 +26,7 @@ jobs:
         - pip install mkdocs pymdown-extensions mknotebooks mkdocs-material
       script:
         - mkdocs build
-      deploy: gh-pages
+      deploy: &gh-pages
         provider: pages
         local_dir: site
         skip_cleanup: true
