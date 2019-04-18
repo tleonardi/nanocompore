@@ -64,6 +64,7 @@ class SampCompDB(object):
         # Try to get ref_id list and metadata from shelve db
         try:
             db_fn = db_prefix+"SampComp.db"
+            print(db_fn)
             with shelve.open(db_fn, flag='r') as db:
                 # Try to get metadata from db
                 try:
@@ -842,8 +843,10 @@ class SampCompDB(object):
                     "color":next(col_gen)}
 
         # Add GMM model if required and available
-        if model and 'txComp' in ref_data[pos] and 'GMM_model' in ref_data[pos]['txComp'] and isinstance(model, GaussianMixture):
-            model = ref_data[pos]['txComp']['GMM_model'][4]
+        if model and 'txComp' in ref_data[pos] and 'GMM_model' in ref_data[pos]['txComp']:
+            model = ref_data[pos]['txComp']['GMM_model']['model']
+            if not isinstance(model, GaussianMixture):
+                raise NanocomporeError("The GMM_model slot for this position is not an instance of the GaussianMixture class")
             condition_labels = tuple(data.keys())
             global_intensity = scale(np.concatenate(([v['intensity'] for v in data[condition_labels[0]].values()]+[v['intensity'] for v in data[condition_labels[1]].values()]), axis=None))
             global_dwell = scale(np.log10(np.concatenate(([v['dwell'] for v in data[condition_labels[0]].values()]+[v['dwell'] for v in data[condition_labels[1]].values()]), axis=None)))
