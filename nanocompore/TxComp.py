@@ -150,7 +150,12 @@ def nonparametric_test(condition1_intensity, condition2_intensity, condition1_dw
         raise NanocomporeError("Invalid statistical method name (MW, KS, ttest)")
 
     pval_intensity = stat_test(condition1_intensity, condition2_intensity)[1]
+    if pval_intensity == 0: 
+        pval_intensity = np.finfo(np.float).tiny
+
     pval_dwell = stat_test(condition1_dwell, condition2_dwell)[1]
+    if pval_dwell == 0: 
+        pval_dwell = np.finfo(np.float).tiny
     return(pval_intensity, pval_dwell)
 
 
