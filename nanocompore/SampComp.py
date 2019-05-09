@@ -121,7 +121,7 @@ class SampComp(object):
         option_d["package_version"] = package_version
         option_d["timestamp"] = str(datetime.datetime.now())
         for i, j in kwargs.items():
-            if not i in ["self","whitelist"]
+            if not i in ["self","whitelist"]:
                 option_d[i]=j
 
         # Set logging level
