@@ -292,6 +292,8 @@ def gmm_logit_test(Y, y_pred, sample_condition_labels, condition_labels):
             logit_pvalue, logit_coef = logit_mod.pvalues[1], logit_mod.params[1]
         except ConvergenceWarning:
             logit_mod, logit_pvalue, logit_coef = "NC", 1, "NC"
+    if logit_pvalue == 0:
+        logit_pvalue = np.finfo(np.float).tiny
     logit_results = {'pvalue': logit_pvalue, 'coef': logit_coef, 'model': logit_mod}
     return(logit_results)
 
