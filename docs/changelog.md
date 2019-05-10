@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- Improved error reporting in TxComp
 
 ### Fixed
 - Fixed error in SampCompDB.plot_position() (#85)
