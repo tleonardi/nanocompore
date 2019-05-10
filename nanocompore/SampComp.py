@@ -62,7 +62,7 @@ class SampComp(object):
         max_invalid_kmers_freq:"float" = 0.1,
         select_ref_id:"list or str" = [],
         exclude_ref_id:"list or str" = [],
-        nthreads:"int <= 3" = 3,
+        nthreads:"int >= 3" = 3,
         log_level:"str {warning,info,debug}" = "info"):
 
         """
