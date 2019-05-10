@@ -357,6 +357,7 @@ class SampComp(object):
                 if self.__comparison_methods:
                     random_state=np.random.RandomState(seed=42)
                     ref_pos_list = txCompare(
+                        ref_id=ref_id,
                         ref_pos_list=ref_pos_list,
                         methods=self.__comparison_methods,
                         sequence_context=self.__sequence_context,

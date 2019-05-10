@@ -21,6 +21,7 @@ from nanocompore.common import *
 
 
 def txCompare(
+    ref_id,
     ref_pos_list,
     random_state,
     methods=None,
@@ -67,13 +68,19 @@ def txCompare(
 
             for met in methods:
                 if met in ["MW", "KS", "TT"] :
-                    pvalues = nonparametric_test(condition1_intensity, condition2_intensity, condition1_dwell, condition2_dwell, method=met)
+                    try:
+                        pvalues = nonparametric_test(condition1_intensity, condition2_intensity, condition1_dwell, condition2_dwell, method=met)
+                    except:
+                        raise NanocomporeError("Error doing {} test on reference {}".format(met, ref_id))
                     res["{}_intensity_pvalue".format(met)]=pvalues[0]
                     res["{}_dwell_pvalue".format(met)]=pvalues[1]
                     tests.add("{}_intensity_pvalue".format(met))
                     tests.add("{}_dwell_pvalue".format(met))
                 elif met == "GMM":
-                    gmm_results = gmm_test(data, anova=anova, logit=logit, allow_warnings=allow_warnings, random_state=random_state)
+                    try:
+                        gmm_results = gmm_test(data, anova=anova, logit=logit, allow_warnings=allow_warnings, random_state=random_state)
+                    except:
+                        raise NanocomporeError("Error doing GMM test on reference {}".format(ref_id))
                     res["GMM_model"] = gmm_results['gmm']
                     if anova:
                         res["GMM_anova_pvalue"] = gmm_results['anova']['pvalue']
