@@ -17,7 +17,7 @@ classifiers = [
 include = ["nanocompore/models/kmers_model_RNA_r9.4_180mv.tsv"]
 
 [tool.poetry.scripts]
-nanocompore = 'nanocompore:nanocompore_main:main'
+nanocompore = 'nanocompore:nanocompore_main.main'
 
 [tool.poetry.dependencies]
 python = ">=3.6.1"
