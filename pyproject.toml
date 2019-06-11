@@ -2,7 +2,7 @@
 name = "nanocompore"
 version = "1.0.0rc3-dev"
 description = "Software package that identifies raw signal changes between two conditions from https://github.com/jts/nanopolish resquiggled dRNA-Seq data."
-authors = ["Tommaso Leonardi <tom@itm6.xyz> and Adrien Leger <aleg@ebi.ac.uk>"]
+authors = ["Tommaso Leonardi <tom@itm6.xyz>", "Adrien Leger <aleg@ebi.ac.uk>"]
 license = "GPL-3.0"
 readme = "README.md"
 repository = "https://github.com/tleonardi/nanocompore"
