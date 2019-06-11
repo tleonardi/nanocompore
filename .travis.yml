@@ -30,7 +30,7 @@ jobs:
     - stage: deploy
       python: 3.7
       install: 
-        - pip poetry
+        - pip install poetry
         - poetry install -v
       script:
         - mkdocs build
