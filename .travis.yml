@@ -1,29 +1,37 @@
 dist: xenial
 language: python
+
 stage: test
+
 python:
-  - 3.5
   - 3.6
   - 3.7
+
 branches:
   only:
   - master
   - devel
+
+before_install:
+  - pip install poetry
+
 install:
-  - pip install 'pytest>=4.4.0' --upgrade
-  - pip install .
+  - poetry install -v
+
 script:
   - pytest
+
 notifications:
   slack:
     secure: Hz3J3AluB4lN+YxRxsV93IjL0j5pevTDXflw9YN6VWH99BL7OEJxhsOGtqHLqbUDa4+XPVGgFsAXiHZPO19d4jng5uIRbj7VZNFK7gwn58S3GfyMeGOjdYh0fB/xbgYn2jYM1cWGpanwtXq5aDVEHPL2M803UMyyAM2F/HmysRdr50VFYQJQ4It77H+vajtyZGL7ztuAuY2AD10v5PctGk9JYt/EQWbYwdtCSdUNHublwiLRzvyvT/LT//MzsELuMdKzaVPQn01PMjZNerOsBszgscfBEOCSJtLaCjlQwvONWFCx9xP0kVBfMQo55XQaD9cSyswVnigzTihGaozU+149ZTWpB57Xd0tAsQ05GJIatbB+8FGKmFkFjvkxBSGXkL3AYN0engOpZyR4/KHrmKlSu2oCLbJMqvdnjlm/V41IV8UiMCgRCF/kMvHcHtgnBezV36+0eRMEWW7Vz7GAh7Eeqo3kcSTFG6OHD5kkiVoDW+S64cunHcb6k8sM+N/WxadpFV+jzzK/ovoDOA7G7gxhzgONJ8BYC2azZmRf+JfhosbRTh7PgMEi1srOlmJSZAzbE4IVJYcqOWbIdHO+v+1scYepPvzOuCXlD98UNhOOtAaMKXy9zGz2IYgbcswHOdUFnD2ei53pGz5QLJ0VLh7ZpBYfEEVB7uKbKsGuWB8=
+
 jobs:
   include:
     - stage: deploy
       python: 3.7
       install: 
-        - pip install nbconvert
-        - pip install mkdocs pymdown-extensions mknotebooks mkdocs-material
+        - pip install poetry
+        - poetry install -v
       script:
         - mkdocs build
       deploy: &gh-pages
