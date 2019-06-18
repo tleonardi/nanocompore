@@ -11,6 +11,7 @@ import textwrap
 # Local imports
 from nanocompore import __version__ as package_version
 from nanocompore import __name__ as package_name
+from nanocompore import __description__ as package_description
 from nanocompore.SampComp import SampComp
 from nanocompore.SimReads import SimReads
 from nanocompore.common import *
@@ -19,7 +20,7 @@ from nanocompore.common import *
 
 def main(args=None):
     # General parser
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(description=package_description)
     parser.add_argument('--version', '-v', action='version', version='v'+package_version)
     subparsers = parser.add_subparsers(help='Nanocompore implements the following subcommands', dest='sub-command')
     subparsers.required = True
