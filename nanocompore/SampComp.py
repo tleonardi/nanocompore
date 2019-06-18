@@ -135,7 +135,8 @@ class SampComp(object):
             raise NanocomporeError("Could not create the output folder. Try using `overwrite` option or use another directory")
 
         # Write init options to log file
-        with open(os.path.join(outpath, "{}SampComp.log".format(outprefix)), "w") as log_fp:
+        log_fn = os.path.join(outpath, outprefix+"SampComp.log")
+        with open(log_fn, "w") as log_fp:
             logger.debug("Writing log file")
             json.dump(option_d, log_fp, indent=2)
 
@@ -199,7 +200,7 @@ class SampComp(object):
 
         # Save private args
         self.__eventalign_fn_dict = eventalign_fn_dict
-        self.__outpath_prefix = os.path.join(outpath, outprefix)
+        self.__db_fn = os.path.join(outpath, outprefix+"SampComp.db")
         self.__fasta_fn = fasta_fn
         self.__bed_fn = bed_fn
         self.__whitelist = whitelist
@@ -260,7 +261,7 @@ class SampComp(object):
 
         # Return database wrapper object
         return SampCompDB(
-            db_prefix=self.__outpath_prefix,
+            db_fn=self.__db_fn,
             fasta_fn=self.__fasta_fn,
             bed_fn=self.__bed_fn,
             log_level=self.__log_level)
@@ -385,7 +386,7 @@ class SampComp(object):
         pvalue_tests = set()
         ref_id_list = []
         try:
-            with shelve.open(self.__outpath_prefix+"SampComp.db", flag='n') as db:
+            with shelve.open(self.__db_fn, flag='n') as db:
                 # Iterate over the counter queue and process items until all poison pills are found
                 pbar = tqdm(total = len(self.__whitelist), unit=" Processed References", disable=self.__log_level in ("warning", "debug"))
                 for _ in range(self.__nthreads):
@@ -451,7 +452,7 @@ class SampComp(object):
         if not duplicated_lab:
             return d
 
-        # If duplicated replicate labels found, outprefix labels with condition name
+        # If duplicated replicate labels found, prefix labels with condition name
         else:
             logger.debug("Found duplicated labels in the replicate names. Prefixing with condition name")
             d_clean = OrderedDict()

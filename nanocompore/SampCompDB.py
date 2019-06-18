@@ -37,7 +37,7 @@ class SampCompDB(object):
 
     #~~~~~~~~~~~~~~FUNDAMENTAL METHODS~~~~~~~~~~~~~~#
     def __init__(self,
-        db_prefix:"file_prefix_path",
+        db_fn:"file_path",
         fasta_fn:"file_path",
         bed_fn:"file_path" = None,
         run_type:"str {RNA,DNA}" = "RNA",
@@ -45,8 +45,8 @@ class SampCompDB(object):
         """
         Import a shelve db and a fasta reference file. Automatically returned by SampComp
         Can also be manually created from an existing shelve db output
-        * db_prefix
-            Prefix of the database. For example if the path to the db file is "/outpath/out.db" the db_prefix is "/outpath/out"
+        * db_fn
+            Path to a database file previously created with SampComp
         * fasta_fn
             Path to a fasta file corresponding to the reference used for read alignemnt
         * bed_fn
@@ -63,8 +63,6 @@ class SampCompDB(object):
 
         # Try to get ref_id list and metadata from shelve db
         try:
-            db_fn = db_prefix+"SampComp.db"
-            print(db_fn)
             with shelve.open(db_fn, flag='r') as db:
                 # Try to get metadata from db
                 try:
@@ -85,7 +83,6 @@ class SampCompDB(object):
             raise NanocomporeError("The result database cannot be opened")
 
         # Save db prefix and db path
-        self._db_prefix = db_prefix
         self._db_fn = db_fn
 
         logger.debug("Checking files and arg values")
@@ -246,7 +243,7 @@ class SampCompDB(object):
             pvalue threshold to report significant sites in bed files
         """
         if not outpath_prefix:
-            outpath_prefix = self._db_prefix
+            outpath_prefix = self._db_fn.replace("SampComp.db", "")
         logger.debug("Save reports to {}".format(outpath_prefix))
 
         # Save reports
