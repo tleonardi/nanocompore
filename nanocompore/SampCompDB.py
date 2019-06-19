@@ -38,11 +38,11 @@ class SampCompDB(object):
 
     #~~~~~~~~~~~~~~FUNDAMENTAL METHODS~~~~~~~~~~~~~~#
     def __init__(self,
-        db_fn:"file_path",
-        fasta_fn:"file_path",
-        bed_fn:"file_path" = None,
-        run_type:"str {RNA,DNA}" = "RNA",
-        log_level:"str {warning,info,debug}" = "info"):
+        db_fn:str,
+        fasta_fn:str,
+        bed_fn:str = None,
+        run_type:str = "RNA",
+        log_level:str = "info"):
         """
         Import a shelve db and a fasta reference file. Automatically returned by SampComp
         Can also be manually created from an existing shelve db output
@@ -53,9 +53,9 @@ class SampCompDB(object):
         * bed_fn
             Path to a BED file containing the annotation of the transcriptome used as reference when mapping
         * run_type
-            Define the run type model to import (RNA or DNA)
+            Define the run type model to import {RNA, DNA}
         * log_level
-            Set the log level.
+            Set the log level. {warning,info,debug}"
         """
 
         # Set logging level
@@ -345,7 +345,7 @@ class SampCompDB(object):
                         line=line.translateChr(assembly=assembly, target="ens", patches=True)
                     bed_file.write("%s\t%s\t%s\t%s\n" % (line.chr, line.start, line.end, line.score))
 
-    def save_report(self, output_fn:"str"=None):
+    def save_report(self, output_fn:str=None):
         """
         Saves a tabulated text dump of the database containing all the statistical results for all the positions
         * output_fn
@@ -452,15 +452,15 @@ class SampCompDB(object):
 
     #~~~~~~~~~~~~~~PLOTTING METHODS~~~~~~~~~~~~~~#
     def plot_pvalue( self,
-        ref_id:"str",
-        start:"int"=None,
-        end:"int"=None,
-        kind:"{lineplot,barplot}"="lineplot",
-        threshold:"float"=0.01,
-        figsize:"tuple of 2 int"=(30,10),
-        palette:"str"="Set2",
-        plot_style:"str"="ggplot",
-        tests:"str, list or None"=None):
+        ref_id:str,
+        start:int=None,
+        end:int=None,
+        kind:str="lineplot",
+        threshold:float=0.01,
+        figsize:tuple=(30,10),
+        palette:str="Set2",
+        plot_style:str="ggplot",
+        tests:str=None):
         """
         Plot pvalues per position (by default plot all fields starting by "pvalue")
         * ref_id
@@ -470,7 +470,7 @@ class SampCompDB(object):
         * end
             End coordinate (included)
         * kind
-            kind of plot to represent the data
+            kind of plot to represent the data. {lineplot,barplot}
         * figsize
             Length and heigh of the output plot
         * palette
@@ -547,14 +547,14 @@ class SampCompDB(object):
             return(fig, ax)
 
     def plot_signal(self,
-        ref_id:"str",
-        start:"int"=None,
-        end:"int"=None,
-        kind:"{violinplot, boxenplot, swarmplot}"="violinplot",
-        split_samples:"bool"=False,
-        figsize:"tuple of 2 int"=(30,10),
-        palette:"str"="Set2",
-        plot_style:"str"="ggplot"):
+        ref_id:str,
+        start:int=None,
+        end:int=None,
+        kind:str="violinplot",
+        split_samples:bool=False,
+        figsize:tuple=(30,10),
+        palette:str="Set2",
+        plot_style:str="ggplot"):
         """
         Plot the dwell time and median intensity distribution position per position
         Pointless for more than 50 positions at once as it becomes hard to distinguish
@@ -565,7 +565,7 @@ class SampCompDB(object):
         * end
             End coordinate (included)
         * kind
-            Kind of plot
+            Kind of plot {violinplot, boxenplot, swarmplot}
         * split_samples
             If samples for a same condition are represented separatly. If false they are merged per condition
         * figsize
@@ -642,14 +642,14 @@ class SampCompDB(object):
             return(fig, (ax1, ax2))
 
     def plot_coverage(self,
-        ref_id:"str",
-        start:"int"=None,
-        end:"int"=None,
-        scale:"bool"=False,
-        split_samples:"bool"=False,
-        figsize:"tuple of 2 int"=(30,5),
-        palette:"str"="Set2",
-        plot_style:"str"="ggplot"):
+        ref_id:str,
+        start:int=None,
+        end:int=None,
+        scale:bool=False,
+        split_samples:bool=False,
+        figsize:tuple=(30,5),
+        palette:str="Set2",
+        plot_style:str="ggplot"):
         """
         Plot the read coverage over a reference for all samples analysed
         * ref_id
@@ -702,13 +702,13 @@ class SampCompDB(object):
         self.plot_kmers_stats(ref_id, start, end, split_samples, figsize, "Accent")
 
     def plot_kmers_stats(self,
-        ref_id:"str",
-        start:"int"=None,
-        end:"int"=None,
-        split_samples:"bool"=False,
-        figsize:"tuple of 2 int"=(30,10),
-        palette:"str"="Accent",
-        plot_style:"str"="ggplot"):
+        ref_id:str,
+        start:int=None,
+        end:int=None,
+        split_samples:bool=False,
+        figsize:tuple=(30,10),
+        palette:str="Accent",
+        plot_style:str="ggplot"):
         """
         Fancy version of `plot_coverage` that also report missing, mismatching and undefined kmers status from Nanopolish
         * ref_id
@@ -765,20 +765,20 @@ class SampCompDB(object):
         return(fig, axes)
 
     def plot_position(self,
-        ref_id:"str",
-        pos:"int"=None,
-        split_samples=False,
-        figsize:"tuple of 2 int"=(30,10),
-        palette:"str"="Set2",
-        plot_style:"str"="ggplot",
-        xlim:"tuple of 2 int"=(None,None),
-        ylim:"tuple of 2 int"=(None,None),
-        alpha:"float"=0.3,
-        pointSize:"int"=20,
-        scatter:"bool"=True,
-        kde:"bool"=True,
-        model:"bool"=False,
-        gmm_levels:"int"=50):
+        ref_id:str,
+        pos:int=None,
+        split_samples:bool=False,
+        figsize:tuple=(30,10),
+        palette:str="Set2",
+        plot_style:str="ggplot",
+        xlim:tuple=(None,None),
+        ylim:tuple=(None,None),
+        alpha:float=0.3,
+        pointSize:int=20,
+        scatter:bool=True,
+        kde:bool=True,
+        model:bool=False,
+        gmm_levels:int=50):
         """
         Plot the dwell time and median intensity at the given position as a scatter plot.
         * ref_id
@@ -898,12 +898,12 @@ class SampCompDB(object):
             return(fig, ax)
 
     def plot_volcano(self,
-        ref_id:"str",
-        threshold:"float"=0.01,
-        figsize:"tuple of 2 int"=(30,10),
-        palette:"str"="Set2",
-        plot_style:"str"="ggplot",
-        method:"str"="GMM_anova_pvalue"):
+        ref_id:str,
+        threshold:float=0.01,
+        figsize:tuple=(30,10),
+        palette:str="Set2",
+        plot_style:str="ggplot",
+        method:str="GMM_anova_pvalue"):
         """
         ###
         * ref_id
