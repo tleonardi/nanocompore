@@ -10,6 +10,7 @@ from math import log
 import re
 import sys
 from pkg_resources import resource_filename
+import itertools
 
 # Third party
 from pyfaidx import Fasta
@@ -207,9 +208,15 @@ class SampCompDB(object):
 
     @staticmethod
     def __color_generator(palette, n):
-        pal = sns.mpl_palette(palette, n)
-        for i in range(n):
-            yield(pal[i])
+        if type(palette) in (list, tuple, set):
+            for col in itertools.islice(itertools.cycle(palette), n):
+                yield(col)
+        elif type(palette) == str:
+            palette = sns.mpl_palette(palette, n)
+            for i in range(n):
+                yield(palette[i])
+        else:
+            raise NanocomporeError ("Invalid palette type")
 
     @staticmethod
     def __multipletests_filter_nan(pvalues, method="fdr_bh"):
