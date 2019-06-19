@@ -1,1 +1,1 @@
-../LICENCE
+../LICENSE
