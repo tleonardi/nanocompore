@@ -38,9 +38,9 @@ def main(args=None):
     parser_sc_sample_yaml.add_argument("--sample_yaml", "-y", default=None, type=str, metavar="sample_yaml",
         help="YAML file containing the sample file labels. See formatting in documentation. (required if --file_list1 and --file_list2 not given)")
     parser_sc_sample_args = parser_sc.add_argument_group('Arguments sample files', description="Option allowing to describe sample files directly as command line arguments")
-    parser_sc_sample_args.add_argument("--file_list1", "-1", default=None, type=str, metavar="/path/to/Condition1_rep1,/path/to/Codition1_rep2",
+    parser_sc_sample_args.add_argument("--file_list1", "-1", default=None, type=str, metavar="/path/to/Condition1_rep1,/path/to/Condition1_rep2",
         help="Comma separated list of NanopolishComp files for label 1. (required if --sample_yaml not given)")
-    parser_sc_sample_args.add_argument("--file_list2", "-2", default=None, type=str, metavar="/path/to/Condition2_rep1,/path/to/Codition2_rep2",
+    parser_sc_sample_args.add_argument("--file_list2", "-2", default=None, type=str, metavar="/path/to/Condition2_rep1,/path/to/Condition2_rep2",
         help="Comma separated list of NanopolishComp files for label 2. (required if --sample_yaml not given)")
     parser_sc_sample_args.add_argument("--label1", type=str, metavar="Condition1", default="Condition1",
         help="Label for files in --file_list1 (default: %(default)s)")

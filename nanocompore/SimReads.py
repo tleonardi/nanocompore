@@ -289,7 +289,7 @@ def simulate_ref_mod_context(
                             scale = kmer_model["model_intensity_scale"],
                             min = None if not_bound else kmer_model["raw_intensity_min"],
                             max = None if not_bound else kmer_model["raw_intensity_max"],
-                            mod = kmer_model["model_intensity_std"]*mod_dict["intensity"][i]
+                            mod = kmer_model["model_intensity_std"]*mod_dict["intensity"][i],
                             sp_distrib = sp_logistic,
                             size = nreads_mod,
                             data_rand_seed = data_rand_seed)
@@ -300,7 +300,7 @@ def simulate_ref_mod_context(
                             scale = kmer_model["model_dwell_scale"],
                             min = None if not_bound else kmer_model["raw_dwell_min"],
                             max = None if not_bound else kmer_model["raw_dwell_max"],
-                            mod = kmer_model["model_dwell_std"]*mod_dict["dwell"][i]
+                            mod = kmer_model["model_dwell_std"]*mod_dict["dwell"][i],
                             sp_distrib = sp_wald,
                             size = nreads_mod,
                             data_rand_seed = data_rand_seed)
@@ -361,7 +361,7 @@ def get_valid_distr_data(loc, scale, size, sp_distrib, mod=None, min=None, max=N
         i+=1
         # Fall back to safe bounds if min max bounds fails to yield valid values
         if i > max_tries:
-            logger.debug("\tCould not find valid values with min max bounds. Fall back to safe bounds)
+            logger.debug("\tCould not find valid values with min max bounds. Fall back to safe bounds")
             logger.debug("\tYou should consider using the `not_bound` option")
             min=0
             max=np.finfo(np.float64).max
