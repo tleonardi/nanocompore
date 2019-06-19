@@ -1,7 +1,7 @@
 {
   "package_name": "nanocompore",
-  "package_version": "1.0.0b7",
-  "timestamp": "2019-04-04 14:25:53.662599",
+  "package_version": "1.0.0rc3-dev",
+  "timestamp": "2019-06-19 14:11:11.522900",
   "log_level": "info",
   "nthreads": 3,
   "exclude_ref_id": [],
@@ -11,14 +11,13 @@
   "min_ref_length": 100,
   "min_coverage": 30,
   "sequence_context_weights": "uniform",
-  "sequence_context": 2,
+  "sequence_context": 0,
   "allow_warnings": false,
-  "logit": true,
+  "logit": false,
   "comparison_methods": [
     "GMM",
     "KS"
   ],
-  "whitelist": null,
   "overwrite": true,
   "outprefix": "yeast_",
   "outpath": "./results",

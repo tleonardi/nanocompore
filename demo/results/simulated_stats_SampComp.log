@@ -1,7 +1,7 @@
 {
   "package_name": "nanocompore",
-  "package_version": "1.0.0b7",
-  "timestamp": "2019-04-04 11:07:33.970514",
+  "package_version": "1.0.0rc3-dev",
+  "timestamp": "2019-06-19 14:11:42.933049",
   "log_level": "info",
   "nthreads": 3,
   "exclude_ref_id": [],
@@ -20,7 +20,6 @@
     "KS",
     "TT"
   ],
-  "whitelist": null,
   "overwrite": true,
   "outprefix": "simulated_stats_",
   "outpath": "./results/",
