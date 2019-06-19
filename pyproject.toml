@@ -14,11 +14,10 @@ classifiers = [
         'License :: OSI Approved :: GPL-3.0',
         'Programming Language :: Python :: 3'
 ]
-packages = [{ include = "nanocompore" },
 include = ["nanocompore/models/kmers_model_RNA_r9.4_180mv.tsv"]
 
 [tool.poetry.scripts]
-nanocompore = 'nanocompore:nanocompore_main__.main'
+nanocompore = 'nanocompore:__main__.main'
 
 [tool.poetry.dependencies]
 python = ">=3.6.1"
