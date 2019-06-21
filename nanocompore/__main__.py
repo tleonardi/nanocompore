@@ -11,6 +11,7 @@ import textwrap
 # Local imports
 from nanocompore import __version__ as package_version
 from nanocompore import __name__ as package_name
+from nanocompore import __description__ as package_description
 from nanocompore.SampComp import SampComp
 from nanocompore.SimReads import SimReads
 from nanocompore.common import *
@@ -19,7 +20,7 @@ from nanocompore.common import *
 
 def main(args=None):
     # General parser
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(description=package_description)
     parser.add_argument('--version', '-v', action='version', version='v'+package_version)
     subparsers = parser.add_subparsers(help='Nanocompore implements the following subcommands', dest='sub-command')
     subparsers.required = True
@@ -28,18 +29,18 @@ def main(args=None):
     parser_sc = subparsers.add_parser('sampcomp', formatter_class=argparse.RawDescriptionHelpFormatter,
     description=textwrap.dedent("""
         Compare 2 samples and find significant signal\n
-        * Minimal example with file_list arguments
+        * Minimal example with file_list arguments\n
             nanocompore sampcomp -1 f1.tsv,f2.tsv -2 f3.tsv,f4.tsv -f ref.fa -o results
-        * Minimal example with sample YAML file
+        * Minimal example with sample YAML file\n
             nanocompore sampcomp -y samples.yaml -f ref -o results"""))
     parser_sc.set_defaults(func=sampcomp_main)
     parser_sc_sample_yaml = parser_sc.add_argument_group('YAML sample files', description="Option allowing to describe sample files in a YAML file")
     parser_sc_sample_yaml.add_argument("--sample_yaml", "-y", default=None, type=str, metavar="sample_yaml",
         help="YAML file containing the sample file labels. See formatting in documentation. (required if --file_list1 and --file_list2 not given)")
     parser_sc_sample_args = parser_sc.add_argument_group('Arguments sample files', description="Option allowing to describe sample files directly as command line arguments")
-    parser_sc_sample_args.add_argument("--file_list1", "-1", default=None, type=str, metavar="/path/to/Condition1_rep1,/path/to/Codition1_rep2",
+    parser_sc_sample_args.add_argument("--file_list1", "-1", default=None, type=str, metavar="/path/to/Condition1_rep1,/path/to/Condition1_rep2",
         help="Comma separated list of NanopolishComp files for label 1. (required if --sample_yaml not given)")
-    parser_sc_sample_args.add_argument("--file_list2", "-2", default=None, type=str, metavar="/path/to/Condition2_rep1,/path/to/Codition2_rep2",
+    parser_sc_sample_args.add_argument("--file_list2", "-2", default=None, type=str, metavar="/path/to/Condition2_rep1,/path/to/Condition2_rep2",
         help="Comma separated list of NanopolishComp files for label 2. (required if --sample_yaml not given)")
     parser_sc_sample_args.add_argument("--label1", type=str, metavar="Condition1", default="Condition1",
         help="Label for files in --file_list1 (default: %(default)s)")
@@ -89,15 +90,15 @@ def main(args=None):
     description=textwrap.dedent("""
         Simulate reads in a NanopolishComp like file from a fasta file and an inbuild model\n
         * Minimal example without model alteration
-            nanocompore simreads -f ref.fa -o results -n 50
+            nanocompore simreads -f ref.fa -o results -n 50\n
         * Minimal example with alteration of model intensity loc parameter for 50% of the reads
-            nanocompore simreads -f ref.fa -o results -n 50 --intensity_mod_loc 10 --mod_reads_freq 0.5 --mod_bases_freq 0.2"""))
+            nanocompore simreads -f ref.fa -o results -n 50 --intensity_mod 2 --mod_reads_freq 0.5 --mod_bases_freq 0.2"""))
     parser_sr.set_defaults(func=simreads_main)
     parser_sr_io = parser_sr.add_argument_group('Input/Output options')
     parser_sr_io.add_argument("--fasta", "-f", type=str, required=True,
-        help="Fasta file containing references to use to generate artificial reads (required)")
+        help="Fasta file containing references to use to generate artificial reads")
     parser_sr_io.add_argument("--run_type", type=str, default="RNA", choices=["RNA", "DNA"],
-        help="Define the run type model to import (RNA or DNA) (default: %(default)s)")
+        help="Define the run type model to import (default: %(default)s)")
     parser_sr_io.add_argument("--outpath", "-o", type=str, default="./",
         help="Path to the output folder (default: %(default)s)")
     parser_sr_io.add_argument("--outprefix", "-p", type=str, default="out",
@@ -107,14 +108,10 @@ def main(args=None):
     parser_sr_io.add_argument("--nreads_per_ref", "-n", type=int, default=100,
         help="Number of reads to generate per references (default: %(default)s)")
     parser_sr_modify = parser_sr.add_argument_group('Signal modification options')
-    parser_sr_modify.add_argument("--intensity_mod_loc", type=float, default=0,
-        help="value by which to modify the intensity distribution loc value (mode) (default: %(default)s)")
-    parser_sr_modify.add_argument("--intensity_mod_scale", type=float, default=0 ,
-        help="value by which to modify the intensity distribution scale value (dispersion) (default: %(default)s)")
-    parser_sr_modify.add_argument("--dwell_mod_loc", type=float, default=0,
-        help="value by which to modify the dwell time distribution loc value (mode) (default: %(default)s)")
-    parser_sr_modify.add_argument("--dwell_mod_scale", type=float, default=0,
-        help="value by which to modify the dwell time distribution scale value (mode) (default: %(default)s)")
+    parser_sr_modify.add_argument("--intensity_mod", type=float, default=0,
+        help="Fraction of intensity distribution SD by which to modify the intensity distribution loc value (default: %(default)s)")
+    parser_sr_modify.add_argument("--dwell_mod", type=float, default=0,
+        help="Fraction of dwell time distribution SD by which to modify the intensity distribution loc value (default: %(default)s)")
     parser_sr_modify.add_argument("--mod_reads_freq", type=float, default=0,
         help="Frequency of reads to modify (default: %(default)s)")
     parser_sr_modify.add_argument("--mod_bases_freq", type=float, default=0.25,
@@ -122,16 +119,16 @@ def main(args=None):
     parser_sr_modify.add_argument("--mod_bases_type", type=str, default="A", choices=["A","T","C","G"],
         help="Base for which to modify the signal (default: %(default)s)")
     parser_sr_modify.add_argument("--mod_extend_context", type=int, default=2,
-        help="number of adjacent base affected by the signal modification following an harmonic serries (default: %(default)s)")
+        help="number of adjacent base affected by the signal modification following an harmonic series (default: %(default)s)")
     parser_sr_modify.add_argument("--min_mod_dist", type=int, default=6,
-        help="Minimal distance between to bases to modify (default: %(default)s)")
+        help="Minimal distance between 2 bases to modify (default: %(default)s)")
     parser_sr_common = parser_sr.add_argument_group('Other options')
     parser_sr_common.add_argument("--pos_rand_seed", type=int, default=42 ,
         help="Define a seed for randon position picking to get a deterministic behaviour (default: %(default)s)")
     parser_sr_common.add_argument("--not_bound", action='store_true', default=False,
-        help="If given, the values generated by the distributions will be released from the min and max observed values bounds from the model file (default: %(default)s)")
+        help="Do not bind the values generated by the distributions to the observed min and max observed values from the model file (default: %(default)s)")
     parser_sr_common.add_argument("--log_level", type=str, default="info", choices=["warning", "info", "debug"],
-        help="log level (default: %(default)s)")
+        help="Set the log level (default: %(default)s)")
 
     # Downstream plot subparser
     parser_plot = subparsers.add_parser('plot', help="Run downstream analysis and plot results")
@@ -188,10 +185,8 @@ def simreads_main(args):
         overwrite = args.overwrite,
         run_type = args.run_type,
         nreads_per_ref = args.nreads_per_ref,
-        intensity_mod_loc = args.intensity_mod_loc,
-        intensity_mod_scale = args.intensity_mod_scale,
-        dwell_mod_loc = args.dwell_mod_loc,
-        dwell_mod_scale = args.dwell_mod_scale,
+        intensity_mod = args.intensity_mod,
+        dwell_mod = args.dwell_mod,
         mod_reads_freq = args.mod_reads_freq,
         mod_bases_freq = args.mod_bases_freq,
         mod_bases_type = args.mod_bases_type,
