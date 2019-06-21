@@ -21,6 +21,7 @@ from nanocompore.common import *
 
 
 def txCompare(
+    ref_id,
     ref_pos_list,
     random_state,
     methods=None,
@@ -67,13 +68,19 @@ def txCompare(
 
             for met in methods:
                 if met in ["MW", "KS", "TT"] :
-                    pvalues = nonparametric_test(condition1_intensity, condition2_intensity, condition1_dwell, condition2_dwell, method=met)
+                    try:
+                        pvalues = nonparametric_test(condition1_intensity, condition2_intensity, condition1_dwell, condition2_dwell, method=met)
+                    except:
+                        raise NanocomporeError("Error doing {} test on reference {}".format(met, ref_id))
                     res["{}_intensity_pvalue".format(met)]=pvalues[0]
                     res["{}_dwell_pvalue".format(met)]=pvalues[1]
                     tests.add("{}_intensity_pvalue".format(met))
                     tests.add("{}_dwell_pvalue".format(met))
                 elif met == "GMM":
-                    gmm_results = gmm_test(data, anova=anova, logit=logit, allow_warnings=allow_warnings, random_state=random_state)
+                    try:
+                        gmm_results = gmm_test(data, anova=anova, logit=logit, allow_warnings=allow_warnings, random_state=random_state)
+                    except:
+                        raise NanocomporeError("Error doing GMM test on reference {}".format(ref_id))
                     res["GMM_model"] = gmm_results['gmm']
                     if anova:
                         res["GMM_anova_pvalue"] = gmm_results['anova']['pvalue']
@@ -150,7 +157,12 @@ def nonparametric_test(condition1_intensity, condition2_intensity, condition1_dw
         raise NanocomporeError("Invalid statistical method name (MW, KS, ttest)")
 
     pval_intensity = stat_test(condition1_intensity, condition2_intensity)[1]
+    if pval_intensity == 0: 
+        pval_intensity = np.finfo(np.float).tiny
+
     pval_dwell = stat_test(condition1_dwell, condition2_dwell)[1]
+    if pval_dwell == 0: 
+        pval_dwell = np.finfo(np.float).tiny
     return(pval_intensity, pval_dwell)
 
 
@@ -287,6 +299,8 @@ def gmm_logit_test(Y, y_pred, sample_condition_labels, condition_labels):
             logit_pvalue, logit_coef = logit_mod.pvalues[1], logit_mod.params[1]
         except ConvergenceWarning:
             logit_mod, logit_pvalue, logit_coef = "NC", 1, "NC"
+    if logit_pvalue == 0:
+        logit_pvalue = np.finfo(np.float).tiny
     logit_results = {'pvalue': logit_pvalue, 'coef': logit_coef, 'model': logit_mod}
     return(logit_results)
 

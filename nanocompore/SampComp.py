@@ -44,26 +44,26 @@ class SampComp(object):
     #~~~~~~~~~~~~~~FUNDAMENTAL METHODS~~~~~~~~~~~~~~#
 
     def __init__(self,
-        eventalign_fn_dict:"dict or str",
-        fasta_fn:"file_path",
-        bed_fn:"file_path" = None,
-        outpath:"directory_path" = "results",
-        outprefix:"str" = "out_",
-        overwrite:"bool" = False,
-        whitelist:"nancocompore.Whitelist object" = None,
-        comparison_methods:"list of str from {MW,KS,TT,GMM}" = ["GMM", "KS"],
-        logit:"bool" = False,
-        allow_warnings:"bool" = False,
-        sequence_context:"int" = 0,
-        sequence_context_weights:"str {uniform,harmonic}" = "uniform",
-        min_coverage:"int" = 30,
-        min_ref_length:"int" = 100,
-        downsample_high_coverage:"int" = 0,
-        max_invalid_kmers_freq:"float" = 0.1,
-        select_ref_id:"list or str" = [],
-        exclude_ref_id:"list or str" = [],
-        nthreads:"int <= 3" = 3,
-        log_level:"str {warning,info,debug}" = "info"):
+        eventalign_fn_dict:dict,
+        fasta_fn:str,
+        bed_fn:str = None,
+        outpath:str = "results",
+        outprefix:str = "out_",
+        overwrite:bool = False,
+        whitelist:Whitelist = None,
+        comparison_methods:list = ["GMM", "KS"],
+        logit:bool = False,
+        allow_warnings:bool = False,
+        sequence_context:int = 0,
+        sequence_context_weights:str = "uniform",
+        min_coverage:int = 30,
+        min_ref_length:int = 100,
+        downsample_high_coverage:int = 0,
+        max_invalid_kmers_freq:float = 0.1,
+        select_ref_id:list = [],
+        exclude_ref_id:list = [],
+        nthreads:int = 3,
+        log_level:str = "info"):
 
         """
         Initialise a `SampComp` object and generates a white list of references with sufficient coverage for subsequent analysis.
@@ -88,7 +88,7 @@ class SampComp(object):
             Whitelist object previously generated with nanocompore Whitelist. If not given, will be automatically generated.
         * comparison_methods
             Statistical method to compare the 2 samples (mann_whitney or MW, kolmogorov_smirnov or KS, t_test or TT, gaussian_mixture_model or GMM).
-            This can be a list or a comma separated string.
+            This can be a list or a comma separated string. {MW,KS,TT,GMM}
         * logit
             Force logistic regression even if we have less than 2 replicates in any condition.
         * allow_warnings
@@ -96,7 +96,7 @@ class SampComp(object):
         * sequence_context
             Extend statistical analysis to contigous adjacent base if available.
         * sequence_context_weights
-            type of weights to used for combining p-values.
+            type of weights to used for combining p-values. {uniform,harmonic}
         * min_coverage
             minimal read coverage required in all sample.
         * min_ref_length
@@ -112,7 +112,7 @@ class SampComp(object):
         * nthreads
             Number of threads (two are used for reading and writing, all the others for parallel processing).
         * log_level
-            Set the log level.
+            Set the log level. {warning,info,debug}
         """
         # Save init options in dict for later
         kwargs = locals()
@@ -121,7 +121,7 @@ class SampComp(object):
         option_d["package_version"] = package_version
         option_d["timestamp"] = str(datetime.datetime.now())
         for i, j in kwargs.items():
-            if not i == "self":
+            if not i in ["self","whitelist"]:
                 option_d[i]=j
 
         # Set logging level
@@ -135,7 +135,8 @@ class SampComp(object):
             raise NanocomporeError("Could not create the output folder. Try using `overwrite` option or use another directory")
 
         # Write init options to log file
-        with open(os.path.join(outpath, "{}SampComp.log".format(outprefix)), "w") as log_fp:
+        log_fn = os.path.join(outpath, outprefix+"SampComp.log")
+        with open(log_fn, "w") as log_fp:
             logger.debug("Writing log file")
             json.dump(option_d, log_fp, indent=2)
 
@@ -199,7 +200,7 @@ class SampComp(object):
 
         # Save private args
         self.__eventalign_fn_dict = eventalign_fn_dict
-        self.__outpath_prefix = os.path.join(outpath, outprefix)
+        self.__db_fn = os.path.join(outpath, outprefix+"SampComp.db")
         self.__fasta_fn = fasta_fn
         self.__bed_fn = bed_fn
         self.__whitelist = whitelist
@@ -235,7 +236,7 @@ class SampComp(object):
             ps_list.append(mp.Process(target=self.__process_references, args=(in_q, out_q, error_q)))
         ps_list.append(mp.Process(target=self.__write_output, args=(out_q, error_q)))
 
-        # Start processes and block until done
+        # Start processes and monitor error queue
         try:
             # Start all processes
             for ps in ps_list:
@@ -243,24 +244,25 @@ class SampComp(object):
             # Monitor error queue
             for tb in iter(error_q.get, None):
                 raise NanocomporeError(tb)
-            # Join processes
-            for ps in ps_list:
-                ps.join()
 
-        # Kill processes if any error
+        # Catch error and reraise it
         except(BrokenPipeError, KeyboardInterrupt, NanocomporeError) as E:
             logger.debug("An error occured. Killing all processes\n")
             raise E
 
-        # Make sure all processes are killed
         finally:
+            # Soft processes stopping
+            for ps in ps_list:
+                ps.join()
+
+            # Hard failsafe processes killing
             for ps in ps_list:
                 if ps.exitcode == None:
                     ps.terminate()
 
         # Return database wrapper object
         return SampCompDB(
-            db_prefix=self.__outpath_prefix,
+            db_fn=self.__db_fn,
             fasta_fn=self.__fasta_fn,
             bed_fn=self.__bed_fn,
             log_level=self.__log_level)
@@ -273,13 +275,17 @@ class SampComp(object):
                 logger.debug("Adding {} to in_q".format(ref_id))
                 in_q.put((ref_id, ref_dict))
 
-        # Manage exceptions and deal poison pills
-        except Exception:
-            error_q.put(traceback.format_exc())
-        finally:
+            # Deal 1 poison pill and close file pointer
             logger.debug("Adding poison pill to in_q")
             for i in range(self.__nthreads):
                 in_q.put(None)
+
+        # Manage exceptions and deal poison pills
+        except Exception:
+            logger.debug("Error in Reader. Kill input queue")
+            for i in range(self.__nthreads):
+                in_q.put(None)
+            error_q.put(traceback.format_exc())
 
     def __process_references(self, in_q, out_q, error_q):
         """
@@ -357,6 +363,7 @@ class SampComp(object):
                 if self.__comparison_methods:
                     random_state=np.random.RandomState(seed=42)
                     ref_pos_list = txCompare(
+                        ref_id=ref_id,
                         ref_pos_list=ref_pos_list,
                         methods=self.__comparison_methods,
                         sequence_context=self.__sequence_context,
@@ -371,20 +378,25 @@ class SampComp(object):
                 logger.debug("Adding %s to out_q"%(ref_id))
                 out_q.put((ref_id, ref_pos_list))
 
-        # Manage exceptions, deal poison pills and close files
-        except Exception:
-            error_q.put(traceback.format_exc())
-        finally:
+            # Deal 1 poison pill and close file pointer
             logger.debug("Adding poison pill to out_q")
             out_q.put(None)
             self.__eventalign_fn_close(fp_dict)
+
+        # Manage exceptions, deal poison pills and close files
+        except Exception:
+            logger.debug("Error in worker. Kill output queue")
+            for i in range(self.__nthreads):
+                out_q.put(None)
+            self.__eventalign_fn_close(fp_dict)
+            error_q.put(traceback.format_exc())
 
     def __write_output(self, out_q, error_q):
         # Get results out of the out queue and write in shelve
         pvalue_tests = set()
         ref_id_list = []
         try:
-            with shelve.open(self.__outpath_prefix+"SampComp.db", flag='n') as db:
+            with shelve.open(self.__db_fn, flag='n') as db:
                 # Iterate over the counter queue and process items until all poison pills are found
                 pbar = tqdm(total = len(self.__whitelist), unit=" Processed References", disable=self.__log_level in ("warning", "debug"))
                 for _ in range(self.__nthreads):
@@ -415,12 +427,14 @@ class SampComp(object):
                     "min_coverage": self.__min_coverage,
                     "n_samples": self.__n_samples}
 
-        # Manage exceptions, deal poison pills and close files
-        except Exception:
-            error_q.put(traceback.format_exc())
-        finally:
+            # Ending process bar and deal poison pill in error queue
             pbar.close()
             error_q.put(None)
+
+        # Manage exceptions and add error trackback to error queue
+        except Exception:
+            pbar.close()
+            error_q.put(traceback.format_exc())
 
     #~~~~~~~~~~~~~~PRIVATE HELPER METHODS~~~~~~~~~~~~~~#
     def __check_eventalign_fn_dict(self, d):
@@ -450,7 +464,7 @@ class SampComp(object):
         if not duplicated_lab:
             return d
 
-        # If duplicated replicate labels found, outprefix labels with condition name
+        # If duplicated replicate labels found, prefix labels with condition name
         else:
             logger.debug("Found duplicated labels in the replicate names. Prefixing with condition name")
             d_clean = OrderedDict()
