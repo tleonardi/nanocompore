@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [v1.0.0rc3-1]
+
+### Fixed
+- Fixed bug in CLI entrypoint
+
+## [v1.0.0rc3]
+
 ### Added
 - Improved error reporting in TxComp
 
