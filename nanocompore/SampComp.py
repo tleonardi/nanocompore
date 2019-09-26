@@ -327,6 +327,7 @@ class SampComp(object):
                                 # Fill dict with the current pos values
                                 ref_pos_list[pos]["data"][cond_lab][sample_lab]["intensity"].append(kmer["median"])
                                 ref_pos_list[pos]["data"][cond_lab][sample_lab]["dwell"].append(kmer["dwell_time"])
+                                ref_pos_list[pos]["data"][cond_lab][sample_lab]["reads"].append(read["read_id"])
                                 ref_pos_list[pos]["data"][cond_lab][sample_lab]["coverage"] += 1
 
                                 if kmers_stats:
@@ -500,6 +501,7 @@ class SampComp(object):
                         pos_dict["data"][cond_lab][sample_lab] = {
                             "intensity":[],
                             "dwell":[],
+                            "reads":[],
                             "coverage":0,
                             "kmers_stats":{"missing":0,"valid":0,"NNNNN":0,"mismatching":0}}
                 ref_pos_list.append(pos_dict)
