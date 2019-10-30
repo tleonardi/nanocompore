@@ -58,9 +58,6 @@ git clone https://github.com/tleonardi/nanocompore.git
 # Enter in repo directory
 cd nanocompore
 
-# Make setup.py executable
-chmod u+x setup.py
-
 # Install with pip3
 pip3 install -e ./
 ```
