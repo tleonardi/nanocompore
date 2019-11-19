@@ -2,7 +2,7 @@
 
 ## Create a clean virtual environment
 
-Ideally, before installation, create a clean **python3.5+** virtual environment to deploy the package. **Python 2 is not supported**. For example one can use conda or virtualenvwrapper.
+Ideally, before installation, create a clean **python3.6+** virtual environment to deploy the package. **Python 2 is not supported**. For example one can use conda or virtualenvwrapper.
 
 With [virtualenvwrapper](https://virtualenvwrapper.readthedocs.io/en/latest/install.html):
 
@@ -20,26 +20,20 @@ conda create -n nanocompore python=3.6
 
 Nanocompore relies on a the following robustly maintained third party python libraries:
 
-* numpy >= 1.14.0
-* scipy >= 1.1.0
-* tqdm >= 4.23.4
-* pyfaidx >= 0.5.4.1
-* matplotlib >= 2.2.2
+* numpy >= 1.16.0
+* scipy >= 1.2.0
+* tqdm >= 4.32.0
+* pyfaidx >= 0.5.5
+* matplotlib >= 3.1
 * seaborn >= 0.9.0
-* pandas >= 0.23.3
+* pandas >= 0.24.2
 * statsmodels >= 0.9.0
-* scikit-learn >= 0.20
-* bedparse >= 0.1.2
+* scikit-learn >= 0.21.2
+* bedparse >= 0.2.2
 
 The correct versions of packages are installed together with the software when using pip.
 
 ## Option 1: Direct installation with pip from github (recommended)
-
-* To install the package with an ssh key
-
-```bash
-pip3 install git+ssh://git@github.com/tleonardi/nanocompore.git
-```
 
 * To install the package with https/ssh
 
