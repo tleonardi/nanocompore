@@ -37,6 +37,30 @@ logging.basicConfig(level=logging.INFO, format='%(message)s')
 logger = logging.getLogger(__name__)
 log_level_dict = {"debug":logging.DEBUG, "info":logging.INFO, "warning":logging.WARNING}
 
+class Mock():
+    def __init__(self):
+        pass
+
+    def seek(self, x):
+        pass
+
+    def read(self, x):
+        l = x.split("###")
+        block="#"+l[0]+"\t"+l[1]+"\n"
+        return(x)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, e_type, e_val, e_tb):
+        pass
+
+    def write(self):
+        pass
+
+def open(*args):
+    return Mock()
+
 #~~~~~~~~~~~~~~MAIN CLASS~~~~~~~~~~~~~~#
 class SampComp(object):
     """ Init analysis and check args"""
@@ -480,7 +504,7 @@ class SampComp(object):
         for cond_lab, sample_dict in self.__eventalign_fn_dict.items():
             fp_dict[cond_lab] = OrderedDict()
             for sample_lab, fn in sample_dict.items():
-                fp_dict[cond_lab][sample_lab] = open(fn, "r")
+                fp_dict[cond_lab][sample_lab] = mopen(fn, "r")
         return fp_dict
 
     def __eventalign_fn_close(self, fp_dict):

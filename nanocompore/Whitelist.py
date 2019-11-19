@@ -19,6 +19,61 @@ logging.basicConfig(level=logging.INFO, format='%(message)s')
 logger = logging.getLogger(__name__)
 log_level_dict = {"debug":logging.DEBUG, "info":logging.INFO, "warning":logging.WARNING}
 
+
+class Mock():
+    def __init__(self):
+        self.ids=["a","b","c","d"]
+        self.n=10
+
+        self.current_id=0
+        self.current_read=0
+        self.init=False
+        pass
+
+    def readline(self):
+        return(next(self))
+
+    def __iter__(self):
+        return(self)
+
+    def __next__(self):
+        if not self.init:
+            self.init=True
+            return("ref_id\tread_id\tbyte_offset\tbyte_len\n")
+
+        if self.current_id<len(self.ids) and self.current_read<self.n:
+            self.current_read+=1
+            current_id=self.ids[self.current_id]
+            current_read=self.current_read
+            if self.current_read==self.n:
+                self.current_id+=1
+                self.current_read=0
+            return("%s\t%s\t%s###%s\t%s###%s\n"%(current_id, current_read, current_id, current_read, current_id, current_read))
+        else:
+            raise StopIteration()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, e_type, e_val, e_tb):
+        pass
+
+    def rstrip(a):
+        return(a)
+
+class Fasta():
+    def __init__(self, *args):
+        pass
+    def __getitem__(self, items):
+        return("".join([random.choice("ACGT") for _ in range(0,random.randint(100, 2000))]))
+    def __enter__(self):
+        return self
+    def __exit__(self, e_type, e_val, e_tb):
+        pass
+
+def open(*args):
+    return Mock()
+
 #~~~~~~~~~~~~~~MAIN CLASS~~~~~~~~~~~~~~#
 class Whitelist(object):
 
