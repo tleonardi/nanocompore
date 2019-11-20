@@ -8,10 +8,10 @@ readme = "README.md"
 repository = "https://github.com/tleonardi/nanocompore"
 documentation = "http://nanocompore.rna.rocks"
 classifiers = [
-        'Development Status :: 3 - Alpha',
+        'Development Status :: 4 - Beta',
         'Intended Audience :: Science/Research',
         'Topic :: Scientific/Engineering :: Bio-Informatics',
-        'License :: OSI Approved :: GPL-3.0',
+        'License :: OSI Approved :: GNU General Public License v3 (GPLv3)',
         'Programming Language :: Python :: 3'
 ]
 include = ["nanocompore/models/kmers_model_RNA_r9.4_180mv.tsv"]
