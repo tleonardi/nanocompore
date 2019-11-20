@@ -33,15 +33,21 @@ Nanocompore relies on a the following robustly maintained third party python lib
 
 The correct versions of packages are installed together with the software when using pip.
 
-## Option 1: Direct installation with pip from github (recommended)
+## Option 1: Direct installation with pip from PyPi (recommended)
 
-* To install the package with https/ssh
+```bash
+pip3 install nanocompore
+```
+
+## Option 2: Direct installation with pip from github
+
+To install the package with https/ssh you need pip>=19
 
 ```bash
 pip3 install git+https://github.com/tleonardi/nanocompore.git
 ```
 
-## Option 2: Clone the repository and install locally in develop mode
+## Option 3: Clone the repository and install locally in develop mode
 
 With this option, the package will be locally installed in *editable* or *develop mode*. This allows the package to be both installed and editable in project form. This is the recommended option if you wish to modify the code and/or participate to the development of the package (see [contribution guidelines](contributing.md)).
 
