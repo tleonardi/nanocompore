@@ -9,7 +9,7 @@
 site_name: 'Nanocompore'
 site_description: 'Compare nanopore signal to find modifications'
 site_author: 'Adrien Leger & Tommaso Leonardi'
-site_url: 'https://tleonardi.github.io/nanocompore/'
+site_url: 'http://nanocompore.rna.rocks'
 
 # Repository
 repo_name: 'tleonardi/nanocompore'
@@ -29,6 +29,7 @@ nav:
         - Generate plots and tables with SampCompDB: demo/SampCompDB_usage.ipynb
         - Generate simulated reads: demo/SimReads_usage.ipynb
     - Alternative and complementary packages: alternative.md
+    - Citing: citing.md
     - Contributing: contributing.md
     - Code of conduct: code_of_conduct.md
     - Licence: licence.md
