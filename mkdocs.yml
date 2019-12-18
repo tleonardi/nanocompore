@@ -29,6 +29,7 @@ nav:
         - Generate plots and tables with SampCompDB: demo/SampCompDB_usage.ipynb
         - Generate simulated reads: demo/SimReads_usage.ipynb
     - Alternative and complementary packages: alternative.md
+    - Citing: citing.md
     - Contributing: contributing.md
     - Code of conduct: code_of_conduct.md
     - Licence: licence.md
