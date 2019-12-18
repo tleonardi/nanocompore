@@ -9,7 +9,7 @@
 site_name: 'Nanocompore'
 site_description: 'Compare nanopore signal to find modifications'
 site_author: 'Adrien Leger & Tommaso Leonardi'
-site_url: 'https://tleonardi.github.io/nanocompore/'
+site_url: 'http://nanocompore.rna.rocks'
 
 # Repository
 repo_name: 'tleonardi/nanocompore'
