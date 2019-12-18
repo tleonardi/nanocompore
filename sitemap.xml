@@ -1,63 +1,68 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
-     <loc>https://tleonardi.github.io/nanocompore/</loc>
-     <lastmod>2019-11-20</lastmod>
+     <loc>http://nanocompore.rna.rocks/</loc>
+     <lastmod>2019-12-18</lastmod>
      <changefreq>daily</changefreq>
     </url>
     <url>
-     <loc>https://tleonardi.github.io/nanocompore/installation/</loc>
-     <lastmod>2019-11-20</lastmod>
+     <loc>http://nanocompore.rna.rocks/installation/</loc>
+     <lastmod>2019-12-18</lastmod>
      <changefreq>daily</changefreq>
     </url>
     <url>
-     <loc>https://tleonardi.github.io/nanocompore/data_preparation/</loc>
-     <lastmod>2019-11-20</lastmod>
+     <loc>http://nanocompore.rna.rocks/data_preparation/</loc>
+     <lastmod>2019-12-18</lastmod>
      <changefreq>daily</changefreq>
     </url>
     <url>
-     <loc>https://tleonardi.github.io/nanocompore/usage/</loc>
-     <lastmod>2019-11-20</lastmod>
+     <loc>http://nanocompore.rna.rocks/usage/</loc>
+     <lastmod>2019-12-18</lastmod>
      <changefreq>daily</changefreq>
     </url>
     <url>
-     <loc>https://tleonardi.github.io/nanocompore/demo/SampComp_usage/</loc>
-     <lastmod>2019-11-20</lastmod>
+     <loc>http://nanocompore.rna.rocks/demo/SampComp_usage/</loc>
+     <lastmod>2019-12-18</lastmod>
      <changefreq>daily</changefreq>
     </url>
     <url>
-     <loc>https://tleonardi.github.io/nanocompore/demo/SampCompDB_usage/</loc>
-     <lastmod>2019-11-20</lastmod>
+     <loc>http://nanocompore.rna.rocks/demo/SampCompDB_usage/</loc>
+     <lastmod>2019-12-18</lastmod>
      <changefreq>daily</changefreq>
     </url>
     <url>
-     <loc>https://tleonardi.github.io/nanocompore/demo/SimReads_usage/</loc>
-     <lastmod>2019-11-20</lastmod>
+     <loc>http://nanocompore.rna.rocks/demo/SimReads_usage/</loc>
+     <lastmod>2019-12-18</lastmod>
      <changefreq>daily</changefreq>
     </url>
     <url>
-     <loc>https://tleonardi.github.io/nanocompore/alternative/</loc>
-     <lastmod>2019-11-20</lastmod>
+     <loc>http://nanocompore.rna.rocks/alternative/</loc>
+     <lastmod>2019-12-18</lastmod>
      <changefreq>daily</changefreq>
     </url>
     <url>
-     <loc>https://tleonardi.github.io/nanocompore/contributing/</loc>
-     <lastmod>2019-11-20</lastmod>
+     <loc>http://nanocompore.rna.rocks/citing/</loc>
+     <lastmod>2019-12-18</lastmod>
      <changefreq>daily</changefreq>
     </url>
     <url>
-     <loc>https://tleonardi.github.io/nanocompore/code_of_conduct/</loc>
-     <lastmod>2019-11-20</lastmod>
+     <loc>http://nanocompore.rna.rocks/contributing/</loc>
+     <lastmod>2019-12-18</lastmod>
      <changefreq>daily</changefreq>
     </url>
     <url>
-     <loc>https://tleonardi.github.io/nanocompore/licence/</loc>
-     <lastmod>2019-11-20</lastmod>
+     <loc>http://nanocompore.rna.rocks/code_of_conduct/</loc>
+     <lastmod>2019-12-18</lastmod>
      <changefreq>daily</changefreq>
     </url>
     <url>
-     <loc>https://tleonardi.github.io/nanocompore/changelog/</loc>
-     <lastmod>2019-11-20</lastmod>
+     <loc>http://nanocompore.rna.rocks/licence/</loc>
+     <lastmod>2019-12-18</lastmod>
+     <changefreq>daily</changefreq>
+    </url>
+    <url>
+     <loc>http://nanocompore.rna.rocks/changelog/</loc>
+     <lastmod>2019-12-18</lastmod>
      <changefreq>daily</changefreq>
     </url>
 </urlset>
