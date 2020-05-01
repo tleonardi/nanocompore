@@ -418,7 +418,7 @@ class SampCompDB(object):
 
 
         headers = ['c1_mean_intensity', 'c2_mean_intensity', 'c1_median_intensity', 'c2_median_intensity', 'c1_sd_intensity', 'c2_sd_intensity', 'c1_mean_dwell', 'c2_mean_dwell', 'c1_median_dwell', 'c2_median_dwell', 'c1_sd_dwell', 'c2_sd_dwell']
-        fp.write('\t'.join([ str(i) for i in ["red_if", "pos"]+headers ])+'\n')
+        fp.write('\t'.join([ str(i) for i in ["ref_id", "pos"]+headers ])+'\n')
         for tx, refpos in self:
             for pos, refpos_list in enumerate(refpos):
                 if "txComp" in refpos_list:
