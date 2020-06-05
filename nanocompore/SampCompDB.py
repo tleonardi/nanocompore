@@ -71,7 +71,8 @@ class SampCompDB(object):
                     logger.debug("\tCannot find the ref_id_list in shelve. Try to build the list from entries")
                     self.ref_id_list = [k for k in db.keys() if k not in  ['__metadata', '__ref_id_list']]
                 if not self.ref_id_list:
-                    raise NanocomporeError("The result database is empty")
+                    logger.info("The result database is empty")
+                    return None
         except dbm_error:
             raise NanocomporeError("The result database cannot be opened")
 
