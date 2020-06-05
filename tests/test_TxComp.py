@@ -2,7 +2,6 @@ import pytest
 from nanocompore.TxComp import *
 from scipy.stats import combine_pvalues
 import numpy as np
-from unittest import mock
 import sys
 
 
@@ -94,19 +93,17 @@ def test_ref_pos_list():
 
 
 def test_txComp_GMM_anova(test_ref_pos_list):
-    ml = mock.Mock()
     if sys.version_info < (3, 6):
         tol = 0.001
     else:
         tol=0.00000001
-    res = txCompare("ref_id", test_ref_pos_list[0], methods=['GMM'], logit=False, sequence_context=2, min_coverage=3, logger=ml, allow_warnings=False, random_state=np.random.RandomState(seed=42))
+    res = txCompare("ref_id", test_ref_pos_list[0], methods=['GMM'], logit=False, sequence_context=2, min_coverage=3, allow_warnings=False, random_state=np.random.RandomState(seed=42))
     GMM_pvalues = [pos['txComp']['GMM_anova_pvalue'] for pos in res ]
     assert GMM_pvalues == [pytest.approx(i, abs=tol, nan_ok=True) for i in test_ref_pos_list[1]['GMM_anova']]
 
 def test_txComp_GMM_logit(test_ref_pos_list):
-    ml = mock.Mock()
     tol=0.000000001
-    res = txCompare("ref_id", test_ref_pos_list[0], methods=['GMM'], logit=True, anova=False, sequence_context=2, min_coverage=3, logger=ml, allow_warnings=False, random_state=np.random.RandomState(seed=42))
+    res = txCompare("ref_id", test_ref_pos_list[0], methods=['GMM'], logit=True, anova=False, sequence_context=2, min_coverage=3, allow_warnings=False, random_state=np.random.RandomState(seed=42))
     GMM_logit = [pos['txComp']['GMM_logit_pvalue'] for pos in res ]
     print(GMM_logit)
     print(test_ref_pos_list[1]['GMM_logit'])
@@ -153,9 +150,8 @@ def test_ref_pos_list_0_var():
     return(test_ref_pos_list)
 
 def test_txComp_GMM_anova_0_var(test_ref_pos_list_0_var):
-    ml = mock.Mock()
     with pytest.raises(NanocomporeError):
-        txCompare("ref_id", test_ref_pos_list_0_var, methods=['GMM'], logit=False, sequence_context=2, min_coverage=3, logger=ml, allow_warnings=False, random_state=np.random.RandomState(seed=42))
+        txCompare("ref_id", test_ref_pos_list_0_var, methods=['GMM'], logit=False, sequence_context=2, min_coverage=3, allow_warnings=False, random_state=np.random.RandomState(seed=42))
 
 @pytest.fixture
 def test_ref_pos_list_dup_lab():
@@ -190,9 +186,8 @@ def test_ref_pos_list_dup_lab():
     return(test_ref_pos_list)
 
 def test_txComp_GMM_dup_lab(test_ref_pos_list_dup_lab):
-    ml = mock.Mock()
     with pytest.raises(NanocomporeError):
-        txCompare("ref_id", test_ref_pos_list_dup_lab, methods=['GMM'], logit=False, sequence_context=2, min_coverage=3, logger=ml, allow_warnings=False, random_state=np.random.RandomState(seed=42))
+        txCompare("ref_id", test_ref_pos_list_dup_lab, methods=['GMM'], logit=False, sequence_context=2, min_coverage=3, allow_warnings=False, random_state=np.random.RandomState(seed=42))
 
 def test_txComp_lowCov(test_ref_pos_list):
     """ This test ensures that txCompare runs also when the number of covered positions
@@ -202,8 +197,7 @@ def test_txComp_lowCov(test_ref_pos_list):
     low_cov_positions = [0,1,5]
     for pos in low_cov_positions:
         test_ref_pos_list[pos]['data']['WT']['WT1']['coverage'] = 1
-    ml = mock.Mock()
-    results = txCompare("ref_id", test_ref_pos_list, methods=['GMM'], logit=False, sequence_context=2, min_coverage=30, logger=ml, allow_warnings=False, random_state=np.random.RandomState(seed=42))
+    results = txCompare("ref_id", test_ref_pos_list, methods=['GMM'], logit=False, sequence_context=2, min_coverage=30, allow_warnings=False, random_state=np.random.RandomState(seed=42))
     for pos in results:
         if 'txComp' in pos:
             # If the original p-value was nan, the context p-value also has to be nan
