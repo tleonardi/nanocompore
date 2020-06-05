@@ -109,3 +109,4 @@ data
 docs/demo/results
 tmp
 dev
+tests/test_datasets
