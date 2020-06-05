@@ -241,7 +241,7 @@ class Whitelist(object):
                             logger.trace(f"Asserting if {ref_id} has enough coverage in {sample_lab}")
                             # Filter out if coverage too low
                             assert len(read_list) >= min_coverage
-                            logger.trace(f"ref_id {ref_id} has {len(read_list)} reads in {sample_lab}: keeping it")
+                            logger.trace(f"ref_id {ref_id} has {len(read_list)} reads in {sample_lab}")
                             # Downsample if coverage too high
                             if downsample_high_coverage and len(read_list) > downsample_high_coverage:
                                 read_list = random.sample(read_list, downsample_high_coverage)
@@ -249,7 +249,7 @@ class Whitelist(object):
 
 
                     # If all valid add to new dict
-                    logger.trace(f"ref_id {ref_id} not error")
+                    logger.trace(f"ref_id {ref_id} has enough coverage in all samples: keeping it")
                     valid_ref_reads [ref_id] = valid_dict
 
                     # Save extra info for debug
@@ -260,7 +260,7 @@ class Whitelist(object):
                             c[lab] += len(read_list)
 
                 except AssertionError:
-                    logger.trace(f"min_cov assertion raised for {ref_id}")
+                    logger.trace(f"ref_id {ref_id} does not have enough coverage in at least one sample: discarding it")
                     c["invalid_ref_id"] += 1
 
         logger.debug(counter_to_str(c))
