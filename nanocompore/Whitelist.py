@@ -4,6 +4,7 @@
 # Std lib
 from collections import *
 import logging
+from loguru import logger
 import random
 
 # Third party
@@ -14,10 +15,6 @@ from pyfaidx import Fasta
 # Local package
 from nanocompore.common import *
 
-# Logger setup
-logging.basicConfig(level=logging.INFO, format='%(message)s')
-logger = logging.getLogger(__name__)
-log_level_dict = {"debug":logging.DEBUG, "info":logging.INFO, "warning":logging.WARNING}
 
 #~~~~~~~~~~~~~~MAIN CLASS~~~~~~~~~~~~~~#
 class Whitelist(object):
@@ -34,8 +31,7 @@ class Whitelist(object):
         max_mismatching_freq = 0.1,
         max_missing_freq = 0.1,
         select_ref_id = [],
-        exclude_ref_id = [],
-        log_level="info"):
+        exclude_ref_id = []):
         """
         #########################################################
         * eventalign_fn_dict
@@ -62,14 +58,7 @@ class Whitelist(object):
             if given, only reference ids in the list will be selected for the analysis
         * exclude_ref_id
             if given, refid in the list will be excluded from the analysis
-        * log_level
-            Set the log level. Valid values: warning, info, debug
         """
-
-        # Set logging level
-        logger.setLevel(log_level_dict.get(log_level, logging.WARNING))
-        logger.info("Initialising Whitelist and checking options")
-        self.__log_level = log_level
 
         # Check index files
         self.__filter_invalid_kmers = True
@@ -254,16 +243,14 @@ class Whitelist(object):
                     valid_ref_reads [ref_id] = valid_dict
 
                     # Save extra info for debug
-                    if self.__log_level == "debug":
-                        c["valid_ref_id"] += 1
-                        for cond_lab, cond_dict in valid_dict.items():
-                            for sample_lab, read_list in cond_dict.items():
-                                lab = "{} {} Reads".format(cond_lab, sample_lab)
-                                c[lab] += len(read_list)
+                    c["valid_ref_id"] += 1
+                    for cond_lab, cond_dict in valid_dict.items():
+                        for sample_lab, read_list in cond_dict.items():
+                            lab = "{} {} Reads".format(cond_lab, sample_lab)
+                            c[lab] += len(read_list)
 
                 except AssertionError:
-                    if self.__log_level == "debug":
-                        c["invalid_ref_id"] += 1
+                    c["invalid_ref_id"] += 1
 
         logger.debug(counter_to_str(c))
         logger.info("\tReferences remaining after reference coverage filtering: {}".format(len(valid_ref_reads)))
