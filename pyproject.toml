@@ -33,6 +33,7 @@ statsmodels = "^0.11.1"
 scikit-learn = "^0.21.2"
 bedparse = "^0.2.2"
 pyyaml = "^5.1"
+loguru = "^0.5.0"
 
 [tool.poetry.dev-dependencies]
 pytest = "^4.6"

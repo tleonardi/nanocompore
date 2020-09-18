@@ -4,6 +4,7 @@
 # Std lib
 from collections import *
 import logging
+from loguru import logger
 import random
 
 # Third party
@@ -14,10 +15,6 @@ from pyfaidx import Fasta
 # Local package
 from nanocompore.common import *
 
-# Logger setup
-logging.basicConfig(level=logging.INFO, format='%(message)s')
-logger = logging.getLogger(__name__)
-log_level_dict = {"debug":logging.DEBUG, "info":logging.INFO, "warning":logging.WARNING}
 
 #~~~~~~~~~~~~~~MAIN CLASS~~~~~~~~~~~~~~#
 class Whitelist(object):
@@ -34,8 +31,7 @@ class Whitelist(object):
         max_mismatching_freq = 0.1,
         max_missing_freq = 0.1,
         select_ref_id = [],
-        exclude_ref_id = [],
-        log_level="info"):
+        exclude_ref_id = []):
         """
         #########################################################
         * eventalign_fn_dict
@@ -62,14 +58,7 @@ class Whitelist(object):
             if given, only reference ids in the list will be selected for the analysis
         * exclude_ref_id
             if given, refid in the list will be excluded from the analysis
-        * log_level
-            Set the log level. Valid values: warning, info, debug
         """
-
-        # Set logging level
-        logger.setLevel(log_level_dict.get(log_level, logging.WARNING))
-        logger.info("Initialising Whitelist and checking options")
-        self.__log_level = log_level
 
         # Check index files
         self.__filter_invalid_kmers = True
@@ -220,7 +209,15 @@ class Whitelist(object):
                             c [str(E)] += 1
 
                 logger.debug("\tCondition:{} Sample:{} {}".format(cond_lab, sample_lab, counter_to_str(c)))
-
+        # Fill in missing condition/sample slots in case
+        # a ref_id is missing from one of the eventalign files
+        for ref_id in ref_reads.keys():
+            for cond_lab, sample_dict in eventalign_fn_dict.items():
+                for sample_lab in sample_dict.keys():
+                    if not cond_lab in ref_reads[ref_id]:
+                        ref_reads[ref_id][cond_lab] = OrderedDict()
+                    if not sample_lab in ref_reads[ref_id][cond_lab]:
+                        ref_reads[ref_id][cond_lab][sample_lab] = []
         logger.info("\tReferences found in index: {}".format(len(ref_reads)))
         return ref_reads
 
@@ -230,7 +227,6 @@ class Whitelist(object):
         min_ref_length,
         downsample_high_coverage):
         """Select ref_id with a minimal coverage in both sample + downsample if needed"""
-
         valid_ref_reads = OrderedDict()
         c = Counter()
         with Fasta(self._fasta_fn) as fasta:
@@ -242,8 +238,10 @@ class Whitelist(object):
                     for cond_lab, cond_dict in ref_dict.items():
                         valid_dict[cond_lab] = OrderedDict()
                         for sample_lab, read_list in cond_dict.items():
+                            logger.trace(f"Asserting if {ref_id} has enough coverage in {sample_lab}")
                             # Filter out if coverage too low
                             assert len(read_list) >= min_coverage
+                            logger.trace(f"ref_id {ref_id} has {len(read_list)} reads in {sample_lab}")
                             # Downsample if coverage too high
                             if downsample_high_coverage and len(read_list) > downsample_high_coverage:
                                 read_list = random.sample(read_list, downsample_high_coverage)
@@ -251,19 +249,19 @@ class Whitelist(object):
 
 
                     # If all valid add to new dict
+                    logger.trace(f"ref_id {ref_id} has enough coverage in all samples: keeping it")
                     valid_ref_reads [ref_id] = valid_dict
 
                     # Save extra info for debug
-                    if self.__log_level == "debug":
-                        c["valid_ref_id"] += 1
-                        for cond_lab, cond_dict in valid_dict.items():
-                            for sample_lab, read_list in cond_dict.items():
-                                lab = "{} {} Reads".format(cond_lab, sample_lab)
-                                c[lab] += len(read_list)
+                    c["valid_ref_id"] += 1
+                    for cond_lab, cond_dict in valid_dict.items():
+                        for sample_lab, read_list in cond_dict.items():
+                            lab = "{} {} Reads".format(cond_lab, sample_lab)
+                            c[lab] += len(read_list)
 
                 except AssertionError:
-                    if self.__log_level == "debug":
-                        c["invalid_ref_id"] += 1
+                    logger.trace(f"ref_id {ref_id} does not have enough coverage in at least one sample: discarding it")
+                    c["invalid_ref_id"] += 1
 
         logger.debug(counter_to_str(c))
         logger.info("\tReferences remaining after reference coverage filtering: {}".format(len(valid_ref_reads)))
