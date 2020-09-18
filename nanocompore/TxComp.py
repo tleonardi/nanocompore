@@ -33,6 +33,7 @@ def txCompare(
     anova=True,
     logit=False,
     allow_warnings=False):
+    logger.debug("TxCompare")
 
     if sequence_context_weights != "uniform" and sequence_context_weights != "harmonic":
         raise NanocomporeError("Invalid sequence_context_weights (uniform or harmonic)")

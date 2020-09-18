@@ -135,7 +135,7 @@ class SampComp(object):
 
         # Set logging level
         logger.add(sys.stderr, format="{time} {level} - {process.name} | {message}", enqueue=True, level=log_level_dict.get(log_level, "WARNING"))
-        logger.add(log_fn, format="{time} {level} - {process.name} | {message}", enqueue=True, level="DEBUG")
+        logger.add(log_fn, format="{time} {level} - {process.name} | {message}", enqueue=True, level="TRACE")
         logger.info("Initialising SampComp and checking options")
 
         # If eventalign_fn_dict is not a dict try to load a YAML file instead
@@ -240,11 +240,12 @@ class SampComp(object):
                 ps.start()
             # Monitor error queue
             for tb in iter(error_q.get, None):
+                logger.trace("Error caught from error_q")
                 raise NanocomporeError(tb)
 
         # Catch error and reraise it
         except(BrokenPipeError, KeyboardInterrupt, NanocomporeError) as E:
-            logger.debug("An error occured. Killing all processes\n")
+            logger.error("An error occured. Killing all processes\n")
             raise E
 
         finally:
@@ -296,7 +297,7 @@ class SampComp(object):
             # Process refid in input queue
             for ref_id, ref_dict in iter(in_q.get, None):
                 logger.debug("Worker thread processing new item from in_q: {}".format(ref_id))
-
+                raise NanocomporeError("TEST ERROR")
                 # Create an empty dict for all positions first
                 ref_pos_list = self.__make_ref_pos_list(ref_id)
 
@@ -356,6 +357,7 @@ class SampComp(object):
                                     # Save previous position
                                     prev_pos = pos
 
+                logger.debug("Data for {} loaded.".format(ref_id))
                 if self.__comparison_methods:
                     random_state=np.random.RandomState(seed=42)
                     ref_pos_list = txCompare(
@@ -379,8 +381,9 @@ class SampComp(object):
             self.__eventalign_fn_close(fp_dict)
 
         # Manage exceptions, deal poison pills and close files
-        except Exception:
-            logger.debug("Error in worker. Kill output queue")
+        except Exception as e:
+            logger.error("Error in worker. Kill output queue")
+            logger.error(e)
             for i in range(self.__nthreads):
                 out_q.put(None)
             self.__eventalign_fn_close(fp_dict)
