@@ -297,7 +297,6 @@ class SampComp(object):
             # Process refid in input queue
             for ref_id, ref_dict in iter(in_q.get, None):
                 logger.debug("Worker thread processing new item from in_q: {}".format(ref_id))
-                raise NanocomporeError("TEST ERROR")
                 # Create an empty dict for all positions first
                 ref_pos_list = self.__make_ref_pos_list(ref_id)
 
