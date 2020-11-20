@@ -23,7 +23,7 @@ nanocompore = 'nanocompore.__main__:main'
 [tool.poetry.dependencies]
 python = ">=3.6.1"
 numpy = "^1.16"
-scipy = "~1.3"
+scipy = "^1.3"
 tqdm = "^4.32"
 pyfaidx = "^0.5.5"
 matplotlib = "^3.1"
