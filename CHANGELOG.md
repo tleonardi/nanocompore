@@ -1,6 +1,6 @@
 # Changelog
 
-## v1.0.1-dev
+## v1.0.1
 
 ### Fixed
 - Fixed #120, #122, #138
