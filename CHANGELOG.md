@@ -1,5 +1,13 @@
 # Changelog
 
+## [v1.0.1-dev]
+
+### Fixed
+- Fixed #120, #122, #138
+
+### Added
+- Improved logging
+
 ## [v1.0.0rc3-1]
 
 ### Fixed
