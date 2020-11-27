@@ -34,7 +34,7 @@ def test_combine_pvalues_raises_exception_with_invalid_pvalues(pvalues):
 
 
 @pytest.mark.parametrize("v1, v2, expected", [
-    ( (1,4,3,2,9), (1,7,8,8,5), (0.4619, 0.3277, 0.3291))
+    ( (1,4,3,2,9), (1,7,8,8,5), (0.4619, 0.3277, 0.3571))
 ])
 def test_nonparametric_test(v1, v2, expected):
     """ Test the non parametric methods
