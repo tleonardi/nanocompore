@@ -34,7 +34,7 @@ def test_combine_pvalues_raises_exception_with_invalid_pvalues(pvalues):
 
 
 @pytest.mark.parametrize("v1, v2, expected", [
-    ( (1,4,3,2,9), (1,7,8,8,5), (0.4619, 0.3277, 0.3291))
+    ( (1,4,3,2,9), (1,7,8,8,5), (0.4619, 0.3277, 0.3571))
 ])
 def test_nonparametric_test(v1, v2, expected):
     """ Test the non parametric methods
@@ -86,7 +86,7 @@ def test_ref_pos_list():
                                   }
                                  }
     # These expected values have been checked against the R implementations of aov() and glm(family="binomial")
-    expected = {'GMM_anova': [0.0008574768473501677, 0.0036329291397528157, 0.007312047981252302, 0.0010906844025473576, np.nan, 0.004197519576768562, 0.004730678586860965, 0.0028228474915020945, 0.0023262178697710987, 0.00020764199465021126],
+    expected = {'GMM_anova': [0.0008574768473501677, 0.0036329291397528157, 0.007312047981252302, 0.0017335646468135102, np.nan, 0.004197519576768562, 0.004730678586860965, 0.0028228474915020945, 0.0023262178697710987, 0.00020764199465021126],
 		'GMM_logit': [1.274245328765287e-39, 3.3968653938213694e-40, 1.9321679678623975e-36, 8.482777798353687e-40, np.nan, 7.06503867181238e-40, 1.839272092115274e-40, 9.162002495725215e-32, 5.922884891638699e-34, 3.1972432623454785e-40]
 		}
     return((test_ref_pos_list, expected))
