@@ -42,6 +42,7 @@ mkdocs = "~1"
 pymdown-extensions = "~6"
 mknotebooks = "~0"
 mkdocs-material = "~4"
+markdown = "<3.2"
 
 [build-system]
 requires = ["poetry>=0.12"]
