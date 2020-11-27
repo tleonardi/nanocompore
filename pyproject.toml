@@ -22,16 +22,16 @@ nanocompore = 'nanocompore.__main__:main'
 
 [tool.poetry.dependencies]
 python = ">=3.6.1"
-numpy = "~1"
-scipy = "~1"
+numpy = "~1.19"
+scipy = "~1.5"
 tqdm = "~4"
 pyfaidx = "~0.5"
 matplotlib = "~3.1"
 seaborn = "~0"
-pandas = "~0"
-statsmodels = "~0"
+pandas = "~0.25"
+statsmodels = "~0.12"
 scikit-learn = "~0.23"
-bedparse = "~0"
+bedparse = "~0.2"
 pyyaml = "~5"
 loguru = "~0.5"
 
