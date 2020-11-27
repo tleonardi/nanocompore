@@ -2,7 +2,7 @@
 
 #~~~~~~~~~~~~~~IMPORTS~~~~~~~~~~~~~~#
 # Std lib
-import logging
+from loguru import logger
 from collections import *
 import shelve
 from dbm import error as dbm_error
@@ -21,16 +21,13 @@ import matplotlib.patches as mpatches
 import seaborn as sns
 from bedparse import bedline
 from statsmodels.stats.multitest import multipletests
-from sklearn.mixture.gaussian_mixture import GaussianMixture
+from sklearn.mixture import GaussianMixture
 from sklearn.preprocessing import scale as scale
 
 # Local package
 from nanocompore.common import *
 
 # Logger setup
-logging.basicConfig(level=logging.INFO, format='%(message)s')
-logger = logging.getLogger(__name__)
-log_level_dict = {"debug":logging.DEBUG, "info":logging.INFO, "warning":logging.WARNING}
 
 #~~~~~~~~~~~~~~MAIN CLASS~~~~~~~~~~~~~~#
 class SampCompDB(object):
@@ -41,8 +38,7 @@ class SampCompDB(object):
         db_fn:str,
         fasta_fn:str,
         bed_fn:str = None,
-        run_type:str = "RNA",
-        log_level:str = "info"):
+        run_type:str = "RNA"):
         """
         Import a shelve db and a fasta reference file. Automatically returned by SampComp
         Can also be manually created from an existing shelve db output
@@ -54,12 +50,8 @@ class SampCompDB(object):
             Path to a BED file containing the annotation of the transcriptome used as reference when mapping
         * run_type
             Define the run type model to import {RNA, DNA}
-        * log_level
-            Set the log level. {warning,info,debug}"
         """
 
-        # Set logging level
-        logger.setLevel(log_level_dict.get(log_level, logging.WARNING))
         logger.info("Loading SampCompDB")
 
         # Try to get ref_id list and metadata from shelve db
@@ -79,7 +71,8 @@ class SampCompDB(object):
                     logger.debug("\tCannot find the ref_id_list in shelve. Try to build the list from entries")
                     self.ref_id_list = [k for k in db.keys() if k not in  ['__metadata', '__ref_id_list']]
                 if not self.ref_id_list:
-                    raise NanocomporeError("The result database is empty")
+                    logger.info("The result database is empty")
+                    return None
         except dbm_error:
             raise NanocomporeError("The result database cannot be opened")
 
@@ -329,9 +322,9 @@ class SampCompDB(object):
                     else:
                         line=bedline([record.chr, record.genomicPos-(span-1), record.genomicPos+1, "%s_%s" % (record.ref_id, record.ref_kmer), pvalue, record.strand])
 
-                    if convert is "ensembl_to_ucsc":
+                    if convert == "ensembl_to_ucsc":
                         line=line.translateChr(assembly=assembly, target="ucsc", patches=True)
-                    elif convert is "ucsc_to_ensembl":
+                    elif convert == "ucsc_to_ensembl":
                         line=line.translateChr(assembly=assembly, target="ens", patches=True)
                     bed_file.write("%s\t%s\t%s\t%s\t%s\t%s\n" % (line.chr, line.start, line.end, line.name, line.score, line.strand))
                 elif bedgraph:
@@ -339,9 +332,9 @@ class SampCompDB(object):
                         line=bedline([record.chr, record.genomicPos+2, record.genomicPos+3, "%s_%s" % (record.ref_id, record.ref_kmer), pvalue, record.strand])
                     else:
                         line=bedline([record.chr, record.genomicPos-2, record.genomicPos-1, "%s_%s" % (record.ref_id, record.ref_kmer), pvalue, record.strand])
-                    if convert is "ensembl_to_ucsc":
+                    if convert == "ensembl_to_ucsc":
                         line=line.translateChr(assembly=assembly, target="ucsc", patches=True)
-                    elif convert is "ucsc_to_ensembl":
+                    elif convert == "ucsc_to_ensembl":
                         line=line.translateChr(assembly=assembly, target="ens", patches=True)
                     bed_file.write("%s\t%s\t%s\t%s\n" % (line.chr, line.start, line.end, line.score))
 

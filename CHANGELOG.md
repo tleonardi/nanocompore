@@ -1,11 +1,19 @@
 # Changelog
 
-## [v1.0.0rc3-1]
+## v1.0.1
+
+### Fixed
+- Fixed #120, #122, #138
+
+### Added
+- Improved logging
+
+## v1.0.0rc3-1
 
 ### Fixed
 - Fixed bug in CLI entrypoint
 
-## [v1.0.0rc3]
+## v1.0.0rc3
 
 ### Added
 - Reads simulator now uses variability measured from the data
@@ -18,7 +26,7 @@
 - Fixed errors with 0 pvalues (#87 and #90)
 - Fixed error when passing a Whitelist object to SampComp (#91)
 
-## [v1.0.0rc2]
+## v1.0.0rc2
 
 ### Added
 - Continuous testing with Travis CI

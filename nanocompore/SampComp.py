@@ -2,7 +2,7 @@
 
 #~~~~~~~~~~~~~~IMPORTS~~~~~~~~~~~~~~#
 # Std lib
-import logging
+from loguru import logger
 from collections import *
 import shelve
 import multiprocessing as mp
@@ -32,11 +32,8 @@ os.environ["NUMEXPR_NUM_THREADS"] = "1"
 os.environ["OMP_NUM_THREADS"] = "1"
 os.environ['OPENBLAS_NUM_THREADS'] = '1'
 
-# Logger setup
-logging.basicConfig(level=logging.INFO, format='%(message)s')
-logger = logging.getLogger(__name__)
-log_level_dict = {"debug":logging.DEBUG, "info":logging.INFO, "warning":logging.WARNING}
-
+log_level_dict = {"debug":"DEBUG", "info":"INFO", "warning":"WARNING"}
+logger.remove()
 #~~~~~~~~~~~~~~MAIN CLASS~~~~~~~~~~~~~~#
 class SampComp(object):
     """ Init analysis and check args"""
@@ -124,10 +121,6 @@ class SampComp(object):
             if not i in ["self","whitelist"]:
                 option_d[i]=j
 
-        # Set logging level
-        logger.setLevel(log_level_dict.get(log_level, logging.WARNING))
-        logger.info("Initialising SampComp and checking options")
-
         # Check if output folder already exists
         try:
             mkdir(fn=outpath, exist_ok=overwrite)
@@ -139,6 +132,11 @@ class SampComp(object):
         with open(log_fn, "w") as log_fp:
             logger.debug("Writing log file")
             json.dump(option_d, log_fp, indent=2)
+
+        # Set logging level
+        logger.add(sys.stderr, format="{time} {level} - {process.name} | {message}", enqueue=True, level=log_level_dict.get(log_level, "WARNING"))
+        logger.add(log_fn, format="{time} {level} - {process.name} | {message}", enqueue=True, level="TRACE")
+        logger.info("Initialising SampComp and checking options")
 
         # If eventalign_fn_dict is not a dict try to load a YAML file instead
         if type(eventalign_fn_dict) == str:
@@ -188,8 +186,7 @@ class SampComp(object):
                 downsample_high_coverage = downsample_high_coverage,
                 max_invalid_kmers_freq = max_invalid_kmers_freq,
                 select_ref_id = select_ref_id,
-                exclude_ref_id = exclude_ref_id,
-                log_level = log_level)
+                exclude_ref_id = exclude_ref_id)
         elif not isinstance(whitelist, Whitelist):
             raise NanocomporeError("Whitelist is not valid")
 
@@ -243,11 +240,12 @@ class SampComp(object):
                 ps.start()
             # Monitor error queue
             for tb in iter(error_q.get, None):
+                logger.trace("Error caught from error_q")
                 raise NanocomporeError(tb)
 
         # Catch error and reraise it
         except(BrokenPipeError, KeyboardInterrupt, NanocomporeError) as E:
-            logger.debug("An error occured. Killing all processes\n")
+            logger.error("An error occured. Killing all processes\n")
             raise E
 
         finally:
@@ -264,8 +262,7 @@ class SampComp(object):
         return SampCompDB(
             db_fn=self.__db_fn,
             fasta_fn=self.__fasta_fn,
-            bed_fn=self.__bed_fn,
-            log_level=self.__log_level)
+            bed_fn=self.__bed_fn)
 
     #~~~~~~~~~~~~~~PRIVATE MULTIPROCESSING METHOD~~~~~~~~~~~~~~#
     def __list_refid(self, in_q, error_q):
@@ -300,7 +297,6 @@ class SampComp(object):
             # Process refid in input queue
             for ref_id, ref_dict in iter(in_q.get, None):
                 logger.debug("Worker thread processing new item from in_q: {}".format(ref_id))
-
                 # Create an empty dict for all positions first
                 ref_pos_list = self.__make_ref_pos_list(ref_id)
 
@@ -360,6 +356,7 @@ class SampComp(object):
                                     # Save previous position
                                     prev_pos = pos
 
+                logger.debug("Data for {} loaded.".format(ref_id))
                 if self.__comparison_methods:
                     random_state=np.random.RandomState(seed=42)
                     ref_pos_list = txCompare(
@@ -371,7 +368,6 @@ class SampComp(object):
                         min_coverage= self.__min_coverage,
                         allow_warnings=self.__allow_warnings,
                         logit=self.__logit,
-                        logger=logger,
                         random_state=random_state)
 
                 # Add the current read details to queue
@@ -384,8 +380,9 @@ class SampComp(object):
             self.__eventalign_fn_close(fp_dict)
 
         # Manage exceptions, deal poison pills and close files
-        except Exception:
-            logger.debug("Error in worker. Kill output queue")
+        except Exception as e:
+            logger.error("Error in worker. Kill output queue")
+            logger.error(e)
             for i in range(self.__nthreads):
                 out_q.put(None)
             self.__eventalign_fn_close(fp_dict)

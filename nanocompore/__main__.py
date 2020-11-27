@@ -173,7 +173,8 @@ def sampcomp_main(args):
     # Run SampComp
     db = s()
     # Save all reports
-    db.save_all(pvalue_thr=args.pvalue_thr)
+    if(db):
+        db.save_all(pvalue_thr=args.pvalue_thr)
 
 def simreads_main(args):
 

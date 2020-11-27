@@ -7,6 +7,7 @@ import warnings
 
 
 # Third party
+from loguru import logger
 from scipy.stats import mannwhitneyu, ttest_ind, chi2, f_oneway
 from scipy.stats.mstats import ks_twosamp
 import statsmodels.discrete.discrete_model as dm
@@ -27,12 +28,12 @@ def txCompare(
     methods=None,
     sequence_context=0,
     min_coverage=20,
-    logger=None,
     ref=None,
     sequence_context_weights="uniform",
     anova=True,
     logit=False,
     allow_warnings=False):
+    logger.debug("TxCompare")
 
     if sequence_context_weights != "uniform" and sequence_context_weights != "harmonic":
         raise NanocomporeError("Invalid sequence_context_weights (uniform or harmonic)")
@@ -44,6 +45,7 @@ def txCompare(
         anova=False
         logit=True
     for pos, pos_dict in enumerate(ref_pos_list):
+        logger.trace(f"Processing position {pos}")
         # Filter out low coverage positions
         lowcov = False
         for cond_dict in pos_dict["data"].values():
@@ -54,6 +56,7 @@ def txCompare(
 
         # Perform stat tests if not low cov
         if lowcov:
+            logger.trace(f"Position {pos} is low coverage, skipping")
             n_lowcov+=1
         else:
             res = dict()
@@ -67,6 +70,7 @@ def txCompare(
             condition2_dwell = np.concatenate([ rep['dwell'] for rep in data[condition_labels[1]].values() ])
 
             for met in methods:
+                logger.trace(f"Running {met} test on position {pos}")
                 if met in ["MW", "KS", "TT"] :
                     try:
                         pvalues = nonparametric_test(condition1_intensity, condition2_intensity, condition1_dwell, condition2_dwell, method=met)
@@ -92,10 +96,12 @@ def txCompare(
                         tests.add("GMM_logit_pvalue")
 
             # Calculate shift statistics
+            logger.trace(f"Calculatign shift stats for {pos}")
             res['shift_stats'] = shift_stats(condition1_intensity, condition2_intensity, condition1_dwell, condition2_dwell)
             # Save results in main
+            logger.trace(f"Saving test results for {pos}")
             ref_pos_list[pos]['txComp'] = res
-    logger.debug("Skipping {} positions because not present in all samples with sufficient coverage".format(n_lowcov))
+    logger.debug("Skipped {} positions because not present in all samples with sufficient coverage".format(n_lowcov))
 
     # Combine pvalue within a given sequence context
     if sequence_context > 0:
