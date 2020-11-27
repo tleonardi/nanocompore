@@ -21,7 +21,7 @@ import matplotlib.patches as mpatches
 import seaborn as sns
 from bedparse import bedline
 from statsmodels.stats.multitest import multipletests
-from sklearn.mixture.gaussian_mixture import GaussianMixture
+from sklearn.mixture import GaussianMixture
 from sklearn.preprocessing import scale as scale
 
 # Local package
@@ -322,9 +322,9 @@ class SampCompDB(object):
                     else:
                         line=bedline([record.chr, record.genomicPos-(span-1), record.genomicPos+1, "%s_%s" % (record.ref_id, record.ref_kmer), pvalue, record.strand])
 
-                    if convert is "ensembl_to_ucsc":
+                    if convert == "ensembl_to_ucsc":
                         line=line.translateChr(assembly=assembly, target="ucsc", patches=True)
-                    elif convert is "ucsc_to_ensembl":
+                    elif convert == "ucsc_to_ensembl":
                         line=line.translateChr(assembly=assembly, target="ens", patches=True)
                     bed_file.write("%s\t%s\t%s\t%s\t%s\t%s\n" % (line.chr, line.start, line.end, line.name, line.score, line.strand))
                 elif bedgraph:
@@ -332,9 +332,9 @@ class SampCompDB(object):
                         line=bedline([record.chr, record.genomicPos+2, record.genomicPos+3, "%s_%s" % (record.ref_id, record.ref_kmer), pvalue, record.strand])
                     else:
                         line=bedline([record.chr, record.genomicPos-2, record.genomicPos-1, "%s_%s" % (record.ref_id, record.ref_kmer), pvalue, record.strand])
-                    if convert is "ensembl_to_ucsc":
+                    if convert == "ensembl_to_ucsc":
                         line=line.translateChr(assembly=assembly, target="ucsc", patches=True)
-                    elif convert is "ucsc_to_ensembl":
+                    elif convert == "ucsc_to_ensembl":
                         line=line.translateChr(assembly=assembly, target="ens", patches=True)
                     bed_file.write("%s\t%s\t%s\t%s\n" % (line.chr, line.start, line.end, line.score))
 
