@@ -74,6 +74,22 @@ We try to follow the [GitHub flow](https://guides.github.com/introduction/flow/)
 
 5. Submit a [pull request](https://guides.github.com/activities/forking/#making-a-pull-request).
 
+# Our release process
+
+* Create a new branch called `release_x.y.z` from `devel`.
+* Bump the version number
+* Update the CHANGELOG
+* Create PR against master
+* Merge PR with a merge commit
+* Tag the commit with the new version number
+* Run `poetry build` and `poetry publish` to publish the new version to PyPI
+
+# Our versioning system
+
+The version number is _exclusively_ stored in `pyproject.toml` and loaded from the metadata by __init__.py (see [here](https://github.com/python-poetry/poetry/issues/144#issuecomment-623927302)).
+The version number is also referenced explicitly in the CHANGELOG.
+The `master` branch only points to a stable release semantically versioned: X.Y.Z. We use patches for bug fixes, minor versions for new features and major versions for breaking changes.
+
 
 
 ---
