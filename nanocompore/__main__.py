@@ -20,19 +20,25 @@ from nanocompore.common import *
 
 def main(args=None):
     # General parser
-    parser = argparse.ArgumentParser(description=package_description)
+    parser = argparse.ArgumentParser(description=package_description, formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument('--version', '-v', action='version', version='v'+package_version)
-    subparsers = parser.add_subparsers(help='Nanocompore implements the following subcommands', dest='sub-command')
+    subparsers = parser.add_subparsers(dest='sub-command',
+        description=textwrap.dedent("""
+            nanocompore implements the following subcommands\n
+            \t* eventalign_collapse : Collapse the nanopolish eventalign output at kmers level and compute kmer level statistics\n
+            \t* sampcomp : Compare 2 samples and find significant signal differences\n
+            \t* simreads : Simulate reads as a NanopolishComp like file from a fasta file and an inbuild model\n
+            """)))
     subparsers.required = True
 
     # Sampcomp subparser
     parser_sc = subparsers.add_parser('sampcomp', formatter_class=argparse.RawDescriptionHelpFormatter,
-    description=textwrap.dedent("""
-        Compare 2 samples and find significant signal\n
-        * Minimal example with file_list arguments\n
-            nanocompore sampcomp -1 f1.tsv,f2.tsv -2 f3.tsv,f4.tsv -f ref.fa -o results
-        * Minimal example with sample YAML file\n
-            nanocompore sampcomp -y samples.yaml -f ref -o results"""))
+        description=textwrap.dedent("""
+            Compare 2 samples and find significant signal differences\n
+            * Minimal example with file_list arguments\n
+                nanocompore sampcomp -1 f1.tsv,f2.tsv -2 f3.tsv,f4.tsv -f ref.fa -o results
+            * Minimal example with sample YAML file\n
+                nanocompore sampcomp -y samples.yaml -f ref -o results"""))
     parser_sc.set_defaults(func=sampcomp_main)
     parser_sc_sample_yaml = parser_sc.add_argument_group('YAML sample files', description="Option allowing to describe sample files in a YAML file")
     parser_sc_sample_yaml.add_argument("--sample_yaml", "-y", default=None, type=str, metavar="sample_yaml",
@@ -79,19 +85,19 @@ def main(args=None):
         help="Use logistic regression testing also when all conditions have replicates (default: %(default)s)")
     parser_sc_testing.add_argument("--allow_warnings", action='store_true', default=False,
         help="If True runtime warnings during the ANOVA tests don't raise an error (default: %(default)s)")
-    parser_sc_common = parser_sc.add_argument_group('Other options')
-    parser_sc_common.add_argument("--nthreads", "-t", type=int, default=3,
+    parser_sc_misc = parser_sc.add_argument_group('Other options')
+    parser_sc_misc.add_argument("--nthreads", "-t", type=int, default=3,
         help="Number of threads (default: %(default)s)")
-    parser_sc_common.add_argument("--log_level", type=str, default="info", choices=["warning", "info", "debug"],
+    parser_sc_misc.add_argument("--log_level", type=str, default="info", choices=["warning", "info", "debug"],
         help="log level (default: %(default)s)")
 
     # simreads subparser
     parser_sr = subparsers.add_parser('simreads', formatter_class=argparse.RawDescriptionHelpFormatter,
-    description=textwrap.dedent("""
-        Simulate reads in a NanopolishComp like file from a fasta file and an inbuild model\n
-        * Minimal example without model alteration
-            nanocompore simreads -f ref.fa -o results -n 50\n
-        * Minimal example with alteration of model intensity loc parameter for 50% of the reads
+        description=textwrap.dedent("""
+            Simulate reads as a NanopolishComp like file from a fasta file and an inbuild model\n
+            * Minimal example without model alteration
+                nanocompore simreads -f ref.fa -o results -n 50\n
+            * Minimal example with alteration of model intensity loc parameter for 50% of the reads
             nanocompore simreads -f ref.fa -o results -n 50 --intensity_mod 2 --mod_reads_freq 0.5 --mod_bases_freq 0.2"""))
     parser_sr.set_defaults(func=simreads_main)
     parser_sr_io = parser_sr.add_argument_group('Input/Output options')
@@ -122,12 +128,42 @@ def main(args=None):
         help="number of adjacent base affected by the signal modification following an harmonic series (default: %(default)s)")
     parser_sr_modify.add_argument("--min_mod_dist", type=int, default=6,
         help="Minimal distance between 2 bases to modify (default: %(default)s)")
-    parser_sr_common = parser_sr.add_argument_group('Other options')
-    parser_sr_common.add_argument("--pos_rand_seed", type=int, default=42 ,
+    parser_sr_misc = parser_sr.add_argument_group('Other options')
+    parser_sr_misc.add_argument("--pos_rand_seed", type=int, default=42 ,
         help="Define a seed for randon position picking to get a deterministic behaviour (default: %(default)s)")
-    parser_sr_common.add_argument("--not_bound", action='store_true', default=False,
+    parser_sr_misc.add_argument("--not_bound", action='store_true', default=False,
         help="Do not bind the values generated by the distributions to the observed min and max observed values from the model file (default: %(default)s)")
-    parser_sr_common.add_argument("--log_level", type=str, default="info", choices=["warning", "info", "debug"],
+    parser_sr_misc.add_argument("--log_level", type=str, default="info", choices=["warning", "info", "debug"],
+        help="Set the log level (default: %(default)s)")
+
+    # Eventalign_collapse subparser
+    parser_ec = subparsers.add_parser("eventalign_collapse", formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=textwrap.dedent("""
+        Collapse the nanopolish eventalign output at kmers level and compute kmer level statistics
+        * Minimal example
+            nanocompore eventalign_collapse -i nanopolish_eventalign.tsv -outprefix out\n"""))
+    parser_ec.set_defaults(func=eventalign_collapse_main)
+    parser_ec_io = subparser_ec.add_argument_group("Input/Output options")
+    parser_ec_io.add_argument("-i", "--eventalign", default=0,
+        help="Path to a nanopolish eventalign tsv output file. If '0' read from std input (default: %(default)s)")
+    parser_ec_io.add_argument("-o", "--outpath", type=str, default="./",
+        help="Path to the output folder (will be created if it does exist yet) (default: %(default)s)")
+    parser_ec_io.add_argument("-p", "--outprefix", type=str, default="out",
+        help="text outprefix for all the files generated (default: %(default)s)")
+    parser_ec_rp = subparser_ec.add_argument_group("Run parameters options")
+    parser_ec_rp.add_argument("-s", "--write_samples", default=False, action='store_true',
+        help="If given, will write the raw sample if nanopolish eventalign was ran with --samples option (default: %(default)s)")
+    parser_ec_rp.add_argument("-r", "--max_reads", default=0 , type=int ,
+        help = "Maximum number of read to parse. 0 to deactivate (default: %(default)s)")
+    parser_ec_rp.add_argument("-f", "--stat_fields", default=["mean", "median", "num_signals"], type=str, nargs='+',
+        help = "List of statistical fields to compute if nanopolish eventalign was ran with --sample option. Valid values = mean, std, median, mad, num_signals (default: %(default)s)")
+    parser_ec_misc = subparser_ec.add_argument_group("Other options")
+    parser_ec_misc.add_argument("-t", "--nthreads", default=3, type=int,
+        help="Total number of threads. 2 threads are reserved for the reader and the writer (default: %(default)s)")
+
+    # Add common options for all parsers
+    for sp in [parser_sc, parser_sr, parser_ec]:
+        sp.add_argument("--log_level", type=str, default="info", choices=["warning", "info", "debug"],
         help="Set the log level (default: %(default)s)")
 
     # Downstream plot subparser
@@ -141,7 +177,7 @@ def main(args=None):
 #~~~~~~~~~~~~~~SUBCOMMAND FUNCTIONS~~~~~~~~~~~~~~#
 
 def sampcomp_main(args):
-
+    """ """
     # Load eventalign_fn_dict from a YAML file or assemble eventalign_fn_dict for the command line option
     if args.sample_yaml:
         eventalign_fn_dict = args.sample_yaml
@@ -177,7 +213,7 @@ def sampcomp_main(args):
         db.save_all(pvalue_thr=args.pvalue_thr)
 
 def simreads_main(args):
-
+    """ """
     # Run SimReads
     SimReads(
         fasta_fn = args.fasta,
@@ -196,6 +232,21 @@ def simreads_main(args):
         pos_rand_seed = args.pos_rand_seed,
         not_bound = args.not_bound,
         log_level = args.log_level)
+
+def eventalign_collapse_main (args):
+    """ """
+    # Run corresponding class
+    e = Eventalign_collapse (
+        eventalign_fn = args.eventalign,
+        outpath = args.outpath,
+        outprefix = args.outprefix,
+        write_samples = args.write_samples,
+        stat_fields= args.stat_fields,
+        nthreads = args.nthreads,
+        log_level = args.log_level))
+
+    # Run eventalign_collapse
+    e()
 
 def plot(args):
     """"""
