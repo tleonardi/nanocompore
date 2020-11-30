@@ -2,7 +2,6 @@
 
 #~~~~~~~~~~~~~~IMPORTS~~~~~~~~~~~~~~#
 # Std lib
-from loguru import logger
 from collections import *
 import shelve
 import multiprocessing as mp
@@ -12,6 +11,7 @@ import datetime
 import os
 
 # Third party
+from loguru import logger
 import yaml
 from tqdm import tqdm
 import numpy as np
@@ -34,6 +34,7 @@ os.environ['OPENBLAS_NUM_THREADS'] = '1'
 
 log_level_dict = {"debug":"DEBUG", "info":"INFO", "warning":"WARNING"}
 logger.remove()
+
 #~~~~~~~~~~~~~~MAIN CLASS~~~~~~~~~~~~~~#
 class SampComp(object):
     """ Init analysis and check args"""
@@ -130,7 +131,6 @@ class SampComp(object):
         # Write init options to log file
         log_fn = os.path.join(outpath, outprefix+"SampComp.log")
         with open(log_fn, "w") as log_fp:
-            logger.debug("Writing log file")
             json.dump(option_d, log_fp, indent=2)
 
         # Set logging level
