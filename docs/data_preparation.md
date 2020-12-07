@@ -36,15 +36,22 @@ samtools index {aligned_reads_bam}
 
 ### Read indexing and resquiggling
 
-Nanopolish is required to realign raw signal to the expected reference sequence. Reads have to be indexed first with nanopolish index, realigned with nanopolish eventalign and finally the data has to be collapsed per kmer and indexed by NanopolishComp Eventalign_collapse.
+Nanopolish is required to realign raw signal to the expected reference sequence. For each samples, reads have to be preprocessed with [nanopolish 0.10.1+](https://github.com/jts/nanopolish). First index the reads with nanopolish index and then  resquiggle them with nanopolish eventalign
 
-Example with [Nanopolish v0.10.1](https://github.com/jts/nanopolish) and [NanopolishComp v0.4.3](https://github.com/a-slide/NanopolishComp)
+**Please be carefull to use the following options with nanopolish:** ` --print-read-names --scale-events --samples`
+
+Example with [Nanopolish v0.10.1](https://github.com/jts/nanopolish) 
 
 ```bash
 nanopolish index -s {sequencing_summary.txt} -d {raw_fast5_dir} {basecalled_fastq}
 
-nanopolish eventalign --reads {basecalled_fastq} --bam {aligned_reads_bam} --genome {transcriptome_fasta} --samples --print-read-names --scale-events --samples > {eventalign_reads_tsv}
-
-NanopolishComp Eventalign_collapse -i {eventalign_reads_tsv} -o {eventalign_collapsed_reads_tsv}
-
+nanopolish eventalign --reads {basecalled_fastq} --bam {aligned_reads_bam} --genome {transcriptome_fasta} --print-read-names --scale-events --samples > {eventalign_reads_tsv}
 ```
+ 
+Finally the data has to be collapsed per kmer and indexed using the `Eventalign_collapse` command provided in Nanocompore.
+
+```bash
+nanocompore Eventalign_collapse -t 6 -i {eventalign_reads_tsv} -o {eventalign_collapsed_reads_tsv}
+```
+
+Once you have done that with all your samples, you are ready to run `SampComp`, the sample comparison command of Nanocompore
