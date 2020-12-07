@@ -213,24 +213,6 @@ def jhelp (f:"python function or method"):
 
     # Display in Jupyter
     display (Markdown(s))
-
-def set_logger (verbose=False, quiet=False):
-    """Set logger to appropriate log level"""
-
-    # Config logger
-    logging.basicConfig(format='%(message)s')
-    logger = logging.getLogger()
-
-    # Define overall verbose level
-    if verbose:
-        logger.setLevel(logging.DEBUG)
-    elif quiet:
-        logger.setLevel(logging.WARNING)
-    else:
-        logger.setLevel(logging.INFO)
-
-    return logger
-
 #
 # def jhelp (f:"python function or method"):
 #     """
