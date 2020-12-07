@@ -38,6 +38,15 @@ def set_logger (log_level, log_fn=None):
         if os.path.isfile(log_fn):
             os.remove(log_fn)
         logger.add(log_fn, format="{time} {level} - {process.name} | {message}", enqueue=True, level="DEBUG")
+
+def log_init_state(loc):
+    logger.debug("\tpackage_name: {}".format(pkg.__name__))
+    logger.debug("\tpackage_version: {}".format(pkg.__version__))
+    logger.debug("\ttimestamp: {}".format(str(datetime.datetime.now())))
+    for i, j in loc.items():
+        if type(j) in [int, float, complex, list, dict, str, bool, set, tuple]: # Avoid non standard types
+            logger.debug("\t{}: {}".format(i,j))
+
 def mkdir (fn, exist_ok=False):
     """ Create directory recursivelly. Raise IO error if path exist or if error at creation """
     try:
