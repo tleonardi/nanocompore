@@ -27,13 +27,12 @@ def main(args=None):
     # General parser
     parser = argparse.ArgumentParser(description=package_description, formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument('--version', '-v', action='version', version='v'+package_version)
-    subparsers = parser.add_subparsers(dest='sub-command',
+    subparsers = parser.add_subparsers(dest='subcommand',
         description=textwrap.dedent("""
             nanocompore implements the following subcommands\n
             \t* eventalign_collapse : Collapse the nanopolish eventalign output at kmers level and compute kmer level statistics\n
             \t* sampcomp : Compare 2 samples and find significant signal differences\n
-            \t* simreads : Simulate reads as a NanopolishComp like file from a fasta file and an inbuild model\n
-            """)))
+            \t* simreads : Simulate reads as a NanopolishComp like file from a fasta file and an inbuild model"""))
     subparsers.required = True
 
     # Sampcomp subparser
@@ -132,7 +131,7 @@ def main(args=None):
         * Minimal example
             nanocompore eventalign_collapse -i nanopolish_eventalign.tsv -outprefix out\n"""))
     parser_ec.set_defaults(func=eventalign_collapse_main)
-    parser_ec_io = parser_ec.add_argument_group("Input/Output options")
+    parser_ec_io = parser_ec.add_argument_group("Input options")
     parser_ec_io.add_argument("--eventalign", "-i", default=0,
         help="Path to a nanopolish eventalign tsv output file, or a list of file, or a regex (can be gzipped). It can be ommited if piped to standard input (default: piped to stdin)")
     parser_ec_rp = parser_ec.add_argument_group("Run parameters options")
@@ -205,16 +204,19 @@ def sampcomp_main(args):
         allow_warnings = args.allow_warnings,
         sequence_context = args.sequence_context,
         sequence_context_weights = args.sequence_context_weights,
-        log_level = args.log_level)
+        progress = args.progress)
 
     # Run SampComp
     db = s()
+
     # Save all reports
     if(db):
         db.save_all(pvalue_thr=args.pvalue_thr)
 
 def simreads_main(args):
-    """ """
+    """"""
+    logger.warning("Running SimReads")
+
     # Run SimReads
     SimReads(
         fasta_fn = args.fasta,
@@ -232,27 +234,26 @@ def simreads_main(args):
         min_mod_dist = args.min_mod_dist,
         pos_rand_seed = args.pos_rand_seed,
         not_bound = args.not_bound,
-        log_level = args.log_level)
+        progress = args.progress)
 
 def eventalign_collapse_main (args):
-    """ """
-    # Run corresponding class
+    """"""
+    logger.warning("Running Eventalign_collapse")
+
+    # Init Eventalign_collapse
     e = Eventalign_collapse (
         eventalign_fn = args.eventalign,
         outpath = args.outpath,
         outprefix = args.outprefix,
-        write_samples = args.write_samples,
-        stat_fields= args.stat_fields,
+        overwrite = args.overwrite,
+        max_lines = args.max_lines,
         nthreads = args.nthreads,
-        log_level = args.log_level))
+        progress = args.progress)
 
     # Run eventalign_collapse
     e()
 
-def plot(args):
-    """"""
-    raise NanocomporeError("The plotting CLI methods haven't been implemented yet. Please load the the SampCompDB in jupyter for downstream analysis.")
-
+#~~~~~~~~~~~~~~CLI ENTRYPOINT~~~~~~~~~~~~~~#
 
 if __name__ == "__main__":
     # execute only if run as a script
