@@ -7,7 +7,6 @@ import multiprocessing as mp
 from time import time
 from collections import *
 import traceback
-import datetime
 import os
 
 # Third party imports
@@ -16,9 +15,8 @@ import numpy as np
 from tqdm import tqdm
 
 # Local imports
-from NanopolishComp.common import *
-from NanopolishComp import __version__ as package_version
-from NanopolishComp import __name__ as package_name
+from nanocompore.common import *
+from nanocompore.SuperParser import SuperParser
 
 # Disable multithreading for MKL and openBlas
 os.environ["MKL_NUM_THREADS"] = "1"
@@ -37,84 +35,49 @@ class Eventalign_collapse ():
         eventalign_fn:str,
         outpath:str="./",
         outprefix:str="out",
-        max_reads:int=None,
-        write_samples:bool=False,
-        stat_fields:list=["mean", "median", "num_signals"],
+        overwrite:bool = False,
+        n_lines:int=None,
         nthreads:int = 3,
-        log_level:str = "info"):
+        progress:bool = False):
         """
-        Collapse the nanopolish eventalign output by kmers rather that by events.
-        kmer level statistics (mean, median, std, mad) are only computed if nanopolish is run with --samples option
+        Collapse the nanopolish eventalign events at kmer level
         * eventalign_fn
-            Path to a nanopolish eventalign tsv output file.
+            Path to a nanopolish eventalign tsv output file, or a list of file, or a regex (can be gzipped)
         * outpath
             Path to the output folder (will be created if it does exist yet)
         * outprefix
             text outprefix for all the files generated
-        * max_reads
-            Maximum number of read to parse. 0 to deactivate (default = 0)
-        * write_samples
-            If given, will write the raw sample if nanopolish eventalign was ran with --samples option
-        * stat_fields
-            List of statistical fields to compute if nanopolish eventalign was ran with --samples option.
-            Valid values = "mean", "std", "median", "mad", "num_signals"
-        * threads
-            Total number of threads. 1 thread is used for the reader and 1 for the writer (default = 4)
-        * verbose
-            Increase verbosity
-        * quiet
-            Reduce verbosity
+        * overwrite
+            If the output directory already exists, the standard behaviour is to raise an error to prevent overwriting existing data
+            This option ignore the error and overwrite data if they have the same outpath and outprefix.
+        * n_lines
+            Maximum number of read to parse.
+        * nthreads
+            Number of threads (two are used for reading and writing, all the others for parallel processing).
+        * progress
+            Display a progress bar during execution
         """
+        logger.info("Checking and initialising Eventalign_collapse")
 
         # Save init options in dict for later
-        kwargs = locals()
-        option_d = OrderedDict()
-        option_d["package_name"] = package_name
-        option_d["package_version"] = package_version
-        option_d["timestamp"] = str(datetime.datetime.now())
-        for i, j in kwargs.items():
-            if not i in ["self"]:
-                option_d[i]=j
+        log_init_state(loc=locals())
 
-        # Check if output folder already exists
-        try:
-            mkdir(fn=outpath, exist_ok=overwrite)
-        except NanocomporeError:
-            raise NanocomporeError("Could not create the output folder. Try using `overwrite` option or use another directory")
-
-        # Write init options to log file
-        log_fn = os.path.join(outpath, outprefix+"Eventalign_collapse.log")
-        with open(log_fn, "w") as log_fp:
-            json.dump(option_d, log_fp, indent=2)
-
-        # Set logging level
-        logger.add(sys.stderr, format="{time} {level} - {process.name} | {message}", enqueue=True, level=log_level_dict.get(log_level, "WARNING"))
-        logger.add(log_fn, format="{time} {level} - {process.name} | {message}", enqueue=True, level="TRACE")
-        logger.info("Initialising Eventalign_collapse and checking options")
-
-        # Try to read input file if not a stream
-        logger.debug("\tTesting input file readability")
-        if eventalign_fn != 0 and not file_readable (eventalign_fn):
-            raise IOError ("Cannot read input file")
-
-        # Check at least 3 threads
+        # Check threads number
         if nthreads < 3:
-            raise NanocomporeError("The minimum number of threads is 3")
-
-        logger.debug("\tChecking if stat_fields names are valid")
-        for field in stat_fields:
-            valid_fields = ["mean", "std", "median", "mad", "num_signals"]
-            if not field in valid_fields:
-                raise ValueError ("Invalid value in stat_field {}. Valid entries = {}".format(field, ",".join(valid_fields)))
+            raise NanocomporeError("Minimal required number of threads >=3")
 
         # Save args to self values
-        self.outpath = outpath
-        self.outprefix = outprefix
-        self.eventalign_fn = eventalign_fn
-        self.threads = threads-2 # Remove 2 threads for read and write
-        self.max_reads = max_reads
-        self.write_samples = write_samples
-        self.stat_fields = stat_fields
+        self.__outpath = outpath
+        self.__outprefix = outprefix
+        self.__eventalign_fn = eventalign_fn
+        self.__n_lines = n_lines
+        self.__nthreads = nthreads - 2 # subtract 1 for reading and 1 for writing
+        self.__progress = progress
+
+        # Input file field selection typing and renaming
+        self.__select_colnames = ["contig", "read_name", "position", "reference_kmer", "model_kmer", "event_length", "samples"]
+        self.__change_colnames = {"contig":"ref_id" ,"position":"ref_pos", "read_name":"read_id", "samples":"sample_list", "event_length":"dwell_time"}
+        self.__cast_colnames = {"ref_pos":int, "dwell_time":np.float32, "sample_list":lambda x: [float(i) for i in x.split(",")]}
 
     def __call__(self):
         """
@@ -128,355 +91,339 @@ class Eventalign_collapse ():
 
         # Define processes
         ps_list = []
-        ps_list.append (mp.Process (target=self._split_reads, args=(in_q, error_q)))
-        for i in range (self.threads):
-            ps_list.append (mp.Process (target=self._process_read, args=(in_q, out_q, error_q, i+1)))
-        ps_list.append (mp.Process (target=self._write_output, args=(out_q, error_q)))
+        ps_list.append (mp.Process (target=self.__split_reads, args=(in_q, error_q)))
+        for i in range (self.__nthreads):
+            ps_list.append (mp.Process (target=self.__process_read, args=(in_q, out_q, error_q)))
+        ps_list.append (mp.Process (target=self.__write_output, args=(out_q, error_q)))
 
         # Start processes and monitor error queue
         try:
             # Start all processes
             for ps in ps_list:
                 ps.start()
+
             # Monitor error queue
             for tb in iter(error_q.get, None):
                 logger.trace("Error caught from error_q")
                 raise NanocomporeError(tb)
 
-        # Catch error and reraise it
-        except(BrokenPipeError, KeyboardInterrupt, NanocomporeError) as E:
-            logger.error("An error occured. Killing all processes\n")
-            raise E
-
-        finally:
-            # Soft processes stopping
+            # Soft processes and queues stopping
             for ps in ps_list:
                 ps.join()
+            for q in (in_q, out_q, error_q):
+                q.close()
 
-            # Hard failsafe processes killing
-            for ps in ps_list:
-                if ps.exitcode == None:
+        # Catch error, kill all processed and reraise error
+        except Exception as E:
+            logger.error("An error occured. Killing all processes and closing queues\n")
+            try:
+                for ps in ps_list:
                     ps.terminate()
-
-    def __repr__ (self):
-        m = "General options:\n"
-        m+=dict_to_str(self.option_d)
-        return m
+                for q in (in_q, out_q, error_q):
+                    q.close()
+            except:
+                logger.error("An error occured while trying to kill processes\n")
+            raise E
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~PRIVATE METHODS~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
-    def _split_reads (self, in_q, error_q):
+    def __split_reads (self, in_q, error_q):
         """
         Mono-threaded reader
         """
-        logger.debug("\t[split_reads] Start reading input file/stream")
+        logger.debug("Start reading input file(s)")
+
+        n_reads = n_events = 0
+
         try:
-            # Open input file or stdin if 0
-            with open (self.eventalign_fn) as fp:
+            # Open input file with superParser
+            with SuperParser(
+                fn = self.__eventalign_fn,
+                select_colnames = self.__select_colnames,
+                cast_colnames = self.__cast_colnames,
+                change_colnames = self.__change_colnames,
+                n_lines=self.__n_lines) as sp:
 
-                # Get header line and extract corresponding index
-                input_header = fp.readline().rstrip().split("\t")
-                if not input_header:
-                    raise NanopolishCompError ("Input file/stream is empty")
+                for l in sp:
+                    n_events+=1
 
-                idx = self._get_field_idx (input_header)
-                n_reads = 0
+                    # First event exception
+                    if n_events==1:
+                        cur_ref_id = l["ref_id"]
+                        cur_read_id = l["read_id"]
+                        event_l = [l]
 
-                # First data line exception
-                read_l = []
-                event_l = fp.readline().rstrip().split("\t")
-                cur_read_id = event_l[idx["read_id"]]
-                cur_ref_id = event_l[idx["ref_id"]]
-                event_d = self._event_list_to_dict (event_l, idx)
-                read_l.append (event_d)
+                    # Same read/ref group = just append to current event group
+                    elif l["ref_id"] == cur_ref_id and l["read_id"] == cur_read_id:
+                        event_l.append(l)
 
-                for line in fp:
-                    # Early ending if required
-                    if self.max_reads and n_reads == self.max_reads:
-                        break
-                    # Get event line
-                    event_l = line.rstrip().split("\t")
-                    read_id = event_l[idx["read_id"]]
-                    ref_id = event_l[idx["ref_id"]]
-                    event_d = self._event_list_to_dict (event_l, idx)
-
-                    # Line correspond to the same ids
-                    if read_id != cur_read_id or ref_id != cur_ref_id:
-                        in_q.put ((cur_read_id, cur_ref_id, read_l))
+                    # If new read/ref group detected = enqueue previous event group and start new one
+                    else:
                         n_reads+=1
-                        read_l = []
-                        cur_read_id = read_id
-                        cur_ref_id = ref_id
+                        in_q.put(event_l)
 
-                    # In any case extend list corresponding to current read_id/ref_id
-                    read_l.append(event_d)
+                        cur_ref_id = l["ref_id"]
+                        cur_read_id = l["read_id"]
+                        event_l = [l]
 
-                # Last data line exception
-                in_q.put ((cur_read_id, cur_ref_id, read_l))
+                # Last event line exception
+                in_q.put(event_l)
                 n_reads+=1
 
-        # Manage exceptions and deal poison pills
+        # Manage exceptions and add error trackback to error queue
         except Exception:
-            error_q.put (NanopolishCompError(traceback.format_exc()))
+            logger.debug("Error in Reader")
+            error_q.put (NanocomporeError(traceback.format_exc()))
+
+        # Deal poison pills
         finally:
-            for i in range (self.threads):
+            for i in range (self.__nthreads):
                 in_q.put(None)
-            logger.debug("\t[split_reads] Done")
+            logger.debug("Parsed Reads:{} Events:{}".format(n_reads, n_events))
 
-    def _process_read (self, in_q, out_q, error_q, pid):
+    def __process_read (self, in_q, out_q, error_q):
         """
-        Multi-threaded workers
+        Multi-threaded workers collapsing events at kmer level
         """
-        logger.debug("\t[process_read {}] Starting processing reads".format(pid))
+        logger.debug("Starting processing reads")
         try:
-            # Collapse event at kmer level
-            for read_id, ref_id, read_l in iter(in_q.get, None):
+            n_reads = n_kmers = n_events = n_signals = 0
 
-                # Write read header to str
-                read_str = "#{}\t{}\n".format(read_id, ref_id)
-                read_str+= "{}\n".format (self._make_ouput_header(event_d=read_l[0]))
+            # Take on event list corresponding to one read from the list
+            for events_l in iter(in_q.get, None):
 
-                # Init values for first kmer
-                kmer_d = self._init_kmer_dict(event_d=read_l[0])
+                # Create an empty Read object and fill it with event lines
+                # events aggregation at kmer level is managed withon the object
+                read = Read (read_id=events_l[0]["read_id"], ref_id=events_l[0]["ref_id"])
+                for event_d in events_l:
+                    read.add_event(event_d)
+                    n_events+=1
 
-                # Init read dictionary
-                read_d = OrderedDict ()
-                read_d["read_id"] = read_id
-                read_d["ref_id"] = ref_id
-                read_d["dwell_time"] = 0.0
-                read_d["kmers"] = 0
-                read_d["NNNNN_kmers"] = 0
-                read_d["mismatch_kmers"] = 0
-                read_d["missing_kmers"] = 0
-                read_d["ref_start"] = kmer_d["ref_pos"]
+                # If at least one valid event found collect results at read and kmer level
+                if read.n_events > 1:
+                    read_res_d = read.get_read_results()
+                    kmer_res_l = read.get_kmer_results()
+                    out_q.put((read_res_d, kmer_res_l))
+                    n_reads+=1
+                    n_kmers+= len(kmer_res_l)
+                    n_signals+= read.n_signals
 
-                # Iterate over the rest of the lines
-                for event_d in read_l [1:]:
-                    pos_offset = event_d["ref_pos"]-kmer_d["ref_pos"]
-
-                    # Same position = update current kmer
-                    if pos_offset == 0:
-                        kmer_d = self._update_kmer_dict(kmer_d=kmer_d, event_d=event_d)
-
-                    # New position = write previous kmer and start new one
-                    else:
-                        # Update read counter
-                        read_d["dwell_time"] += kmer_d["dwell_time"]
-                        if kmer_d["NNNNN_dwell_time"]:
-                            read_d["NNNNN_kmers"] += 1
-                        if kmer_d ["mismatch_dwell_time"]:
-                            read_d["mismatch_kmers"] += 1
-                        if pos_offset >=2:
-                            read_d["missing_kmers"] += (pos_offset-1)
-                        read_d["kmers"] += 1
-                        # Converts previous kmer to str and init new kmer
-                        read_str += "{}\n".format(self._kmer_dict_to_str(kmer_d=kmer_d))
-                        kmer_d = self._init_kmer_dict(event_d=event_d)
-
-                # Last read_d update
-                read_d["dwell_time"] += kmer_d["dwell_time"]
-                if kmer_d ["NNNNN_dwell_time"]:
-                    read_d["NNNNN_kmers"] += 1
-                if kmer_d ["mismatch_dwell_time"]:
-                    read_d["mismatch_kmers"] += 1
-                if pos_offset >=2:
-                    read_d["missing_kmers"] += (pos_offset-1)
-                read_d["ref_end"] = kmer_d["ref_pos"]+1
-                read_d["kmers"] += 1
-
-                # Last kmer
-                read_str += "{}\n".format(self._kmer_dict_to_str(kmer_d=kmer_d))
-
-                # Add the current read details to queue
-                out_q.put((read_d, read_str))
-
-        # Manage exceptions and deal poison pills
+        # Manage exceptions and add error trackback to error queue
         except Exception:
-            error_q.put (NanopolishCompError(traceback.format_exc()))
+            logger.error("Error in Worker. Event:{}".format(event_d))
+            error_q.put (NanocomporeError(traceback.format_exc()))
+
+        # Deal poison pill
         finally:
-            logger.debug("\t[process_read {}] Done".format(pid))
+            logger.debug("Processed Reads:{} Kmers:{} Events:{} Signals:{}".format(n_reads, n_kmers, n_events, n_signals))
             out_q.put(None)
 
-    def _write_output (self, out_q, error_q):
+    def __write_output (self, out_q, error_q):
         """
         Mono-threaded Writer
         """
-        logger.debug("\t[write_output] Start rwriting output")
+        logger.debug("Start writing output files")
 
-        byte_offset = n_reads = 0
-        t = time()
+        byte_offset = n_reads = n_kmers = 0
+
+        # Init variables for index files
+        idx_fn = os.path.join(self.__outpath, self.__outprefix+"_eventalign_collapse.tsv.idx")
+        data_fn = os.path.join(self.__outpath, self.__outprefix+"_eventalign_collapse.tsv")
 
         try:
-            # Open output files
-            data_fn = os.path.join(self.outpath, self.outprefix+"_eventalign_collapse.tsv")
-            idx_fn = os.path.join(self.outpath, self.outprefix+"_eventalign_collapse.tsv.idx")
-            with open (data_fn, "w") as data_fp,\
-                 open (idx_fn, "w") as idx_fp,\
-                 tqdm (unit=" reads", mininterval=0.1, smoothing=0.1, disable=logger.level>=30) as pbar:
+            # Open output files and tqdm progress bar
+            with open (data_fn, "w") as data_fp, open (idx_fn, "w") as idx_fp, tqdm (unit=" reads", disable=not self.__progress) as pbar:
 
-                idx_fp.write ("ref_id\tref_start\tref_end\tread_id\tkmers\tdwell_time\tNNNNN_kmers\tmismatch_kmers\tmissing_kmers\tbyte_offset\tbyte_len\n")
+                # Iterate over out queue until nthread poison pills are found
+                for _ in range (self.__nthreads):
+                    for read_res_d, kmer_res_l in iter (out_q.get, None):
+                        n_reads+=1
 
-                n_reads = 0
-                for _ in range (self.threads):
-                    for (read_d, read_str) in iter (out_q.get, None):
-                        byte_len = len(read_str)
+                        # Define file header from first read and first kmer
+                        if byte_offset is 0:
+                            idx_header_list = list(read_res_d.keys())+["byte_offset","byte_len"]
+                            idx_header_str = "\t".join(idx_header_list)
+                            data_header_list = list(kmer_res_l[0].keys())
+                            data_header_str = "\t".join(data_header_list)
 
-                        data_fp.write (read_str)
-                        idx_fp.write ("{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\n".format (
-                            read_d["ref_id"],
-                            read_d["ref_start"],
-                            read_d["ref_end"],
-                            read_d["read_id"],
-                            read_d["kmers"],
-                            read_d["dwell_time"],
-                            read_d["NNNNN_kmers"],
-                            read_d["mismatch_kmers"],
-                            read_d["missing_kmers"],
-                            byte_offset,
-                            byte_len-1))
+                            # Write index file header
+                            idx_fp.write ("{}\n".format(idx_header_str))
 
-                        byte_offset += byte_len
-                        n_reads += 1
-                        if logger.level<30:
-                            pbar.update(1)
+                        # Write data file header
+                        byte_len = 0
+                        header_str = "#{}\t{}\n{}\n".format(read_res_d["read_id"], read_res_d["ref_id"], data_header_str)
+                        data_fp.write(header_str)
+                        byte_len+=len(header_str)
+
+                        # Write kmer data matching data field order
+                        for kmer in kmer_res_l:
+                            n_kmers+=1
+                            data_str = "\t".join([str(kmer[f]) for f in data_header_list])+"\n"
+                            data_fp.write(data_str)
+                            byte_len+=len(data_str)
+
+                        # Add byte
+                        read_res_d["byte_offset"] = byte_offset
+                        read_res_d["byte_len"] = byte_len-1
+                        idx_str = "\t".join([str(read_res_d[f]) for f in idx_header_list])
+                        idx_fp.write("{}\n".format(idx_str))
+
+                        # Update pbar
+                        byte_offset+=byte_len
+                        pbar.update(1)
 
                 # Flag last line
                 data_fp.write ("#\n")
 
-            # Open log file
-            log_fn = os.path.join(self.outpath, self.outprefix+"_eventalign_collapse.log")
-            with open (log_fn, "w") as log_fp:
-                log_fp.write (str(self))
-
-        # Manage exceptions and deal poison pills
+        # Manage exceptions and add error trackback to error queue
         except Exception:
-            error_q.put (NanopolishCompError(traceback.format_exc()))
+            logger.error("Error in Writer")
+            error_q.put (NanocomporeError(traceback.format_exc()))
+
         finally:
-            logger.debug("\t[write_output] Done")
-            logger.warning ("[Eventalign_collapse] total reads: {} [{} reads/s]\n".format(n_reads, round (n_reads/(time()-t), 2)))
+            logger.debug("Written Reads:{} Kmers:{}".format(n_reads, n_kmers))
+            logger.info ("Output reads written:{}".format(n_reads))
+            # Kill error queue with poison pill
             error_q.put(None)
 
-    #~~~~~~~~~~~~~~~~~~~~~~~~~~HELPER PRIVATE METHODS~~~~~~~~~~~~~~~~~~~~~~~~~~#
+#~~~~~~~~~~~~~~~~~~~~~~~~~~HELPER CLASSES~~~~~~~~~~~~~~~~~~~~~~~~~~#
 
-    def _get_field_idx (self, input_header):
-        """"""
-        # Get index of fields to fetch
-        idx = OrderedDict()
-        idx["ref_id"] = input_header.index ("contig")
-        if "read_name" in input_header:
-            idx["read_id"] = input_header.index ("read_name")
-        elif "read_index" in input_header:
-            idx["read_id"] = input_header.index ("read_index")
-        idx["ref_pos"] = input_header.index ("position")
-        idx["ref_kmer"] = input_header.index ("reference_kmer")
-        idx["mod_kmer"] = input_header.index ("model_kmer")
-        idx["event_len"] = input_header.index ("event_length")
-        # Facultative field start and end index
-        if "start_idx" in input_header and "end_idx" in input_header:
-            idx["start_idx"] = input_header.index ("start_idx")
-            idx["end_idx"] = input_header.index ("end_idx")
-        # Facultative field samples
-        if "samples" in input_header:
-            idx["samples"] = input_header.index ("samples")
-        return idx
+class Read ():
+    """Helper class representing a single read"""
 
-    def _event_list_to_dict (self, event_l, idx):
-        """Get interesting fields from event list and cast in appropriate type"""
-        event_d = OrderedDict()
-        event_d["ref_pos"] = int(event_l[idx["ref_pos"]])
-        event_d["ref_kmer"] = event_l[idx["ref_kmer"]]
-        event_d["mod_kmer"] = event_l[idx["mod_kmer"]]
-        event_d["event_len"] = float(event_l[idx["event_len"]])
-        if "start_idx" in idx:
-            event_d["start_idx"] = int(event_l[idx["start_idx"]])
-            event_d["end_idx"] = int(event_l[idx["end_idx"]])
-        if "samples" in idx:
-            event_d["sample_list"] = event_l[idx["samples"]].split(",")
-        return event_d
+    def __init__ (self, read_id, ref_id):
+        self.read_id = read_id
+        self.ref_id = ref_id
+        self.ref_start = None
+        self.ref_end = None
+        self.kmer_l = [Kmer()]
+        self.n_events = 0
+        self.n_signals = 0
+        self.dwell_time = 0
 
-    def _init_kmer_dict (self, event_d):
-        """Start a new kmer dict from first event values"""
-        kmer_d = OrderedDict ()
-        kmer_d["ref_pos"] = event_d["ref_pos"]
-        kmer_d["ref_kmer"] = event_d["ref_kmer"]
-        kmer_d["num_events"] = 1
-        kmer_d["dwell_time"] = event_d["event_len"]
-        kmer_d["NNNNN_dwell_time"] = 0.0
-        kmer_d["mismatch_dwell_time"] = 0.0
-        if event_d["mod_kmer"] == "NNNNN":
-            kmer_d["NNNNN_dwell_time"] += event_d["event_len"]
-        elif event_d["mod_kmer"] != event_d["ref_kmer"]:
-            kmer_d["mismatch_dwell_time"] += event_d["event_len"]
-        if "start_idx" in event_d:
-            kmer_d["start_idx"] = event_d["start_idx"]
-            kmer_d["end_idx"] = event_d["end_idx"]
-        if "sample_list" in event_d:
-            kmer_d["sample_list"] = event_d["sample_list"]
-        return kmer_d
-
-    def _update_kmer_dict (self, kmer_d, event_d):
-        """Update kmer dict from subsequent event values"""
-        kmer_d["num_events"] += 1
-        kmer_d["dwell_time"] += event_d["event_len"]
-        if event_d["mod_kmer"] == "NNNNN":
-            kmer_d["NNNNN_dwell_time"] += event_d["event_len"]
-        elif event_d["mod_kmer"] != event_d["ref_kmer"]:
-            kmer_d["mismatch_dwell_time"] += event_d["event_len"]
-        if "start_idx" in event_d:
-            kmer_d["start_idx"] = event_d["start_idx"]
-        if "sample_list" in event_d:
-            kmer_d["sample_list"].extend(event_d["sample_list"])
-        return kmer_d
-
-    def _kmer_dict_to_str (self, kmer_d):
-        """"""
-        # Write base fields
-        s = "{}\t{}\t{}\t{}\t{}\t{}".format(
-            kmer_d["ref_pos"],
-            kmer_d["ref_kmer"],
-            kmer_d["num_events"],
-            kmer_d["dwell_time"],
-            kmer_d["NNNNN_dwell_time"],
-            kmer_d["mismatch_dwell_time"])
-        # Facultative index fields
-        if "start_idx" in kmer_d:
-            s += "\t{}\t{}".format(
-                kmer_d["start_idx"],
-                kmer_d["end_idx"])
-        # Facultative samples fields
-        if "sample_list" in kmer_d:
-            sample_array = np.array (kmer_d["sample_list"], dtype=np.float32)
-            if "mean" in self.stat_fields:
-                s += "\t{}".format(np.mean (sample_array))
-            if "std" in self.stat_fields:
-                s += "\t{}".format(np.std (sample_array))
-            if "median" in self.stat_fields:
-                s += "\t{}".format(np.median (sample_array))
-            if "mad" in self.stat_fields:
-                s += "\t{}".format(np.median(np.abs(sample_array-np.median(sample_array))))
-            if "num_signals" in self.stat_fields:
-                s += "\t{}".format(len(sample_array))
-            if self.write_samples:
-                s += "\t{}".format(",".join(kmer_d["sample_list"]))
+    def __repr__(self):
+        s = "Read instance\n"
+        s+="\tread_id: {}\n".format(self.read_id)
+        s+="\tref_id: {}\n".format(self.ref_id)
+        s+="\tref_start: {}\n".format(self.ref_start)
+        s+="\tref_end: {}\n".format(self.ref_end)
+        s+="\tn_events: {}\n".format(self.n_events)
+        s+="\tdwell_time: {}\n".format(self.dwell_time)
+        for status, count in self.kmers_status.items():
+            s+="\t{}: {}\n".format(status, count)
         return s
 
-    def _make_ouput_header (self, event_d):
-        """"""
-        # Write base fields
-        s = "ref_pos\tref_kmer\tnum_events\tdwell_time\tNNNNN_dwell_time\tmismatch_dwell_time"
-        # Write extra fields
-        if "start_idx" in event_d:
-            s += "\tstart_idx\tend_idx"
-        if "sample_list" in event_d:
-            if "mean" in self.stat_fields:
-                s += "\tmean"
-            if "std" in self.stat_fields:
-                s += "\tstd"
-            if "median" in self.stat_fields:
-                s += "\tmedian"
-            if "mad" in self.stat_fields:
-                s += "\tmad"
-            if "num_signals" in self.stat_fields:
-                s += "\tnum_signals"
-            if self.write_samples:
-                s += "\tsamples"
+    def add_event (self, event_d):
+        self.n_events+=1
+        self.n_signals+=len(event_d["sample_list"])
+        self.dwell_time+=event_d["dwell_time"]
+
+        # First event
+        if not self.ref_end:
+            self.ref_start = event_d["ref_pos"]
+            self.ref_end = event_d["ref_pos"]
+
+        # Position offset = Move to next position
+        if event_d["ref_pos"] > self.ref_end:
+            self.kmer_l.append(Kmer())
+            self.ref_end = event_d["ref_pos"]
+            self.ref_end = event_d["ref_pos"]
+
+        # Update current kmer
+        self.kmer_l[-1].add_event(event_d)
+
+    @property
+    def kmers_status (self):
+        d = OrderedDict()
+        d["kmers"] = self.ref_end-self.ref_start+1
+        d["missing_kmers"] = d["kmers"] - len(self.kmer_l)
+        d["NNNNN_kmers"]=0
+        d["mismatch_kmers"]=0
+        d["valid_kmers"]=0
+        for k in self.kmer_l:
+            d[k.status+"_kmers"]+=1
+        return d
+
+    def get_read_results (self):
+        d = OrderedDict()
+        d["ref_id"] = self.ref_id
+        d["ref_start"] = self.ref_start
+        d["ref_end"] = self.ref_end
+        d["read_id"] = self.read_id
+        d["num_events"] = self.n_events
+        d["num_signals"] = self.n_signals
+        d["dwell_time"] = self.dwell_time
+        for status, count in self.kmers_status.items():
+            d[status] = count
+        return d
+
+    def get_kmer_results (self):
+        l = [kmer.get_results() for kmer in self.kmer_l]
+        return l
+
+class Kmer ():
+    """Helper class representing a single kmer"""
+
+    def __init__ (self):
+        self.ref_pos = None
+        self.ref_kmer = None
+        self.num_events = 0
+        self.num_signals = 0
+        self.dwell_time = 0.0
+        self.NNNNN_dwell_time = 0.0
+        self.mismatch_dwell_time = 0.0
+        self.sample_list = []
+
+    def __repr__(self):
+        s = "Kmer instance\n"
+        s+="\tref_pos: {}\n".format(self.ref_pos)
+        s+="\tref_kmer: {}\n".format(self.ref_kmer)
+        s+="\tnum_events: {}\n".format(self.num_events)
+        s+="\tdwell_time: {}\n".format(self.dwell_time)
+        s+="\tNNNNN_dwell_time: {}\n".format(self.NNNNN_dwell_time)
+        s+="\tmismatch_dwell_time: {}\n".format(self.mismatch_dwell_time)
+        s+="\tsample_list: {}\n".format(" ".join([str(i) for i in self.sample_list]))
         return s
+
+    def add_event (self, event_d):
+        # First event
+        if not self.ref_pos:
+            self.ref_pos = event_d["ref_pos"]
+            self.ref_kmer = event_d["reference_kmer"]
+
+        # Update kmer values
+        self.num_events+=1
+        self.num_signals+=len(event_d["sample_list"])
+        self.dwell_time+=event_d["dwell_time"]
+        if event_d["model_kmer"] == "NNNNN":
+            self.NNNNN_dwell_time+=event_d["dwell_time"]
+        elif event_d["model_kmer"] != self.ref_kmer:
+            self.mismatch_dwell_time+=event_d["dwell_time"]
+        self.sample_list.extend(event_d["sample_list"])
+
+    @property
+    def status (self):
+        """Define kmer status depending on mismatching or NNNNN events"""
+        # If no NNNNN nor mismatch events then the kmer the purely valid
+        if not self.NNNNN_dwell_time and not self.mismatch_dwell_time:
+            return "valid"
+        # Otherwise return status corresponding to longuest invalid dwell time
+        elif self.NNNNN_dwell_time > self.mismatch_dwell_time:
+            return "NNNNN"
+        else:
+            return "mismatch"
+
+    def get_results(self):
+        sample_array = np.array(self.sample_list, dtype=np.float32)
+        d = OrderedDict()
+        d["ref_pos"] = self.ref_pos
+        d["ref_kmer"] = self.ref_kmer
+        d["num_events"] = self.num_events
+        d["num_signals"] = self.num_signals
+        d["dwell_time"] = self.dwell_time
+        d["NNNNN_dwell_time"] = self.NNNNN_dwell_time
+        d["mismatch_dwell_time"] = self.mismatch_dwell_time
+        d["status"] = self.status
+        d["median"] = np.median(sample_array)
+        d["mad"] = np.median(np.abs(sample_array-d["median"]))
+
+        return d
