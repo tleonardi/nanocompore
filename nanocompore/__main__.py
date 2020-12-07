@@ -80,7 +80,9 @@ def main(args=None):
     parser_sc_testing.add_argument("--pvalue_thr", type=float, default=0.05,
         help="Adjusted p-value threshold for reporting significant sites (default: %(default)s)")
     parser_sc_testing.add_argument("--logit", action='store_true',
-        help="Use logistic regression testing also when all conditions have replicates (default: %(default)s)")
+        help="Use logistic regression testing downstream of GMM method. This is a legacy option and is now the deault.")
+    parser_sc_testing.add_argument("--anova", action='store_true',
+        help="Use Anova test downstream of GMM method (default: %(default)s)")
     parser_sc_testing.add_argument("--allow_warnings", action='store_true', default=False,
         help="If True runtime warnings during the ANOVA tests don't raise an error (default: %(default)s)")
     parser_sc_misc = parser_sc.add_argument_group('Other options')
@@ -200,7 +202,8 @@ def sampcomp_main(args):
         min_ref_length = args.min_ref_length,
         downsample_high_coverage = args.downsample_high_coverage,
         comparison_methods = args.comparison_methods,
-        logit = args.logit,
+        logit = True,
+        anova = args.anova,
         allow_warnings = args.allow_warnings,
         sequence_context = args.sequence_context,
         sequence_context_weights = args.sequence_context_weights,
