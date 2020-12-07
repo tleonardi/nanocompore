@@ -177,24 +177,24 @@ class SampComp(object):
                     comparison_methods[i]="GMM"
                 else:
                     raise NanocomporeError("Invalid comparison method {}".format(method))
-
-        if not whitelist:
-            whitelist = Whitelist(
-                eventalign_fn_dict = eventalign_fn_dict,
-                fasta_fn = fasta_fn,
-                min_coverage = min_coverage,
-                min_ref_length = min_ref_length,
-                downsample_high_coverage = downsample_high_coverage,
-                max_invalid_kmers_freq = max_invalid_kmers_freq,
-                select_ref_id = select_ref_id,
-                exclude_ref_id = exclude_ref_id)
-        elif not isinstance(whitelist, Whitelist):
-            raise NanocomporeError("Whitelist is not valid")
+        whitelist = None
+        #if not whitelist:
+        #    whitelist = Whitelist(
+        #        eventalign_fn_dict = eventalign_fn_dict,
+        #        fasta_fn = fasta_fn,
+        #        min_coverage = min_coverage,
+        #        min_ref_length = min_ref_length,
+        #        downsample_high_coverage = downsample_high_coverage,
+        #        max_invalid_kmers_freq = max_invalid_kmers_freq,
+        #        select_ref_id = select_ref_id,
+        #        exclude_ref_id = exclude_ref_id)
+        #elif not isinstance(whitelist, Whitelist):
+        #    raise NanocomporeError("Whitelist is not valid")
 
         # Set private args from whitelist args
-        self.__min_coverage = whitelist._Whitelist__min_coverage
-        self.__downsample_high_coverage = whitelist._Whitelist__downsample_high_coverage
-        self.__max_invalid_kmers_freq = whitelist._Whitelist__max_invalid_kmers_freq
+        #self.__min_coverage = whitelist._Whitelist__min_coverage
+        #self.__downsample_high_coverage = whitelist._Whitelist__downsample_high_coverage
+        #self.__max_invalid_kmers_freq = whitelist._Whitelist__max_invalid_kmers_freq
 
         # Save private args
         self.__eventalign_fn_dict = eventalign_fn_dict
@@ -217,11 +217,13 @@ class SampComp(object):
             for sample_lab in sample_dict.keys():
                 n+=1
         self.__n_samples = n
+        return None
 
     def __call__(self):
         """
         Run the analysis
         """
+        logger.warning("C1")
         logger.info("Starting data processing")
         # Init Multiprocessing variables
         in_q = mp.Queue(maxsize = 100)
@@ -242,6 +244,7 @@ class SampComp(object):
                 ps.start()
             # Monitor error queue
             for tb in iter(error_q.get, None):
+                logger.warning("C2")
                 logger.trace("Error caught from error_q")
                 raise NanocomporeError(tb)
 
@@ -251,8 +254,10 @@ class SampComp(object):
             raise E
 
         finally:
+            logger.warning("C3")
             # Soft processes stopping
             for ps in ps_list:
+                logger.warning("C4")
                 ps.join()
 
             # Hard failsafe processes killing
@@ -261,6 +266,9 @@ class SampComp(object):
                     ps.terminate()
 
         # Return database wrapper object
+        logger.warning("In {in_q.qsize()}")
+        logger.warning("Out {out_q.qsize()}")
+        logger.warning("Err {err_q.qsize()}")
         return SampCompDB(
             db_fn=self.__db_fn,
             fasta_fn=self.__fasta_fn,
