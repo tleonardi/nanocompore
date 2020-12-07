@@ -2,6 +2,12 @@
 
 Nanocompore was designed to be used either through a python API or a command line interface. The package contains 3 main modules: `SampComp`, `SampCompDB` and `SimReads`
 
+### Eventalign_collapse
+
+As its name suggests `Eventalign_collapse`, collapses nanopolish eventalign files at kmer level. This step drastically reduces the size of the resquiggled file and allow to index the data by read and reference, which allows fast random access to the file by `SampComp`. This step is required and described in the data preparation section. It can be run either through the API (`nanocompore.Eventalign_collapse.Eventalign_collapse`) or the CLI (`nanocompore eventalign_collapse`).
+
+* [SampComp Usage](https://nanocompore.rna.rocks/demo/Eventalign_collapse_usage/)
+
 ### SampComp
 
 This is the main module which compares the signal of 2 experimental conditions. It takes Nanopolished datasets as input and generates a database containing all the results as output. `SampComp` has to be run first either through the API (`nanocompore.SampComp.SampComp`) or the CLI (`nanocompore sampcomp`).
