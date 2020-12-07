@@ -15,6 +15,9 @@ from pyfaidx import Fasta
 # Local package
 from nanocompore.common import *
 
+# Set global random seed
+downsample_random_seed = 42
+random.seed(downsample_random_seed)
 
 #~~~~~~~~~~~~~~MAIN CLASS~~~~~~~~~~~~~~#
 class Whitelist(object):
