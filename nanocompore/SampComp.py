@@ -130,7 +130,7 @@ class SampComp(object):
         if bed_fn and not access_file(bed_fn):
             raise NanocomporeError("{} is not a valid BED file".format(bed_fn))
 
-        # Check at least 3 threads
+        # Check threads number
         if nthreads < 3:
             raise NanocomporeError("The minimum number of threads is 3")
 
@@ -212,57 +212,63 @@ class SampComp(object):
             # Start all processes
             for ps in ps_list:
                 ps.start()
+
             # Monitor error queue
             for tb in iter(error_q.get, None):
                 logger.trace("Error caught from error_q")
                 raise NanocomporeError(tb)
 
-        # Catch error and reraise it
-        except(BrokenPipeError, KeyboardInterrupt, NanocomporeError) as E:
-            logger.error("An error occured. Killing all processes\n")
-            raise E
-
-        finally:
-            # Soft processes stopping
+            # Soft processes and queues stopping
             for ps in ps_list:
                 ps.join()
+            for q in (in_q, out_q, error_q):
+                q.close()
 
-            # Hard failsafe processes killing
-            for ps in ps_list:
-                if ps.exitcode == None:
+            # Return database wrapper object
+            return SampCompDB(
+                db_fn=self.__db_fn,
+                fasta_fn=self.__fasta_fn,
+                bed_fn=self.__bed_fn)
+
+        # Catch error, kill all processed and reraise error
+        except Exception as E:
+            logger.error("An error occured. Killing all processes and closing queues\n")
+            try:
+                for ps in ps_list:
                     ps.terminate()
-
-        # Return database wrapper object
-        return SampCompDB(
-            db_fn=self.__db_fn,
-            fasta_fn=self.__fasta_fn,
-            bed_fn=self.__bed_fn)
+                for q in (in_q, out_q, error_q):
+                    q.close()
+            except:
+                logger.error("An error occured while trying to kill processes\n")
+            raise E
 
     #~~~~~~~~~~~~~~PRIVATE MULTIPROCESSING METHOD~~~~~~~~~~~~~~#
     def __list_refid(self, in_q, error_q):
         """Add valid refid from whitelist to input queue to dispatch the data among the workers"""
+        n_tx = 0
         try:
             for ref_id, ref_dict in self.__whitelist:
                 logger.debug("Adding {} to in_q".format(ref_id))
                 in_q.put((ref_id, ref_dict))
+                n_tx+=1
 
-            # Deal 1 poison pill and close file pointer
-            logger.debug("Adding poison pill to in_q")
-            for i in range(self.__nthreads):
-                in_q.put(None)
-
-        # Manage exceptions and deal poison pills
+        # Manage exceptions and add error trackback to error queue
         except Exception:
-            logger.debug("Error in Reader. Kill input queue")
-            for i in range(self.__nthreads):
-                in_q.put(None)
+            logger.debug("Error in Reader")
             error_q.put(traceback.format_exc())
+
+        # Deal poison pills
+        finally:
+            for i in range (self.__nthreads):
+                in_q.put(None)
+            logger.debug("Parsed transcripts:{}".format(n_tx))
 
     def __process_references(self, in_q, out_q, error_q):
         """
         Consume ref_id, agregate intensity and dwell time at position level and
         perform statistical analyses to find significantly different regions
         """
+        n_tx = n_reads = n_lines = 0
         try:
             logger.debug("Worker thread started")
             # Open all files for reading. File pointer are stored in a dict matching the ref_dict entries
@@ -330,6 +336,9 @@ class SampComp(object):
                                     # Save previous position
                                     prev_pos = pos
 
+                                n_lines+=1
+                            n_reads+=1
+
                 logger.debug("Data for {} loaded.".format(ref_id))
                 if self.__comparison_methods:
                     random_state=np.random.RandomState(seed=42)
@@ -347,29 +356,28 @@ class SampComp(object):
                 # Add the current read details to queue
                 logger.debug("Adding %s to out_q"%(ref_id))
                 out_q.put((ref_id, ref_pos_list))
+                n_tx+=1
 
-            # Deal 1 poison pill and close file pointer
-            logger.debug("Adding poison pill to out_q")
-            out_q.put(None)
-            self.__eventalign_fn_close(fp_dict)
-
-        # Manage exceptions, deal poison pills and close files
+        # Manage exceptions and add error trackback to error queue
         except Exception as e:
-            logger.error("Error in worker. Kill output queue")
-            logger.error(e)
-            for i in range(self.__nthreads):
-                out_q.put(None)
+            logger.error("Error in Worker")
+            error_q.put (NanocomporeError(traceback.format_exc()))
+
+        # Deal poison pill and close file pointer
+        finally:
+            logger.debug("Processed Transcrits:{} Reads:{} Lines:{}".format(n_tx, n_reads, n_lines))
+            logger.debug("Adding poison pill to out_q")
             self.__eventalign_fn_close(fp_dict)
-            error_q.put(traceback.format_exc())
+            out_q.put(None)
 
     def __write_output(self, out_q, error_q):
         # Get results out of the out queue and write in shelve
         pvalue_tests = set()
         ref_id_list = []
+        n_tx = n_pos = 0
         try:
-            with shelve.open(self.__db_fn, flag='n') as db:
+            with shelve.open(self.__db_fn, flag='n') as db, tqdm(total=len(self.__whitelist), unit=" Processed References", disable= not self.__progress) as pbar:
                 # Iterate over the counter queue and process items until all poison pills are found
-                pbar = tqdm(total = len(self.__whitelist), unit=" Processed References", disable=self.__log_level in ("warning", "debug"))
                 for _ in range(self.__nthreads):
                     for ref_id, ref_pos_list in iter(out_q.get, None):
                         ref_id_list.append(ref_id)
@@ -379,18 +387,20 @@ class SampComp(object):
                             if 'txComp' in pos_dict:
                                 for res in pos_dict['txComp'].keys():
                                     if "pvalue" in res:
+                                        n_pos+=1
                                         pvalue_tests.add(res)
                         # Write results in a shelve db
                         db [ref_id] = ref_pos_list
-                        pbar.update()
+                        pbar.update(1)
+                        n_tx+=1
 
                 # Write list of refid
                 db["__ref_id_list"] = ref_id_list
 
                 # Write metadata
                 db["__metadata"] = {
-                    "package_name": package_name,
-                    "package_version": package_version,
+                    "package_name": pkg.__version__,
+                    "package_version": pkg.__name__,
                     "timestamp": str(datetime.datetime.now()),
                     "comparison_methods": self.__comparison_methods,
                     "pvalue_tests": sorted(list(pvalue_tests)),
@@ -398,14 +408,16 @@ class SampComp(object):
                     "min_coverage": self.__min_coverage,
                     "n_samples": self.__n_samples}
 
-            # Ending process bar and deal poison pill in error queue
-            pbar.close()
-            error_q.put(None)
-
         # Manage exceptions and add error trackback to error queue
         except Exception:
-            pbar.close()
+            logger.error("Error in Writer")
             error_q.put(traceback.format_exc())
+
+        finally:
+            logger.debug("Written Transcripts:{} Valid positions:{}".format(n_tx, n_pos))
+            logger.info ("All Done. Transcripts processed: {}".format(n_tx))
+            # Kill error queue with poison pill
+            error_q.put(None)
 
     #~~~~~~~~~~~~~~PRIVATE HELPER METHODS~~~~~~~~~~~~~~#
     def __check_eventalign_fn_dict(self, d):
