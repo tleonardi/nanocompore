@@ -29,6 +29,15 @@ def build_eventalign_fn_dict(file_list1, file_list2, label1, label2):
     d[label1] = {"{}_{}".format(label1, i): v for i, v in enumerate(file_list1.split(","),1)}
     d[label2] = {"{}_{}".format(label2, i): v for i, v in enumerate(file_list2.split(","),1)}
     return d
+
+def set_logger (log_level, log_fn=None):
+    log_level = log_level.upper()
+    logger.remove()
+    logger.add(sys.stderr, format="{time} {level} - {process.name} | {message}", enqueue=True, level=log_level)
+    if log_fn:
+        if os.path.isfile(log_fn):
+            os.remove(log_fn)
+        logger.add(log_fn, format="{time} {level} - {process.name} | {message}", enqueue=True, level="DEBUG")
 def mkdir (fn, exist_ok=False):
     """ Create directory recursivelly. Raise IO error if path exist or if error at creation """
     try:
