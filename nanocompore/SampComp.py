@@ -30,9 +30,6 @@ os.environ["NUMEXPR_NUM_THREADS"] = "1"
 os.environ["OMP_NUM_THREADS"] = "1"
 os.environ['OPENBLAS_NUM_THREADS'] = '1'
 
-log_level_dict = {"debug":"DEBUG", "info":"INFO", "warning":"WARNING"}
-logger.remove()
-
 #~~~~~~~~~~~~~~MAIN CLASS~~~~~~~~~~~~~~#
 class SampComp(object):
     """ Init analysis and check args"""
@@ -59,7 +56,7 @@ class SampComp(object):
         select_ref_id:list = [],
         exclude_ref_id:list = [],
         nthreads:int = 3,
-        log_level:str = "info"):
+        progress:bool = False):
 
         """
         Initialise a `SampComp` object and generates a white list of references with sufficient coverage for subsequent analysis.
@@ -107,34 +104,13 @@ class SampComp(object):
             if given, refid in the list will be excluded from the analysis.
         * nthreads
             Number of threads (two are used for reading and writing, all the others for parallel processing).
-        * log_level
-            Set the log level. {warning,info,debug}
+        * progress
+            Display a progress bar during execution
         """
+        logger.info("Checking and initialising SampComp")
+
         # Save init options in dict for later
-        kwargs = locals()
-        option_d = OrderedDict()
-        option_d["package_name"] = package_name
-        option_d["package_version"] = package_version
-        option_d["timestamp"] = str(datetime.datetime.now())
-        for i, j in kwargs.items():
-            if not i in ["self","whitelist"]:
-                option_d[i]=j
-
-        # Check if output folder already exists
-        try:
-            mkdir(fn=outpath, exist_ok=overwrite)
-        except NanocomporeError:
-            raise NanocomporeError("Could not create the output folder. Try using `overwrite` option or use another directory")
-
-        # Write init options to log file
-        log_fn = os.path.join(outpath, outprefix+"SampComp.log")
-        with open(log_fn, "w") as log_fp:
-            json.dump(option_d, log_fp, indent=2)
-
-        # Set logging level
-        logger.add(sys.stderr, format="{time} {level} - {process.name} | {message}", enqueue=True, level=log_level_dict.get(log_level, "WARNING"))
-        logger.add(log_fn, format="{time} {level} - {process.name} | {message}", enqueue=True, level="TRACE")
-        logger.info("Initialising SampComp and checking options")
+        log_init_state(loc=locals())
 
         # If eventalign_fn_dict is not a dict try to load a YAML file instead
         if type(eventalign_fn_dict) == str:
@@ -205,7 +181,7 @@ class SampComp(object):
         self.__sequence_context = sequence_context
         self.__sequence_context_weights = sequence_context_weights
         self.__nthreads = nthreads - 2
-        self.__log_level = log_level
+        self.__progress = progress
 
         # Get number of samples
         n = 0
