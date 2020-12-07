@@ -10,7 +10,10 @@ import inspect
 #~~~~~~~~~~~~~~CUSTOM EXCEPTION CLASS~~~~~~~~~~~~~~#
 class NanocomporeError (Exception):
     """ Basic exception class for nanocompore module """
-    pass
+    def __init__(self, message=""):
+        logger.error(message)
+        super().__init__(message)
+
 
 class NanocomporeWarning (Warning):
     """ Basic Warning class for nanocompore module """
