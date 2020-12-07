@@ -51,7 +51,7 @@ class SampComp(object):
         sequence_context_weights:str = "uniform",
         min_coverage:int = 30,
         min_ref_length:int = 100,
-        downsample_high_coverage:int = 0,
+        downsample_high_coverage:int = 5000,
         max_invalid_kmers_freq:float = 0.1,
         select_ref_id:list = [],
         exclude_ref_id:list = [],

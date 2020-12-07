@@ -68,8 +68,8 @@ def main(args=None):
         help="Max fequency of invalid kmers (default: %(default)s)")
     parser_sc_filtering.add_argument("--min_coverage", type=int, default=30,
         help="Minimum coverage required in each condition to do the comparison (default: %(default)s)")
-    parser_sc_filtering.add_argument("--downsample_high_coverage", type=int, default=0,
-        help="Used for debug: transcripts with high covergage will be downsampled (default: %(default)s)")
+    parser_sc_filtering.add_argument("--downsample_high_coverage", type=int, default=5000,
+        help="Transcripts with high coverage will be downsampled (default: %(default)s)")
     parser_sc_filtering.add_argument("--min_ref_length", type=int, default=100,
         help="Minimum length of a reference transcript to include it in the analysis (default: %(default)s)")
     parser_sc_testing = parser_sc.add_argument_group('Statistical testing options')
