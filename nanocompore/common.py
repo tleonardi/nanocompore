@@ -6,6 +6,13 @@ import sys
 import os
 from collections import *
 import inspect
+import datetime
+
+# Third party imports
+from loguru import logger
+
+# Local imports
+import nanocompore as pkg
 
 #~~~~~~~~~~~~~~CUSTOM EXCEPTION CLASS~~~~~~~~~~~~~~#
 class NanocomporeError (Exception):
