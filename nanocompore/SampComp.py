@@ -6,7 +6,6 @@ from collections import *
 import shelve
 import multiprocessing as mp
 import traceback
-import json
 import datetime
 import os
 
@@ -22,8 +21,7 @@ from nanocompore.common import *
 from nanocompore.Whitelist import Whitelist
 from nanocompore.TxComp import txCompare
 from nanocompore.SampCompDB import SampCompDB
-from nanocompore import __version__ as package_version
-from nanocompore import __name__ as package_name
+import nanocompore as pkg
 
 # Disable multithreading for MKL and openBlas
 os.environ["MKL_NUM_THREADS"] = "1"
