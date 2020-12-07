@@ -186,15 +186,19 @@ class Whitelist(object):
                             # Filter out reads with high number of invalid kmers if information available
                             if self.__filter_invalid_kmers:
                                 if max_invalid_kmers_freq:
-                                    if(read["NNNNN_kmers"]+read["mismatch_kmers"]+read["missing_kmers"])/read["kmers"] > max_invalid_kmers_freq:
-                                        raise NanocomporeError("High invalid kmers reads")
+                                    invalid_kmers_freq = (read["NNNNN_kmers"]+read["mismatch_kmers"]+read["missing_kmers"])/read["kmers"]
+                                    if invalid_kmers_freq > max_invalid_kmers_freq:
+                                        raise NanocomporeError("High fraction of invalid kmers ({}%) for read {}".format(round(invalid_kmers_freq*100,2), read["read_id"]))
                                 else:
-                                    if max_NNNNN_freq and read["NNNNN_kmers"]/read["kmers"] > max_NNNNN_freq:
-                                        raise NanocomporeError("High NNNNN kmers reads")
-                                    elif max_mismatching_freq and read["mismatch_kmers"]/read["kmers"] > max_mismatching_freq:
-                                        raise NanocomporeError("High mismatch_kmers reads")
-                                    elif max_missing_freq and read["missing_kmers"]/read["kmers"] > max_missing_freq:
-                                        raise NanocomporeError("High missing_kmers reads")
+                                    NNNNN_kmers_freq = read["NNNNN_kmers"]/read["kmers"]
+                                    max_mismatching_freq = read["mismatch_kmers"]/read["kmers"]
+                                    max_missing_freq = read["missing_kmers"]/read["kmers"]
+                                    if NNNNN_kmers_freq > max_NNNNN_freq:
+                                        raise NanocomporeError("High fraction of NNNNN kmers ({}%) for read {}".format(round(NNNNN_kmers_freq*100,2), read["read_id"]))
+                                    elif max_mismatching_freq > max_mismatching_freq:
+                                        raise NanocomporeError("High fraction of mismatching kmers ({}%) for read {}".format(round(max_mismatching_freq*100,2), read["read_id"]))
+                                    elif max_missing_freq > max_missing_freq:
+                                        raise NanocomporeError("High fraction of missing kmers ({}%) for read {}".format(round(max_missing_freq*100,2), read["read_id"]))
 
                             # Create dict arborescence and save valid reads
                             if not read["ref_id"] in ref_reads:
