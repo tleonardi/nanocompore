@@ -150,7 +150,6 @@ def make_arg_dict (func):
                 d[name]["help"] = " ".join(docstr_dict[name])
         return d
 
-
 def arg_opt (func, arg, **kwargs):
     """Get options corresponding to argumant name and deal with special cases"""
     arg_dict = make_arg_dict(func)[arg]
