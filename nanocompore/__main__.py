@@ -7,6 +7,10 @@
 import argparse
 from collections import *
 import textwrap
+import os
+
+# Third party
+from loguru import logger
 
 # Local imports
 from nanocompore import __version__ as package_version
@@ -14,6 +18,7 @@ from nanocompore import __name__ as package_name
 from nanocompore import __description__ as package_description
 from nanocompore.SampComp import SampComp
 from nanocompore.SimReads import SimReads
+from nanocompore.Eventalign_collapse import Eventalign_collapse
 from nanocompore.common import *
 
 #~~~~~~~~~~~~~~MAIN PARSER ENTRY POINT~~~~~~~~~~~~~~#
