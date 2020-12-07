@@ -20,6 +20,15 @@ class NanocomporeWarning (Warning):
     pass
 
 #~~~~~~~~~~~~~~FUNCTIONS~~~~~~~~~~~~~~#
+
+def build_eventalign_fn_dict(file_list1, file_list2, label1, label2):
+    """
+    Build the eventalign_fn_dict from file lists and labels
+    """
+    d = OrderedDict()
+    d[label1] = {"{}_{}".format(label1, i): v for i, v in enumerate(file_list1.split(","),1)}
+    d[label2] = {"{}_{}".format(label2, i): v for i, v in enumerate(file_list2.split(","),1)}
+    return d
 def mkdir (fn, exist_ok=False):
     """ Create directory recursivelly. Raise IO error if path exist or if error at creation """
     try:
