@@ -1,6 +1,12 @@
 # Changelog
 
-## v1.0.1-dev
+##
+
+### Added
+- Exposed option to enable/disable anova test
+- Running nanocompore via CLI now disables anova by default
+
+## v1.0.1
 
 ### Fixed
 - Fixed #120, #122, #138

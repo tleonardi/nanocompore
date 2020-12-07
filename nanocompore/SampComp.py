@@ -49,7 +49,8 @@ class SampComp(object):
         overwrite:bool = False,
         whitelist:Whitelist = None,
         comparison_methods:list = ["GMM", "KS"],
-        logit:bool = False,
+        logit:bool = True,
+        anova:bool = False,
         allow_warnings:bool = False,
         sequence_context:int = 0,
         sequence_context_weights:str = "uniform",
@@ -203,6 +204,7 @@ class SampComp(object):
         self.__whitelist = whitelist
         self.__comparison_methods = comparison_methods
         self.__logit = logit
+        self.__anova = anova
         self.__allow_warnings = allow_warnings
         self.__sequence_context = sequence_context
         self.__sequence_context_weights = sequence_context_weights
@@ -368,6 +370,7 @@ class SampComp(object):
                         min_coverage= self.__min_coverage,
                         allow_warnings=self.__allow_warnings,
                         logit=self.__logit,
+                        anova=self.__anova,
                         random_state=random_state)
 
                 # Add the current read details to queue
