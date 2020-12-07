@@ -253,16 +253,6 @@ def plot(args):
     """"""
     raise NanocomporeError("The plotting CLI methods haven't been implemented yet. Please load the the SampCompDB in jupyter for downstream analysis.")
 
-#~~~~~~~~~~~~~~PRIVATE FUNCTIONS~~~~~~~~~~~~~~#
-
-def build_eventalign_fn_dict(file_list1, file_list2, label1, label2):
-    """
-    Build the eventalign_fn_dict from file lists and labels
-    """
-    d = OrderedDict()
-    d[label1] = {"{}_{}".format(label1, i): v for i, v in enumerate(file_list1.split(","),1)}
-    d[label2] = {"{}_{}".format(label2, i): v for i, v in enumerate(file_list2.split(","),1)}
-    return d
 
 if __name__ == "__main__":
     # execute only if run as a script
