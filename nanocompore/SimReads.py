@@ -122,7 +122,7 @@ def SimReads(
 
         byte_offset = 0
         # Simulate reference per reference
-        for ref_num, ref_id in enumerate(tqdm((ref_list), unit=" References", disable=not progress))):
+        for ref_num, ref_id in enumerate(tqdm((ref_list), unit=" References", disable=not progress)):
             logger.debug("Processing reference {}".format(ref_id))
             try:
                 ref_seq = str(fasta_fp[ref_id])
