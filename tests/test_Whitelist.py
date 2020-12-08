@@ -1,12 +1,13 @@
 import pytest
-from nanocompore.TxComp import *
 from scipy.stats import combine_pvalues
 import numpy as np
 from unittest import mock
-from nanocompore.SimReads import SimReads
-from nanocompore.Whitelist import Whitelist
-from pycltools.pycltools import *
 from loguru import logger
+
+from nanocompore.SimReads import SimReads
+from nanocompore.TxComp import *
+from nanocompore.Whitelist import Whitelist
+from nanocompore.common import *
 
 # set logger lever
 set_logger("debug")

@@ -1,10 +1,12 @@
+import sys
+
+import numpy as np
 import pytest
 from scipy.stats import combine_pvalues
-import numpy as np
-import sys
-from nanocompore.TxComp import *
-from pycltools.pycltools import *
 from loguru import logger
+
+from nanocompore.TxComp import *
+from nanocompore.common import *
 
 # set logger lever
 set_logger("debug")

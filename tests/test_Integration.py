@@ -1,16 +1,18 @@
+from os import environ
+import hashlib
+import sys
+import random
+
 import pytest
 from scipy.stats import combine_pvalues
 import numpy as np
 from unittest import mock
-import hashlib
-import sys
-import random
-from os import environ
+from loguru import logger
+
 from nanocompore.SimReads import SimReads, parse_mod_pos_file
 from nanocompore.SampComp import SampComp
 from nanocompore.TxComp import *
-from pycltools.pycltools import *
-from loguru import logger
+from nanocompore.common import *
 
 # set logger lever
 set_logger("debug")
