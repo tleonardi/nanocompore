@@ -1,8 +1,13 @@
 import pytest
-from nanocompore.TxComp import *
 from scipy.stats import combine_pvalues
 import numpy as np
 import sys
+from nanocompore.TxComp import *
+from pycltools.pycltools import *
+from loguru import logger
+
+# set logger lever
+set_logger("debug")
 
 
 @pytest.mark.parametrize("pvalues", [

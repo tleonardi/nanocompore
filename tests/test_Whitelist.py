@@ -5,7 +5,11 @@ import numpy as np
 from unittest import mock
 from nanocompore.SimReads import SimReads
 from nanocompore.Whitelist import Whitelist
+from pycltools.pycltools import *
+from loguru import logger
 
+# set logger lever
+set_logger("debug")
 
 @pytest.fixture(scope="module")
 def fasta_file(tmp_path_factory):
