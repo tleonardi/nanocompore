@@ -25,6 +25,7 @@ nav:
     - Data preparation: data_preparation.md
     - Usage:
         - How to use Nanocompore: usage.md
+        - Collapse nanopolish data at kmer level: demo/Eventalign_collapse_usage.ipynb
         - Compare samples with SampComp: demo/SampComp_usage.ipynb
         - Generate plots and tables with SampCompDB: demo/SampCompDB_usage.ipynb
         - Generate simulated reads: demo/SimReads_usage.ipynb

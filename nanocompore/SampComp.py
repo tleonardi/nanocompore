@@ -2,16 +2,15 @@
 
 #~~~~~~~~~~~~~~IMPORTS~~~~~~~~~~~~~~#
 # Std lib
-from loguru import logger
 from collections import *
 import shelve
 import multiprocessing as mp
 import traceback
-import json
 import datetime
 import os
 
 # Third party
+from loguru import logger
 import yaml
 from tqdm import tqdm
 import numpy as np
@@ -22,8 +21,7 @@ from nanocompore.common import *
 from nanocompore.Whitelist import Whitelist
 from nanocompore.TxComp import txCompare
 from nanocompore.SampCompDB import SampCompDB
-from nanocompore import __version__ as package_version
-from nanocompore import __name__ as package_name
+import nanocompore as pkg
 
 # Disable multithreading for MKL and openBlas
 os.environ["MKL_NUM_THREADS"] = "1"
@@ -32,8 +30,6 @@ os.environ["NUMEXPR_NUM_THREADS"] = "1"
 os.environ["OMP_NUM_THREADS"] = "1"
 os.environ['OPENBLAS_NUM_THREADS'] = '1'
 
-log_level_dict = {"debug":"DEBUG", "info":"INFO", "warning":"WARNING"}
-logger.remove()
 #~~~~~~~~~~~~~~MAIN CLASS~~~~~~~~~~~~~~#
 class SampComp(object):
     """ Init analysis and check args"""
@@ -49,18 +45,19 @@ class SampComp(object):
         overwrite:bool = False,
         whitelist:Whitelist = None,
         comparison_methods:list = ["GMM", "KS"],
-        logit:bool = False,
+        logit:bool = True,
+        anova:bool = False,
         allow_warnings:bool = False,
         sequence_context:int = 0,
         sequence_context_weights:str = "uniform",
         min_coverage:int = 30,
         min_ref_length:int = 100,
-        downsample_high_coverage:int = 0,
+        downsample_high_coverage:int = 5000,
         max_invalid_kmers_freq:float = 0.1,
         select_ref_id:list = [],
         exclude_ref_id:list = [],
         nthreads:int = 3,
-        log_level:str = "info"):
+        progress:bool = False):
 
         """
         Initialise a `SampComp` object and generates a white list of references with sufficient coverage for subsequent analysis.
@@ -108,35 +105,13 @@ class SampComp(object):
             if given, refid in the list will be excluded from the analysis.
         * nthreads
             Number of threads (two are used for reading and writing, all the others for parallel processing).
-        * log_level
-            Set the log level. {warning,info,debug}
+        * progress
+            Display a progress bar during execution
         """
+        logger.info("Checking and initialising SampComp")
+
         # Save init options in dict for later
-        kwargs = locals()
-        option_d = OrderedDict()
-        option_d["package_name"] = package_name
-        option_d["package_version"] = package_version
-        option_d["timestamp"] = str(datetime.datetime.now())
-        for i, j in kwargs.items():
-            if not i in ["self","whitelist"]:
-                option_d[i]=j
-
-        # Check if output folder already exists
-        try:
-            mkdir(fn=outpath, exist_ok=overwrite)
-        except NanocomporeError:
-            raise NanocomporeError("Could not create the output folder. Try using `overwrite` option or use another directory")
-
-        # Write init options to log file
-        log_fn = os.path.join(outpath, outprefix+"SampComp.log")
-        with open(log_fn, "w") as log_fp:
-            logger.debug("Writing log file")
-            json.dump(option_d, log_fp, indent=2)
-
-        # Set logging level
-        logger.add(sys.stderr, format="{time} {level} - {process.name} | {message}", enqueue=True, level=log_level_dict.get(log_level, "WARNING"))
-        logger.add(log_fn, format="{time} {level} - {process.name} | {message}", enqueue=True, level="TRACE")
-        logger.info("Initialising SampComp and checking options")
+        log_init_state(loc=locals())
 
         # If eventalign_fn_dict is not a dict try to load a YAML file instead
         if type(eventalign_fn_dict) == str:
@@ -156,7 +131,7 @@ class SampComp(object):
         if bed_fn and not access_file(bed_fn):
             raise NanocomporeError("{} is not a valid BED file".format(bed_fn))
 
-        # Check at least 3 threads
+        # Check threads number
         if nthreads < 3:
             raise NanocomporeError("The minimum number of threads is 3")
 
@@ -203,11 +178,12 @@ class SampComp(object):
         self.__whitelist = whitelist
         self.__comparison_methods = comparison_methods
         self.__logit = logit
+        self.__anova = anova
         self.__allow_warnings = allow_warnings
         self.__sequence_context = sequence_context
         self.__sequence_context_weights = sequence_context_weights
         self.__nthreads = nthreads - 2
-        self.__log_level = log_level
+        self.__progress = progress
 
         # Get number of samples
         n = 0
@@ -238,57 +214,63 @@ class SampComp(object):
             # Start all processes
             for ps in ps_list:
                 ps.start()
+
             # Monitor error queue
             for tb in iter(error_q.get, None):
                 logger.trace("Error caught from error_q")
                 raise NanocomporeError(tb)
 
-        # Catch error and reraise it
-        except(BrokenPipeError, KeyboardInterrupt, NanocomporeError) as E:
-            logger.error("An error occured. Killing all processes\n")
-            raise E
-
-        finally:
-            # Soft processes stopping
+            # Soft processes and queues stopping
             for ps in ps_list:
                 ps.join()
+            for q in (in_q, out_q, error_q):
+                q.close()
 
-            # Hard failsafe processes killing
-            for ps in ps_list:
-                if ps.exitcode == None:
+            # Return database wrapper object
+            return SampCompDB(
+                db_fn=self.__db_fn,
+                fasta_fn=self.__fasta_fn,
+                bed_fn=self.__bed_fn)
+
+        # Catch error, kill all processed and reraise error
+        except Exception as E:
+            logger.error("An error occured. Killing all processes and closing queues\n")
+            try:
+                for ps in ps_list:
                     ps.terminate()
-
-        # Return database wrapper object
-        return SampCompDB(
-            db_fn=self.__db_fn,
-            fasta_fn=self.__fasta_fn,
-            bed_fn=self.__bed_fn)
+                for q in (in_q, out_q, error_q):
+                    q.close()
+            except:
+                logger.error("An error occured while trying to kill processes\n")
+            raise E
 
     #~~~~~~~~~~~~~~PRIVATE MULTIPROCESSING METHOD~~~~~~~~~~~~~~#
     def __list_refid(self, in_q, error_q):
         """Add valid refid from whitelist to input queue to dispatch the data among the workers"""
+        n_tx = 0
         try:
             for ref_id, ref_dict in self.__whitelist:
                 logger.debug("Adding {} to in_q".format(ref_id))
                 in_q.put((ref_id, ref_dict))
+                n_tx+=1
 
-            # Deal 1 poison pill and close file pointer
-            logger.debug("Adding poison pill to in_q")
-            for i in range(self.__nthreads):
-                in_q.put(None)
-
-        # Manage exceptions and deal poison pills
+        # Manage exceptions and add error trackback to error queue
         except Exception:
-            logger.debug("Error in Reader. Kill input queue")
-            for i in range(self.__nthreads):
-                in_q.put(None)
+            logger.debug("Error in Reader")
             error_q.put(traceback.format_exc())
+
+        # Deal poison pills
+        finally:
+            for i in range (self.__nthreads):
+                in_q.put(None)
+            logger.debug("Parsed transcripts:{}".format(n_tx))
 
     def __process_references(self, in_q, out_q, error_q):
         """
         Consume ref_id, agregate intensity and dwell time at position level and
         perform statistical analyses to find significantly different regions
         """
+        n_tx = n_reads = n_lines = 0
         try:
             logger.debug("Worker thread started")
             # Open all files for reading. File pointer are stored in a dict matching the ref_dict entries
@@ -356,6 +338,9 @@ class SampComp(object):
                                     # Save previous position
                                     prev_pos = pos
 
+                                n_lines+=1
+                            n_reads+=1
+
                 logger.debug("Data for {} loaded.".format(ref_id))
                 if self.__comparison_methods:
                     random_state=np.random.RandomState(seed=42)
@@ -368,34 +353,34 @@ class SampComp(object):
                         min_coverage= self.__min_coverage,
                         allow_warnings=self.__allow_warnings,
                         logit=self.__logit,
+                        anova=self.__anova,
                         random_state=random_state)
 
                 # Add the current read details to queue
                 logger.debug("Adding %s to out_q"%(ref_id))
                 out_q.put((ref_id, ref_pos_list))
+                n_tx+=1
 
-            # Deal 1 poison pill and close file pointer
-            logger.debug("Adding poison pill to out_q")
-            out_q.put(None)
-            self.__eventalign_fn_close(fp_dict)
-
-        # Manage exceptions, deal poison pills and close files
+        # Manage exceptions and add error trackback to error queue
         except Exception as e:
-            logger.error("Error in worker. Kill output queue")
-            logger.error(e)
-            for i in range(self.__nthreads):
-                out_q.put(None)
+            logger.error("Error in Worker")
+            error_q.put (NanocomporeError(traceback.format_exc()))
+
+        # Deal poison pill and close file pointer
+        finally:
+            logger.debug("Processed Transcrits:{} Reads:{} Lines:{}".format(n_tx, n_reads, n_lines))
+            logger.debug("Adding poison pill to out_q")
             self.__eventalign_fn_close(fp_dict)
-            error_q.put(traceback.format_exc())
+            out_q.put(None)
 
     def __write_output(self, out_q, error_q):
         # Get results out of the out queue and write in shelve
         pvalue_tests = set()
         ref_id_list = []
+        n_tx = n_pos = 0
         try:
-            with shelve.open(self.__db_fn, flag='n') as db:
+            with shelve.open(self.__db_fn, flag='n') as db, tqdm(total=len(self.__whitelist), unit=" Processed References", disable= not self.__progress) as pbar:
                 # Iterate over the counter queue and process items until all poison pills are found
-                pbar = tqdm(total = len(self.__whitelist), unit=" Processed References", disable=self.__log_level in ("warning", "debug"))
                 for _ in range(self.__nthreads):
                     for ref_id, ref_pos_list in iter(out_q.get, None):
                         ref_id_list.append(ref_id)
@@ -405,18 +390,20 @@ class SampComp(object):
                             if 'txComp' in pos_dict:
                                 for res in pos_dict['txComp'].keys():
                                     if "pvalue" in res:
+                                        n_pos+=1
                                         pvalue_tests.add(res)
                         # Write results in a shelve db
                         db [ref_id] = ref_pos_list
-                        pbar.update()
+                        pbar.update(1)
+                        n_tx+=1
 
                 # Write list of refid
                 db["__ref_id_list"] = ref_id_list
 
                 # Write metadata
                 db["__metadata"] = {
-                    "package_name": package_name,
-                    "package_version": package_version,
+                    "package_name": pkg.__version__,
+                    "package_version": pkg.__name__,
                     "timestamp": str(datetime.datetime.now()),
                     "comparison_methods": self.__comparison_methods,
                     "pvalue_tests": sorted(list(pvalue_tests)),
@@ -424,14 +411,16 @@ class SampComp(object):
                     "min_coverage": self.__min_coverage,
                     "n_samples": self.__n_samples}
 
-            # Ending process bar and deal poison pill in error queue
-            pbar.close()
-            error_q.put(None)
-
         # Manage exceptions and add error trackback to error queue
         except Exception:
-            pbar.close()
+            logger.error("Error in Writer")
             error_q.put(traceback.format_exc())
+
+        finally:
+            logger.debug("Written Transcripts:{} Valid positions:{}".format(n_tx, n_pos))
+            logger.info ("All Done. Transcripts processed: {}".format(n_tx))
+            # Kill error queue with poison pill
+            error_q.put(None)
 
     #~~~~~~~~~~~~~~PRIVATE HELPER METHODS~~~~~~~~~~~~~~#
     def __check_eventalign_fn_dict(self, d):

@@ -6,17 +6,54 @@ import sys
 import os
 from collections import *
 import inspect
+import datetime
+
+# Third party imports
+from loguru import logger
+
+# Local imports
+import nanocompore as pkg
 
 #~~~~~~~~~~~~~~CUSTOM EXCEPTION CLASS~~~~~~~~~~~~~~#
 class NanocomporeError (Exception):
     """ Basic exception class for nanocompore module """
-    pass
+    def __init__(self, message=""):
+        logger.error(message)
+        super().__init__(message)
+
 
 class NanocomporeWarning (Warning):
     """ Basic Warning class for nanocompore module """
     pass
 
 #~~~~~~~~~~~~~~FUNCTIONS~~~~~~~~~~~~~~#
+
+def build_eventalign_fn_dict(file_list1, file_list2, label1, label2):
+    """
+    Build the eventalign_fn_dict from file lists and labels
+    """
+    d = OrderedDict()
+    d[label1] = {"{}_{}".format(label1, i): v for i, v in enumerate(file_list1.split(","),1)}
+    d[label2] = {"{}_{}".format(label2, i): v for i, v in enumerate(file_list2.split(","),1)}
+    return d
+
+def set_logger (log_level, log_fn=None):
+    log_level = log_level.upper()
+    logger.remove()
+    logger.add(sys.stderr, format="{time} {level} - {process.name} | {message}", enqueue=True, level=log_level)
+    if log_fn:
+        if os.path.isfile(log_fn):
+            os.remove(log_fn)
+        logger.add(log_fn, format="{time} {level} - {process.name} | {message}", enqueue=True, level="DEBUG")
+
+def log_init_state(loc):
+    logger.debug("\tpackage_name: {}".format(pkg.__name__))
+    logger.debug("\tpackage_version: {}".format(pkg.__version__))
+    logger.debug("\ttimestamp: {}".format(str(datetime.datetime.now())))
+    for i, j in loc.items():
+        if type(j) in [int, float, complex, list, dict, str, bool, set, tuple]: # Avoid non standard types
+            logger.debug("\t{}: {}".format(i,j))
+
 def mkdir (fn, exist_ok=False):
     """ Create directory recursivelly. Raise IO error if path exist or if error at creation """
     try:
@@ -120,7 +157,6 @@ def make_arg_dict (func):
                 d[name]["help"] = " ".join(docstr_dict[name])
         return d
 
-
 def arg_opt (func, arg, **kwargs):
     """Get options corresponding to argumant name and deal with special cases"""
     arg_dict = make_arg_dict(func)[arg]
@@ -183,80 +219,3 @@ def jhelp (f:"python function or method"):
 
     # Display in Jupyter
     display (Markdown(s))
-
-def set_logger (verbose=False, quiet=False):
-    """Set logger to appropriate log level"""
-
-    # Config logger
-    logging.basicConfig(format='%(message)s')
-    logger = logging.getLogger()
-
-    # Define overall verbose level
-    if verbose:
-        logger.setLevel(logging.DEBUG)
-    elif quiet:
-        logger.setLevel(logging.WARNING)
-    else:
-        logger.setLevel(logging.INFO)
-
-    return logger
-
-#
-# def jhelp (f:"python function or method"):
-#     """
-#     Display a Markdown pretty help message for functions and class methods (default __init__ is a class is passed)
-#     jhelp also display default values and type annotations if available.
-#     Undocumented options are not displayed.
-#     The docstring synthax should follow the markdown formated convention below
-#     * f
-#         Function or method to display the help message for
-#     """
-#     # For some reason signature is not always importable. In these cases the build-in help is called instead
-#     try:
-#         from IPython.core.display import display, Markdown, HTML
-#         import inspect
-#     except (NameError, ImportError) as E:
-#         NanocomporeWarning ("jupyter notebook is required to use this function. Please verify your dependencies")
-#         help(f)
-#         return
-#
-#     if inspect.isclass(f):
-#         f = f.__init__
-#
-#     if inspect.isfunction(f) or inspect.ismethod(f):
-#
-#         # Parse arguments default values and annotations
-#         sig_dict = OrderedDict()
-#         for name, p in inspect.signature(f).parameters.items():
-#             sig_dict[p.name] = []
-#             # Get Annotation
-#             if p.annotation != inspect._empty:
-#                 sig_dict[p.name].append(": {}".format(p.annotation))
-#             # Get default value if available
-#             if p.default == inspect._empty:
-#                 sig_dict[p.name].append("(required)")
-#             else:
-#                 sig_dict[p.name].append("(default = {})".format(p.default))
-#
-#         # Parse the docstring
-#         doc_dict = OrderedDict()
-#         descr = []
-#         lab=None
-#         for l in inspect.getdoc(f).split("\n"):
-#             l = l.strip()
-#             if l:
-#                 if l.startswith("*"):
-#                     lab = l[1:].strip()
-#                     doc_dict[lab] = []
-#                 elif lab:
-#                     doc_dict[lab].append(l)
-#                 else:
-#                     descr.append(l)
-#
-#         # Reformat collected information in Markdown synthax
-#         s = "---\n\n**{}.{}**\n\n{}\n\n---\n\n".format(f.__module__, f.__name__, " ".join(descr))
-#         for k, v in doc_dict.items():
-#             s+="* **{}** *{}*\n\n{}\n\n".format(k, " ".join(sig_dict[k]), " ".join(v))
-#
-#         # Display in Jupyter
-#         display (Markdown(s))

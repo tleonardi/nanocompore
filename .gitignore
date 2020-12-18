@@ -106,6 +106,9 @@ site/
 
 # Results and data folder
 data
+docs/demo/nanopolish_eventalign
+docs/demo/eventalign_files
+docs/demo/references
 docs/demo/results
 tmp
 dev

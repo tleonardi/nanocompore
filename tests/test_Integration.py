@@ -1,14 +1,21 @@
-import pytest
-from nanocompore.TxComp import *
-from scipy.stats import combine_pvalues
-import numpy as np
-from unittest import mock
-from nanocompore.SimReads import SimReads, parse_mod_pos_file
-from nanocompore.SampComp import SampComp
+from os import environ
 import hashlib
 import sys
 import random
-from os import environ
+
+import pytest
+from scipy.stats import combine_pvalues
+import numpy as np
+from unittest import mock
+from loguru import logger
+
+from nanocompore.SimReads import SimReads, parse_mod_pos_file
+from nanocompore.SampComp import SampComp
+from nanocompore.TxComp import *
+from nanocompore.common import *
+
+# set logger lever
+set_logger("debug")
 
 # Check if the tests are running inside Travis
 travis = True if 'TRAVIS' in os.environ else False
@@ -20,7 +27,7 @@ def fasta_file(tmp_path_factory):
     with open(str(fasta_file), 'w') as f:
         for n in range(0,1):
             f.write('>Ref_00{}\n'.format(n))
-            f.write("".join([random.choice("ACGT") for _ in range(0,random.randint(100, 2000))])+"\n")    
+            f.write("".join([random.choice("ACGT") for _ in range(0,random.randint(200, 500))])+"\n")
     return(str(fasta_file))
 
 @pytest.fixture(scope="module")
@@ -29,7 +36,7 @@ def nanopolishcomp_test_files(tmp_path_factory, fasta_file):
     tmp_path=tmp_path_factory.mktemp("generated_data")
     data_rand_seed=869
     fn_dict={'S1':{}, 'S2':{}}
-    for rep in [1,2,3,4]:
+    for rep in [1,2,3]:
         SimReads (
             fasta_fn=fasta_file,
             outpath=str(tmp_path),
@@ -44,7 +51,6 @@ def nanopolishcomp_test_files(tmp_path_factory, fasta_file):
             pos_rand_seed=66,
             data_rand_seed=data_rand_seed+rep,
             not_bound=True,
-            log_level="debug",
             overwrite=True)
 
         SimReads (
@@ -61,7 +67,6 @@ def nanopolishcomp_test_files(tmp_path_factory, fasta_file):
             pos_rand_seed=66,
             data_rand_seed=data_rand_seed+rep,
             not_bound=True,
-            log_level="debug",
             overwrite=True)
         fn_dict['S1']['R'+str(rep)]="{}/control_rep{}.tsv".format(str(tmp_path), rep)
         fn_dict['S2']['R'+str(rep)]="{}/mod_rep{}.tsv".format(str(tmp_path), rep)
@@ -81,6 +86,7 @@ def test_sig_sites(nanopolishcomp_test_files, method, context, context_weight):
             fasta_fn=fasta_file,
             comparison_methods = method,
             logit = True,
+            anova = True,
             allow_warnings = False,
             sequence_context = context,
             sequence_context_weights = context_weight,
@@ -106,6 +112,8 @@ def test_deterministic_behaviour(nanopolishcomp_test_files):
             comparison_methods="GMM,KS,TT,MW",
             sequence_context=2,
             fasta_fn=fasta_file,
+            logit = True,
+            anova = True,
             allow_warnings=False,
             downsample_high_coverage = None,
             nthreads=6,
@@ -122,6 +130,8 @@ def test_deterministic_behaviour(nanopolishcomp_test_files):
             sequence_context=2,
             fasta_fn=fasta_file,
             allow_warnings=False,
+            logit = True,
+            anova = True,
             downsample_high_coverage = None,
             nthreads=6,
             overwrite=True)
