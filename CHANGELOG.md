@@ -1,6 +1,7 @@
 # Changelog
 
 ## Dev
+=======
 
 ### Added
 - Exposed option to enable/disable anova test
@@ -10,6 +11,7 @@
 ### Fixed
 - Subsampling in whitelist is deterministic (fix for #103)
 - Reworked multiprocessing framework for SampComp (fix for zombie threads, not tested with large datasets)
+
 
 ## v1.0.1
 
