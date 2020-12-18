@@ -7,47 +7,46 @@ Ideally, before installation, create a clean **python3.6+** virtual environment 
 With [virtualenvwrapper](https://virtualenvwrapper.readthedocs.io/en/latest/install.html):
 
 ```bash
-mkvirtualenv nanocompore -p python3.6
+mkvirtualenv nanocompore -p python3.7
 ```
 
 With [conda](https://conda.io/projects/conda/en/latest/user-guide/install/index.html):
 
 ```bash
-conda create -n nanocompore python=3.6
+conda create -n nanocompore python=3.7
 ```
 
 ## Dependencies
 
 Nanocompore relies on a the following robustly maintained third party python libraries:
 
-* numpy >= 1.16.0
-* scipy >= 1.2.0
-* tqdm >= 4.32.0
-* pyfaidx >= 0.5.5
-* matplotlib >= 3.1
-* seaborn >= 0.9.0
-* pandas >= 0.24.2
-* statsmodels >= 0.9.0
-* scikit-learn >= 0.21.2
-* bedparse >= 0.2.2
+* python = ">=3.6.1"
+* numpy = "~1.19"
+* scipy = "~1.5"
+* tqdm = "~4"
+* pyfaidx = "~0.5"
+* matplotlib = "~3.1"
+* seaborn = "~0"
+* pandas = "~0.25"
+* statsmodels = "~0.12"
+* scikit-learn = "~0.23"
+* bedparse = "~0.2"
+* pyyaml = "~5"
+* loguru = "~0.5"
 
 The correct versions of packages are installed together with the software when using pip.
 
-## Option 1: Direct installation with pip from PyPi (recommended)
+## Option 1: Direct installation with pip from PyPi or conda (recommended)
 
 ```bash
 pip3 install nanocompore
 ```
 
-## Option 2: Direct installation with pip from github
-
-To install the package with https/ssh you need pip>=19
-
 ```bash
-pip3 install git+https://github.com/tleonardi/nanocompore.git
+conda install -c bioconda nanocompore
 ```
 
-## Option 3: Clone the repository and install locally in develop mode
+## Option 2: Clone the repository and install locally in develop mode with poetry
 
 With this option, the package will be locally installed in *editable* or *develop mode*. This allows the package to be both installed and editable in project form. This is the recommended option if you wish to modify the code and/or participate to the development of the package (see [contribution guidelines](contributing.md)).
 
@@ -59,7 +58,8 @@ git clone https://github.com/tleonardi/nanocompore.git
 cd nanocompore
 
 # Install with pip3
-pip3 install -e ./
+pip install poetry
+poetry install
 ```
 
 ## Testing the installation (Optional)

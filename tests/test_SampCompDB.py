@@ -1,6 +1,12 @@
 import pytest
-from nanocompore.SampCompDB import SampCompDB
 import numpy as np
+from loguru import logger
+
+from nanocompore.SampCompDB import SampCompDB
+from nanocompore.common import *
+
+# set logger lever
+set_logger("debug")
 
 tol=10e-6
 
