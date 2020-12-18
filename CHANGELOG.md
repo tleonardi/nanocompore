@@ -1,7 +1,8 @@
 # Changelog
 
-## Dev
 =======
+
+## 1.0.2
 
 ### Added
 - Exposed option to enable/disable anova test
