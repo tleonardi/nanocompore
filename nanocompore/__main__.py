@@ -249,7 +249,7 @@ def eventalign_collapse_main (args):
         outpath = args.outpath,
         outprefix = args.outprefix,
         overwrite = args.overwrite,
-        max_lines = args.max_lines,
+        n_lines = args.n_lines,
         nthreads = args.nthreads,
         progress = args.progress)
 
