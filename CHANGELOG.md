@@ -4,6 +4,8 @@
 
 ## Dev
 
+## v1.0.3
+
 ### Fixed
 - Fixed bug Eventalign_collapse CLI options
 
