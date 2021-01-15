@@ -2,7 +2,12 @@
 
 =======
 
-## 1.0.2
+## Dev
+
+### Fixed
+- Fixed bug Eventalign_collapse CLI options
+
+## v1.0.2
 
 ### Added
 - Exposed option to enable/disable anova test
