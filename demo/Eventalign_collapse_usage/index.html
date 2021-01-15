@@ -1,0 +1,1650 @@
+
+
+
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      <meta http-equiv="x-ua-compatible" content="ie=edge">
+      
+        <meta name="description" content="Compare nanopore signal to find modifications">
+      
+      
+        <link rel="canonical" href="http://nanocompore.rna.rocks/demo/Eventalign_collapse_usage/">
+      
+      
+        <meta name="author" content="Adrien Leger & Tommaso Leonardi">
+      
+      
+        <meta name="lang:clipboard.copy" content="Copy to clipboard">
+      
+        <meta name="lang:clipboard.copied" content="Copied to clipboard">
+      
+        <meta name="lang:search.language" content="en">
+      
+        <meta name="lang:search.pipeline.stopwords" content="True">
+      
+        <meta name="lang:search.pipeline.trimmer" content="True">
+      
+        <meta name="lang:search.result.none" content="No matching documents">
+      
+        <meta name="lang:search.result.one" content="1 matching document">
+      
+        <meta name="lang:search.result.other" content="# matching documents">
+      
+        <meta name="lang:search.tokenizer" content="[\s\-]+">
+      
+      <link rel="shortcut icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.0.4, mkdocs-material-4.6.0">
+    
+    
+      
+        <title>Collapse nanopolish data at kmer level - Nanocompore</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/application.1b62728e.css">
+      
+      
+    
+    
+      <script src="../../assets/javascripts/modernizr.268332fc.js"></script>
+    
+    
+      
+    
+    <link rel="stylesheet" href="../../assets/fonts/material-icons.css">
+    
+    
+      <link rel="stylesheet" href="../../css/ansi-colours.css">
+    
+    
+      
+    
+    
+  </head>
+  
+    <body dir="ltr">
+  
+    <svg class="md-svg">
+      <defs>
+        
+        
+          <svg xmlns="http://www.w3.org/2000/svg" width="416" height="448" viewBox="0 0 416 448" id="__github"><path fill="currentColor" d="M160 304q0 10-3.125 20.5t-10.75 19T128 352t-18.125-8.5-10.75-19T96 304t3.125-20.5 10.75-19T128 256t18.125 8.5 10.75 19T160 304zm160 0q0 10-3.125 20.5t-10.75 19T288 352t-18.125-8.5-10.75-19T256 304t3.125-20.5 10.75-19T288 256t18.125 8.5 10.75 19T320 304zm40 0q0-30-17.25-51T296 232q-10.25 0-48.75 5.25Q229.5 240 208 240t-39.25-2.75Q130.75 232 120 232q-29.5 0-46.75 21T56 304q0 22 8 38.375t20.25 25.75 30.5 15 35 7.375 37.25 1.75h42q20.5 0 37.25-1.75t35-7.375 30.5-15 20.25-25.75T360 304zm56-44q0 51.75-15.25 82.75-9.5 19.25-26.375 33.25t-35.25 21.5-42.5 11.875-42.875 5.5T212 416q-19.5 0-35.5-.75t-36.875-3.125-38.125-7.5-34.25-12.875T37 371.5t-21.5-28.75Q0 312 0 260q0-59.25 34-99-6.75-20.5-6.75-42.5 0-29 12.75-54.5 27 0 47.5 9.875t47.25 30.875Q171.5 96 212 96q37 0 70 8 26.25-20.5 46.75-30.25T376 64q12.75 25.5 12.75 54.5 0 21.75-6.75 42 34 40 34 99.5z"/></svg>
+        
+      </defs>
+    </svg>
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" data-md-component="overlay" for="__drawer"></label>
+    
+    
+      <header class="md-header" data-md-component="header">
+  <nav class="md-header-nav md-grid">
+    <div class="md-flex">
+      <div class="md-flex__cell md-flex__cell--shrink">
+        <a href="http://nanocompore.rna.rocks" title="Nanocompore" class="md-header-nav__button md-logo">
+          
+            <i class="md-icon"></i>
+          
+        </a>
+      </div>
+      <div class="md-flex__cell md-flex__cell--shrink">
+        <label class="md-icon md-icon--menu md-header-nav__button" for="__drawer"></label>
+      </div>
+      <div class="md-flex__cell md-flex__cell--stretch">
+        <div class="md-flex__ellipsis md-header-nav__title" data-md-component="title">
+          
+            <span class="md-header-nav__topic">
+              Nanocompore
+            </span>
+            <span class="md-header-nav__topic">
+              
+                Collapse nanopolish data at kmer level
+              
+            </span>
+          
+        </div>
+      </div>
+      <div class="md-flex__cell md-flex__cell--shrink">
+        
+      </div>
+      
+        <div class="md-flex__cell md-flex__cell--shrink">
+          <div class="md-header-nav__source">
+            
+
+
+  
+
+<a href="https://github.com/tleonardi/nanocompore/" title="Go to repository" class="md-source" data-md-source="github">
+  
+    <div class="md-source__icon">
+      <svg viewBox="0 0 24 24" width="24" height="24">
+        <use xlink:href="#__github" width="24" height="24"></use>
+      </svg>
+    </div>
+  
+  <div class="md-source__repository">
+    tleonardi/nanocompore
+  </div>
+</a>
+          </div>
+        </div>
+      
+    </div>
+  </nav>
+</header>
+    
+    <div class="md-container">
+      
+        
+      
+      
+      <main class="md-main" role="main">
+        <div class="md-main__inner md-grid" data-md-component="container">
+          
+            
+              <div class="md-sidebar md-sidebar--primary" data-md-component="navigation">
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    <nav class="md-nav md-nav--primary" data-md-level="0">
+  <label class="md-nav__title md-nav__title--site" for="__drawer">
+    <a href="http://nanocompore.rna.rocks" title="Nanocompore" class="md-nav__button md-logo">
+      
+        <i class="md-icon"></i>
+      
+    </a>
+    Nanocompore
+  </label>
+  
+    <div class="md-nav__source">
+      
+
+
+  
+
+<a href="https://github.com/tleonardi/nanocompore/" title="Go to repository" class="md-source" data-md-source="github">
+  
+    <div class="md-source__icon">
+      <svg viewBox="0 0 24 24" width="24" height="24">
+        <use xlink:href="#__github" width="24" height="24"></use>
+      </svg>
+    </div>
+  
+  <div class="md-source__repository">
+    tleonardi/nanocompore
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+      
+
+
+  <li class="md-nav__item">
+    <a href="../.." title="Home" class="md-nav__link">
+      Home
+    </a>
+  </li>
+
+    
+      
+      
+      
+
+
+  <li class="md-nav__item">
+    <a href="../../installation/" title="Installation instructions" class="md-nav__link">
+      Installation instructions
+    </a>
+  </li>
+
+    
+      
+      
+      
+
+
+  <li class="md-nav__item">
+    <a href="../../data_preparation/" title="Data preparation" class="md-nav__link">
+      Data preparation
+    </a>
+  </li>
+
+    
+      
+      
+      
+
+  
+
+
+  <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+    
+      <input class="md-toggle md-nav__toggle" data-md-toggle="nav-4" type="checkbox" id="nav-4" checked>
+    
+    <label class="md-nav__link" for="nav-4">
+      Usage
+    </label>
+    <nav class="md-nav" data-md-component="collapsible" data-md-level="1">
+      <label class="md-nav__title" for="nav-4">
+        Usage
+      </label>
+      <ul class="md-nav__list" data-md-scrollfix>
+        
+        
+          
+          
+          
+
+
+  <li class="md-nav__item">
+    <a href="../../usage/" title="How to use Nanocompore" class="md-nav__link">
+      How to use Nanocompore
+    </a>
+  </li>
+
+        
+          
+          
+          
+
+  
+
+
+  <li class="md-nav__item md-nav__item--active">
+    
+    <input class="md-toggle md-nav__toggle" data-md-toggle="toc" type="checkbox" id="__toc">
+    
+    
+    <a href="./" title="Collapse nanopolish data at kmer level" class="md-nav__link md-nav__link--active">
+      Collapse nanopolish data at kmer level
+    </a>
+    
+  </li>
+
+        
+          
+          
+          
+
+
+  <li class="md-nav__item">
+    <a href="../SampComp_usage/" title="Compare samples with SampComp" class="md-nav__link">
+      Compare samples with SampComp
+    </a>
+  </li>
+
+        
+          
+          
+          
+
+
+  <li class="md-nav__item">
+    <a href="../SampCompDB_usage/" title="Generate plots and tables with SampCompDB" class="md-nav__link">
+      Generate plots and tables with SampCompDB
+    </a>
+  </li>
+
+        
+          
+          
+          
+
+
+  <li class="md-nav__item">
+    <a href="../SimReads_usage/" title="Generate simulated reads" class="md-nav__link">
+      Generate simulated reads
+    </a>
+  </li>
+
+        
+      </ul>
+    </nav>
+  </li>
+
+    
+      
+      
+      
+
+
+  <li class="md-nav__item">
+    <a href="../../alternative/" title="Alternative and complementary packages" class="md-nav__link">
+      Alternative and complementary packages
+    </a>
+  </li>
+
+    
+      
+      
+      
+
+
+  <li class="md-nav__item">
+    <a href="../../citing/" title="Citing" class="md-nav__link">
+      Citing
+    </a>
+  </li>
+
+    
+      
+      
+      
+
+
+  <li class="md-nav__item">
+    <a href="../../contributing/" title="Contributing" class="md-nav__link">
+      Contributing
+    </a>
+  </li>
+
+    
+      
+      
+      
+
+
+  <li class="md-nav__item">
+    <a href="../../code_of_conduct/" title="Code of conduct" class="md-nav__link">
+      Code of conduct
+    </a>
+  </li>
+
+    
+      
+      
+      
+
+
+  <li class="md-nav__item">
+    <a href="../../licence/" title="Licence" class="md-nav__link">
+      Licence
+    </a>
+  </li>
+
+    
+      
+      
+      
+
+
+  <li class="md-nav__item">
+    <a href="../../changelog/" title="Changelog" class="md-nav__link">
+      Changelog
+    </a>
+  </li>
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+          
+          <div class="md-content">
+            <article class="md-content__inner md-typeset">
+              
+                
+                  <a href="https://github.com/tleonardi/nanocompore/edit/master/docs/demo/Eventalign_collapse_usage.ipynb" title="Edit this page" class="md-icon md-content__icon">&#xE3C9;</a>
+                
+                
+                <div class="cell border-box-sizing text_cell rendered">
+<div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<h1 id="Eventalign_collapse-usage">Eventalign_collapse usage<a class="anchor-link" href="#Eventalign_collapse-usage">&#182;</a></h1>
+</div>
+</div>
+</div>
+
+<div class="cell border-box-sizing text_cell rendered">
+<div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<h2 id="In-brief">In brief<a class="anchor-link" href="#In-brief">&#182;</a></h2>
+</div>
+</div>
+</div>
+
+<div class="cell border-box-sizing text_cell rendered">
+<div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>This program collapses the raw file generated by <code>nanopolish eventalign</code> by kmers rather than by event.</p>
+
+</div>
+</div>
+</div>
+
+<div class="cell border-box-sizing text_cell rendered">
+<div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<h2 id="Quick-start">Quick start<a class="anchor-link" href="#Quick-start">&#182;</a></h2>
+</div>
+</div>
+</div>
+
+<div class="cell border-box-sizing text_cell rendered">
+<div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>Example CLI call</p>
+<div class="highlight"><pre><span></span>nanocompore eventalign_collapse <span class="se">\</span>
+    -i eventalign_file.tsv
+    --outpath results
+</pre></div>
+<p>Example API call</p>
+<div class="highlight"><pre><span></span><span class="c1"># Import package</span>
+<span class="kn">from</span> <span class="nn">nanocompore.Eventalign_collapse</span> <span class="kn">import</span> <span class="n">Eventalign_collapse</span>
+
+<span class="c1"># Init the object</span>
+<span class="n">e</span> <span class="o">=</span> <span class="n">Eventalign_collapse</span><span class="p">(</span>
+    <span class="n">eventalign_fn</span><span class="o">=</span><span class="s2">&quot;eventalign_file.tsv&quot;</span><span class="p">,</span>
+    <span class="n">outpath</span><span class="o">=</span><span class="s2">&quot;results&quot;</span><span class="p">)</span>
+
+<span class="c1"># Run the analysis</span>
+<span class="n">e</span><span class="p">()</span>
+</pre></div>
+
+</div>
+</div>
+</div>
+
+<div class="cell border-box-sizing text_cell rendered">
+<div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<h2 id="Description-of-options">Description of options<a class="anchor-link" href="#Description-of-options">&#182;</a></h2>
+</div>
+</div>
+</div>
+
+<div class="cell border-box-sizing text_cell rendered">
+<div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<h4 id="Input-nanopolish-eventalign-file(s)/stream">Input nanopolish eventalign file(s)/stream<a class="anchor-link" href="#Input-nanopolish-eventalign-file(s)/stream">&#182;</a></h4><p>Path to a <code>nanopolish eventalign</code> tsv output file (read access required) which can optionally be gzipped.
+This can also be a list of files, or a regex or a list of regex or a mix of everything. We are flexible.
+In command line mode it is also possible to pipe the output of the <code>nanopolish eventalign</code> directly into <code>Eventalign_collapse</code>.</p>
+<h4 id="Output-options">Output options<a class="anchor-link" href="#Output-options">&#182;</a></h4><p><code>outdir</code> is a path to the directory where to write all the output files generated by <code>Eventalign_collapse</code>(write access required, created if it does not exist).
+If it already exists, an error will be raise except if <code>overwrite</code> is given. <code>outprefix</code> is the file prefix used for all files generated.</p>
+<h4 id="n_lines">n_lines<a class="anchor-link" href="#n_lines">&#182;</a></h4><p>Controls the maximum number of lines to parse before stopping to read the input file. This could be useful for testing or downsampling.</p>
+<h4 id="threads">threads<a class="anchor-link" href="#threads">&#182;</a></h4><p><code>Eventalign_collapse</code> is multi threaded to speed up the data processing and keep pace with Nanopolish if using the direct piping strategy. Take advantage of many threads if you have access to a large compute cluster</p>
+
+</div>
+</div>
+</div>
+
+<div class="cell border-box-sizing text_cell rendered">
+<div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<h2 id="Output-files-format">Output files format<a class="anchor-link" href="#Output-files-format">&#182;</a></h2>
+</div>
+</div>
+</div>
+
+<div class="cell border-box-sizing text_cell rendered">
+<div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>Contrary to <code>nanopolish eventalign</code> output text file, in <code>Eventalign_collapse</code> the reads are separated by a hashtag headers containing the read_id and ref_id. This reduces the redundancy and makes it easier to find the start and end of a read.</p>
+<p>Example : <code>#7ef1d7b9-5824-4382-b23b-78d82c07ebbd  YHR055C.</code></p>
+<p>The main data file contains the following fields:</p>
+<p>ref_pos ref_kmer    num_events  dwell_time  NNNNN_dwell_time    mismatch_dwell_time status  median  mad num_signals</p>
+<ul>
+<li><strong>ref_pos</strong>: Reference sequence ID (contig).</li>
+<li><strong>ref_kmer</strong>: Sequence of the reference kmers.</li>
+<li><strong>num_events</strong>: Number of events for this kmer before collapsing.</li>
+<li><strong>num_signals</strong>: Number of raw signal data points.</li>
+<li><strong>dwell_time</strong>: dwell time for this kmer in seconds</li>
+<li><strong>NNNNN_dwell_time</strong>: dwell time of events for this kmers with a model sequence "NNNNN" (events ignored by nanopolish HMM).</li>
+<li><strong>mismatch_dwell_time</strong>:  dwell time of events for this kmers with a model sequence different from the reference kmer</li>
+<li><strong>status</strong>: Status of the kmer. <code>valid</code> if all the model and predicted kmers are the same for all events. Otherwise <code>NNNNN</code> or <code>mismatching</code> depending on the invalid state having the most signal points. </li>
+<li><strong>median</strong>: Median of the normalised intensity values provided by Nanopolish eventalign</li>
+<li><strong>mad</strong>: Median absolute deviation of the normalised intensity values provided by Nanopolish eventalign</li>
+</ul>
+<p>In addition <code>Eventalign_collapse</code> also generates a useful index file containing reads level information. It contains the following fields:</p>
+<p>num_events num_signals kmers missing_kmers NNNNN_kmers mismatch_kmers valid_kmers byte_offset byte_len</p>
+<ul>
+<li><strong>ref_id</strong>: Name of the reference sequence the read was aligned on (contig)</li>
+<li><strong>ref_start</strong>: Start coordinate of the alignment on the reference sequence</li>
+<li><strong>ref_end</strong>: End coordinate of the alignment on the reference sequence</li>
+<li><strong>read_id</strong>: Name or index of the read</li>
+<li><strong>num_events</strong>: Total number of events per read </li>
+<li><strong>num_signals</strong>: Total number of signal points per read</li>
+<li><strong>dwell_time</strong>: Cumulative dwell time in seconds for the entire resquiggled sequence</li>
+<li><strong>kmers</strong>: Overall number of kmers in the read, including the missing ones</li>
+<li><strong>NNNNN_kmers</strong>: Number of resquiggled kmers for which the majority of missing data points correspond to "NNNNN" kmers</li>
+<li><strong>mismatching_kmers</strong>:Number of resquiggled kmers for which the majority of missing data points correspond to kmers different from the model kmer (excluding NNNNN)</li>
+<li><strong>missing_kmers</strong>: Number of skipped/missing reference positions in nanopolish output</li>
+<li><strong>valid_kmers</strong>: Number of fully valid kmers</li>
+<li><strong>byte_offset</strong>: Number of characters before the start of the sequence in the main output file. <strong>This can be used in conjunction with file.seek() to directly access the start of a read</strong>. An example is provided in the Usage notebook.</li>
+<li><strong>byte_len</strong>: Length of characters after byte_offset to the end of the read, excluding the last newline. <strong>This can be used in conjunction with read() to read all the text chunk corresponding to the read</strong>.</li>
+</ul>
+
+</div>
+</div>
+</div>
+
+<div class="cell border-box-sizing text_cell rendered">
+<div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<h2 id="Python-API-usage">Python API usage<a class="anchor-link" href="#Python-API-usage">&#182;</a></h2>
+</div>
+</div>
+</div>
+
+<div class="cell border-box-sizing text_cell rendered">
+<div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<h3 id="Import-the-package">Import the package<a class="anchor-link" href="#Import-the-package">&#182;</a></h3>
+</div>
+</div>
+</div>
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="codehilite"><pre><span></span><span class="kn">from</span> <span class="nn">nanocompore.Eventalign_collapse</span> <span class="kn">import</span> <span class="n">Eventalign_collapse</span>
+<span class="kn">from</span> <span class="nn">nanocompore.common</span> <span class="kn">import</span> <span class="o">*</span>
+<span class="kn">from</span> <span class="nn">pycltools.pycltools</span> <span class="kn">import</span> <span class="o">*</span>
+<span class="kn">import</span> <span class="nn">shutil</span>
+
+<span class="c1"># Create output dir and define log level</span>
+<span class="n">outdir</span> <span class="o">=</span> <span class="s2">&quot;results&quot;</span>
+<span class="n">shutil</span><span class="o">.</span><span class="n">rmtree</span> <span class="p">(</span><span class="n">outdir</span><span class="p">)</span>
+<span class="n">mkdir</span><span class="p">(</span><span class="n">outdir</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="n">set_logger</span><span class="p">(</span><span class="s2">&quot;info&quot;</span><span class="p">)</span>
+</pre></div>
+
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+
+<div class="output_area">
+<div class="output_subarea output_stream output_stdout output_text">
+<pre>Creating /home/aleg/Programming/Packages/nanocompore/docs/demo/results
+</pre>
+</div>
+</div>
+
+</div>
+</div>
+
+</div>
+
+<div class="cell border-box-sizing text_cell rendered">
+<div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<h3 id="Example-usage">Example usage<a class="anchor-link" href="#Example-usage">&#182;</a></h3>
+</div>
+</div>
+</div>
+
+<div class="cell border-box-sizing text_cell rendered">
+<div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<h4 id="Example-with-minimal-file">Example with minimal file<a class="anchor-link" href="#Example-with-minimal-file">&#182;</a></h4>
+</div>
+</div>
+</div>
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="codehilite"><pre><span></span><span class="n">e</span> <span class="o">=</span> <span class="n">Eventalign_collapse</span><span class="p">(</span>
+    <span class="n">eventalign_fn</span><span class="o">=</span><span class="s2">&quot;./nanopolish_eventalign/nanopolish_reads_2.tsv&quot;</span><span class="p">,</span>
+    <span class="n">outpath</span><span class="o">=</span><span class="s2">&quot;results&quot;</span><span class="p">,</span>
+    <span class="n">outprefix</span><span class="o">=</span><span class="s2">&quot;s2&quot;</span><span class="p">,</span>
+    <span class="n">overwrite</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+    <span class="n">progress</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+    <span class="n">nthreads</span><span class="o">=</span><span class="mi">4</span><span class="p">)</span>
+<span class="n">e</span><span class="p">()</span>
+
+<span class="n">head</span><span class="p">(</span><span class="s2">&quot;./results/s2_eventalign_collapse.tsv&quot;</span><span class="p">)</span>
+<span class="n">head</span><span class="p">(</span><span class="s2">&quot;./results/s2_eventalign_collapse.tsv.idx&quot;</span><span class="p">)</span>
+</pre></div>
+
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+
+<div class="output_area">
+<div class="output_subarea output_stream output_stderr output_text">
+<pre>2020-12-07T22:07:39.526605+0000 INFO - MainProcess | Checking and initialising Eventalign_collapse
+2020-12-07T22:07:39.528104+0000 INFO - MainProcess | Starting data processing
+28 reads [00:00, 94.18 reads/s]
+2020-12-07T22:07:39.900955+0000 INFO - Process-4 | Output reads written:28
+</pre>
+</div>
+</div>
+
+<div class="output_area">
+<div class="output_subarea output_stream output_stdout output_text">
+<pre>#c96c0f7b-9596-43c5-a545-8e15a8a7f368  control
+ref_pos ref_kmer    num_events  num_signals dwell_time  NNNNN_dwell_time    mismatch_dwell_time status  median  mad
+1   TACTC   1   22  0.007300000172108412    0.0 0.0 valid   96.916504   0.8642044
+2   ACTCG   1   12  0.003980000037699938    0.0 0.0 valid   95.18815    0.864151
+3   CTCGA   1   25  0.008299999870359898    0.0 0.0 valid   85.6821 1.5363007
+4   TCGAC   2   61  0.02026000013574958 0.0 0.0 valid   96.4364 1.9204025
+5   CGACA   5   77  0.025550000369548798    0.0 0.0 valid   110.84  4.2249985
+6   GACAT   1   12  0.003980000037699938    0.0 0.0 valid   89.23485    0.7681503
+7   ACATA   1   12  0.003980000037699938    0.0 0.0 valid   86.6423 1.3443031
+8   CATAG   3   52  0.017259999876841903    0.015269999857991934    0.0 NNNNN   152.513 6.1455
+
+ref_id  ref_start ref_end read_id                              num_events num_signals dwell_time         kmers missing_kmers NNNNN_kmers mismatch_kmers valid_kmers byte_offset byte_len 
+control 1         85      c96c0f7b-9596-43c5-a545-8e15a8a7f368 414        7781        2.5830999956233427 85    34            8           0              43          0           3673     
+control 1         89      fd13d01a-95ef-4073-b9cf-fb7277da2c04 453        8578        2.8478099999483675 89    40            8           0              41          3674        3546     
+control 1         87      b5783126-4472-45b4-9414-322a4a1a1776 540        10909       3.6216799857793376 87    32            10          0              45          7221        4019     
+control 1         90      778ba618-ced5-4e9e-81f8-16419d209940 201        4132        1.3718199981376529 90    1             3           0              86          11241       6125     
+control 2         88      506ff40c-92c3-4ff5-9169-3fbb9de2fc6b 301        6408        2.127389994333498  87    45            3           0              39          17367       3014     
+control 2         80      0402647b-c92d-4b5d-a820-2ce437a4ec6f 171        3288        1.0915600005537271 79    2             1           0              76          20382       5263     
+control 1         88      7f5e9d3b-60a5-4a27-9d74-053cc7f4791a 540        10888       3.6146999960765243 88    32            10          0              46          25646       4058     
+control 2         87      97166ef2-5d04-4544-9b6d-f3084aff6951 326        6433        2.135599997243844  86    34            5           0              47          29705       3716     
+control 4         88      3127653f-163f-4fcc-bcb4-90ec8ea7e638 357        7978        2.6487000052584335 85    29            4           0              52          33422       3953     
+
+</pre>
+</div>
+</div>
+
+</div>
+</div>
+
+</div>
+
+<div class="cell border-box-sizing text_cell rendered">
+<div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<h2 id="Using-the-index-to-random-access-a-specific-entry-in-the-file">Using the index to random access a specific entry in the file<a class="anchor-link" href="#Using-the-index-to-random-access-a-specific-entry-in-the-file">&#182;</a></h2>
+</div>
+</div>
+</div>
+
+<div class="cell border-box-sizing text_cell rendered">
+<div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<h3 id="Random-access-with-standard-library">Random access with standard library<a class="anchor-link" href="#Random-access-with-standard-library">&#182;</a></h3>
+</div>
+</div>
+</div>
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="codehilite"><pre><span></span><span class="n">output_fn</span> <span class="o">=</span> <span class="s2">&quot;./results/s2_eventalign_collapse.tsv&quot;</span>
+<span class="n">index_fn</span> <span class="o">=</span> <span class="n">output_fn</span><span class="o">+</span><span class="s2">&quot;.idx&quot;</span>
+
+<span class="c1"># Imports</span>
+<span class="kn">import</span> <span class="nn">csv</span>
+<span class="kn">from</span> <span class="nn">tabulate</span> <span class="kn">import</span> <span class="n">tabulate</span>
+<span class="kn">from</span> <span class="nn">random</span> <span class="kn">import</span> <span class="n">sample</span>
+<span class="kn">from</span> <span class="nn">itertools</span> <span class="kn">import</span> <span class="n">islice</span>
+
+<span class="c1"># read index file and select random lines</span>
+<span class="n">index_list</span> <span class="o">=</span> <span class="p">[]</span>
+<span class="k">with</span> <span class="nb">open</span> <span class="p">(</span><span class="n">index_fn</span><span class="p">)</span> <span class="k">as</span> <span class="n">fp</span><span class="p">:</span>
+    <span class="k">for</span> <span class="n">l</span> <span class="ow">in</span> <span class="n">csv</span><span class="o">.</span><span class="n">DictReader</span><span class="p">(</span><span class="n">fp</span><span class="p">,</span> <span class="n">delimiter</span><span class="o">=</span><span class="s1">&#39;</span><span class="se">\t</span><span class="s1">&#39;</span><span class="p">):</span>
+        <span class="n">index_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">l</span><span class="p">)</span>
+<span class="n">random_index</span> <span class="o">=</span> <span class="n">sample</span><span class="p">(</span><span class="n">index_list</span><span class="p">,</span> <span class="n">k</span><span class="o">=</span><span class="mi">5</span><span class="p">)</span>
+<span class="nb">print</span> <span class="p">(</span><span class="s2">&quot;RANDOM INDEX LINES&quot;</span><span class="p">)</span>
+<span class="nb">print</span> <span class="p">(</span><span class="n">tabulate</span><span class="p">(</span><span class="n">random_index</span><span class="p">,</span> <span class="n">headers</span><span class="o">=</span><span class="s2">&quot;keys&quot;</span><span class="p">))</span>
+
+<span class="c1"># Open the collapsed event align file</span>
+<span class="k">with</span> <span class="nb">open</span> <span class="p">(</span><span class="n">output_fn</span><span class="p">)</span> <span class="k">as</span> <span class="n">fp</span><span class="p">:</span>
+    <span class="k">for</span> <span class="n">index</span> <span class="ow">in</span> <span class="n">random_index</span><span class="p">:</span>
+        <span class="c1"># Access the header corresponding to the randomly selected index line using seek </span>
+        <span class="n">fp</span><span class="o">.</span><span class="n">seek</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span> <span class="c1"># Return to file start</span>
+        <span class="n">fp</span><span class="o">.</span><span class="n">seek</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">index</span><span class="p">[</span><span class="s2">&quot;byte_offset&quot;</span><span class="p">]))</span> <span class="c1"># Move to the offset indicated in the index file</span>
+        <span class="nb">print</span> <span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span> <span class="o">+</span> <span class="n">fp</span><span class="o">.</span><span class="n">readline</span><span class="p">()</span><span class="o">.</span><span class="n">rstrip</span><span class="p">())</span> <span class="c1"># Print read header</span>
+        <span class="c1"># Get 5 first lines and print then</span>
+        <span class="n">data_list</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">l</span> <span class="ow">in</span> <span class="n">islice</span><span class="p">(</span><span class="n">csv</span><span class="o">.</span><span class="n">DictReader</span><span class="p">(</span><span class="n">fp</span><span class="p">,</span> <span class="n">delimiter</span><span class="o">=</span><span class="s1">&#39;</span><span class="se">\t</span><span class="s1">&#39;</span><span class="p">),</span> <span class="mi">5</span><span class="p">):</span>
+            <span class="n">data_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">l</span><span class="p">)</span>
+        <span class="nb">print</span> <span class="p">(</span><span class="n">tabulate</span><span class="p">(</span><span class="n">data_list</span><span class="p">,</span> <span class="n">headers</span><span class="o">=</span><span class="s2">&quot;keys&quot;</span><span class="p">))</span>
+</pre></div>
+
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+
+<div class="output_area">
+<div class="output_subarea output_stream output_stdout output_text">
+<pre>RANDOM INDEX LINES
+ref_id      ref_start    ref_end  read_id                                 num_events    num_signals    dwell_time    kmers    missing_kmers    NNNNN_kmers    mismatch_kmers    valid_kmers    byte_offset    byte_len
+--------  -----------  ---------  ------------------------------------  ------------  -------------  ------------  -------  ---------------  -------------  ----------------  -------------  -------------  ----------
+control            10         89  6b53dc3c-4913-4970-bc92-98c8a28d510a           299           6562       2.17847       80               26              9                 0             45          81568        3895
+control             2         80  0402647b-c92d-4b5d-a820-2ce437a4ec6f           171           3288       1.09156       79                2              1                 0             76          20382        5263
+control             8         89  465fdd43-e5be-4c66-9165-3ba9e2817109           365           7285       2.4185        82               21              6                 0             55          67007        4332
+control             9         80  0c08b5d8-6c89-4ca6-b4dc-202096535762           178           3627       1.20414       72               13              6                 0             53          85464        4180
+control             1         85  c96c0f7b-9596-43c5-a545-8e15a8a7f368           414           7781       2.5831        85               34              8                 0             43              0        3673
+
+#6b53dc3c-4913-4970-bc92-98c8a28d510a   control
+  ref_pos  ref_kmer      num_events    num_signals    dwell_time    NNNNN_dwell_time    mismatch_dwell_time  status      median      mad
+---------  ----------  ------------  -------------  ------------  ------------------  ---------------------  --------  --------  -------
+       10  TAGAT                  1              8       0.00266             0                            0  valid     153.746   10.5975
+       11  AGATA                  4             57       0.01892             0                            0  valid     138.135   10.027
+       12  GATAG                  4             95       0.03155             0.00332                      0  NNNNN     107.141   15.725
+       14  TAGGA                 10            359       0.11919             0                            0  valid      97.3414   6.837
+       15  AGGAC                  2             40       0.01328             0                            0  valid     114.434    5.6975
+
+#0402647b-c92d-4b5d-a820-2ce437a4ec6f   control
+  ref_pos  ref_kmer      num_events    num_signals    dwell_time    NNNNN_dwell_time    mismatch_dwell_time  status      median     mad
+---------  ----------  ------------  -------------  ------------  ------------------  ---------------------  --------  --------  ------
+        2  ACTCG                  2             57       0.01892                   0                      0  valid      83.736   1.8462
+        3  CTCGA                  1             34       0.01129                   0                      0  valid      91.6244  2.1819
+        4  TCGAC                  2             48       0.01593                   0                      0  valid      93.3028  2.2658
+        5  CGACA                  1             72       0.0239                    0                      0  valid     108.073   6.6295
+        6  GACAT                  1             17       0.00564                   0                      0  valid      83.2325  1.6784
+
+#465fdd43-e5be-4c66-9165-3ba9e2817109   control
+  ref_pos  ref_kmer      num_events    num_signals    dwell_time    NNNNN_dwell_time    mismatch_dwell_time  status      median      mad
+---------  ----------  ------------  -------------  ------------  ------------------  ---------------------  --------  --------  -------
+        8  CATAG                  1              7       0.00232                   0                      0  valid      94.5734  1.5419
+        9  ATAGA                  1             10       0.00332                   0                      0  valid     118.087   3.2765
+       10  TAGAT                  1             33       0.01096                   0                      0  valid     138.903   2.50501
+       11  AGATA                  5            149       0.04947                   0                      0  valid     136.205   3.084
+       12  GATAG                  1             10       0.00332                   0                      0  valid     106.62    5.3005
+
+#0c08b5d8-6c89-4ca6-b4dc-202096535762   control
+  ref_pos  ref_kmer      num_events    num_signals    dwell_time    NNNNN_dwell_time    mismatch_dwell_time  status      median      mad
+---------  ----------  ------------  -------------  ------------  ------------------  ---------------------  --------  --------  -------
+        9  ATAGA                  2             17       0.00565             0                            0  valid      98.6508  9.0242
+       10  TAGAT                  3             51       0.01693             0.00232                      0  NNNNN     115.811   4.14201
+       14  TAGGA                 13            248       0.08232             0                            0  valid     114.183   6.287
+       15  AGGAC                  5            179       0.05943             0                            0  valid     116.107   4.734
+       16  GGACT                 14            358       0.11886             0                            0  valid     126.905   3.55
+
+#c96c0f7b-9596-43c5-a545-8e15a8a7f368   control
+  ref_pos  ref_kmer      num_events    num_signals    dwell_time    NNNNN_dwell_time    mismatch_dwell_time  status      median       mad
+---------  ----------  ------------  -------------  ------------  ------------------  ---------------------  --------  --------  --------
+        1  TACTC                  1             22       0.0073                    0                      0  valid      96.9165  0.864204
+        2  ACTCG                  1             12       0.00398                   0                      0  valid      95.1881  0.864151
+        3  CTCGA                  1             25       0.0083                    0                      0  valid      85.6821  1.5363
+        4  TCGAC                  2             61       0.02026                   0                      0  valid      96.4364  1.9204
+        5  CGACA                  5             77       0.02555                   0                      0  valid     110.84    4.225
+</pre>
+</div>
+</div>
+
+</div>
+</div>
+
+</div>
+
+<div class="cell border-box-sizing text_cell rendered">
+<div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<h3 id="Example-of-random-access-with-pandas">Example of random access with pandas<a class="anchor-link" href="#Example-of-random-access-with-pandas">&#182;</a></h3>
+</div>
+</div>
+</div>
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="codehilite"><pre><span></span><span class="n">output_fn</span> <span class="o">=</span> <span class="s2">&quot;./results/s2_eventalign_collapse.tsv&quot;</span>
+<span class="n">index_fn</span> <span class="o">=</span> <span class="n">output_fn</span><span class="o">+</span><span class="s2">&quot;.idx&quot;</span>
+
+<span class="c1"># Imports</span>
+<span class="kn">import</span> <span class="nn">pandas</span> <span class="k">as</span> <span class="nn">pd</span>
+<span class="n">pd</span><span class="o">.</span><span class="n">set_option</span><span class="p">(</span><span class="s1">&#39;display.max_columns&#39;</span><span class="p">,</span> <span class="mi">6</span><span class="p">)</span>
+
+<span class="c1"># read index file and select random lines</span>
+<span class="n">index_df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_csv</span> <span class="p">(</span><span class="n">index_fn</span><span class="p">,</span> <span class="n">sep</span><span class="o">=</span><span class="s2">&quot;</span><span class="se">\t</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="n">random_lines</span> <span class="o">=</span> <span class="n">index_df</span><span class="o">.</span><span class="n">sample</span><span class="p">(</span><span class="mi">5</span><span class="p">)</span>
+<span class="nb">print</span> <span class="p">(</span><span class="s2">&quot;Random index lines&quot;</span><span class="p">)</span>
+<span class="n">display</span> <span class="p">(</span><span class="n">random_lines</span><span class="p">)</span>
+
+<span class="c1"># Open the collapsed event align file</span>
+<span class="k">with</span> <span class="nb">open</span> <span class="p">(</span><span class="n">output_fn</span><span class="p">)</span> <span class="k">as</span> <span class="n">fp</span><span class="p">:</span>
+    <span class="k">for</span> <span class="nb">id</span><span class="p">,</span> <span class="n">read</span> <span class="ow">in</span> <span class="n">random_lines</span><span class="o">.</span><span class="n">iterrows</span><span class="p">():</span>
+
+        <span class="c1"># Access the header corresponding to the randomly selected index line using seek </span>
+        <span class="n">fp</span><span class="o">.</span><span class="n">seek</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span> <span class="c1"># Return to file start</span>
+        <span class="n">fp</span><span class="o">.</span><span class="n">seek</span><span class="p">(</span><span class="n">read</span><span class="o">.</span><span class="n">byte_offset</span><span class="p">)</span> <span class="c1"># Move to the offset indicated in the index file</span>
+        <span class="nb">print</span> <span class="p">(</span><span class="n">fp</span><span class="o">.</span><span class="n">readline</span><span class="p">()</span><span class="o">.</span><span class="n">rstrip</span><span class="p">())</span> <span class="c1"># Print read header</span>
+        <span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_csv</span> <span class="p">(</span><span class="n">fp</span><span class="p">,</span> <span class="n">nrows</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span> <span class="n">sep</span><span class="o">=</span><span class="s2">&quot;</span><span class="se">\t</span><span class="s2">&quot;</span><span class="p">)</span> <span class="c1"># Read lines corresponding to the read</span>
+        <span class="n">display</span><span class="p">(</span><span class="n">df</span><span class="p">)</span>
+</pre></div>
+
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+
+<div class="output_area">
+<div class="output_subarea output_stream output_stdout output_text">
+<pre>Random index lines
+</pre>
+</div>
+</div>
+
+<div class="output_area">
+
+<div class="output_html rendered_html output_subarea ">
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>ref_id</th>
+      <th>ref_start</th>
+      <th>ref_end</th>
+      <th>...</th>
+      <th>valid_kmers</th>
+      <th>byte_offset</th>
+      <th>byte_len</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>16</th>
+      <td>control</td>
+      <td>8</td>
+      <td>89</td>
+      <td>...</td>
+      <td>55</td>
+      <td>67007</td>
+      <td>4332</td>
+    </tr>
+    <tr>
+      <th>9</th>
+      <td>control</td>
+      <td>4</td>
+      <td>92</td>
+      <td>...</td>
+      <td>51</td>
+      <td>37376</td>
+      <td>4138</td>
+    </tr>
+    <tr>
+      <th>26</th>
+      <td>control</td>
+      <td>9</td>
+      <td>85</td>
+      <td>...</td>
+      <td>39</td>
+      <td>103487</td>
+      <td>3341</td>
+    </tr>
+    <tr>
+      <th>22</th>
+      <td>control</td>
+      <td>9</td>
+      <td>86</td>
+      <td>...</td>
+      <td>41</td>
+      <td>89645</td>
+      <td>3670</td>
+    </tr>
+    <tr>
+      <th>0</th>
+      <td>control</td>
+      <td>1</td>
+      <td>85</td>
+      <td>...</td>
+      <td>43</td>
+      <td>0</td>
+      <td>3673</td>
+    </tr>
+  </tbody>
+</table>
+<p>5 rows × 14 columns</p>
+</div>
+</div>
+
+</div>
+
+<div class="output_area">
+<div class="output_subarea output_stream output_stdout output_text">
+<pre>#465fdd43-e5be-4c66-9165-3ba9e2817109  control
+</pre>
+</div>
+</div>
+
+<div class="output_area">
+
+<div class="output_html rendered_html output_subarea ">
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>ref_pos</th>
+      <th>ref_kmer</th>
+      <th>num_events</th>
+      <th>...</th>
+      <th>status</th>
+      <th>median</th>
+      <th>mad</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>8</td>
+      <td>CATAG</td>
+      <td>1</td>
+      <td>...</td>
+      <td>valid</td>
+      <td>94.573400</td>
+      <td>1.541901</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <td>9</td>
+      <td>ATAGA</td>
+      <td>1</td>
+      <td>...</td>
+      <td>valid</td>
+      <td>118.087494</td>
+      <td>3.276501</td>
+    </tr>
+    <tr>
+      <th>2</th>
+      <td>10</td>
+      <td>TAGAT</td>
+      <td>1</td>
+      <td>...</td>
+      <td>valid</td>
+      <td>138.903000</td>
+      <td>2.505005</td>
+    </tr>
+    <tr>
+      <th>3</th>
+      <td>11</td>
+      <td>AGATA</td>
+      <td>5</td>
+      <td>...</td>
+      <td>valid</td>
+      <td>136.205000</td>
+      <td>3.084000</td>
+    </tr>
+    <tr>
+      <th>4</th>
+      <td>12</td>
+      <td>GATAG</td>
+      <td>1</td>
+      <td>...</td>
+      <td>valid</td>
+      <td>106.619500</td>
+      <td>5.300503</td>
+    </tr>
+  </tbody>
+</table>
+<p>5 rows × 10 columns</p>
+</div>
+</div>
+
+</div>
+
+<div class="output_area">
+<div class="output_subarea output_stream output_stdout output_text">
+<pre>#73f1c3ca-2bd3-4543-9b34-693935dce530  control
+</pre>
+</div>
+</div>
+
+<div class="output_area">
+
+<div class="output_html rendered_html output_subarea ">
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>ref_pos</th>
+      <th>ref_kmer</th>
+      <th>num_events</th>
+      <th>...</th>
+      <th>status</th>
+      <th>median</th>
+      <th>mad</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>4</td>
+      <td>TCGAC</td>
+      <td>44</td>
+      <td>...</td>
+      <td>NNNNN</td>
+      <td>95.305800</td>
+      <td>7.780205</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <td>5</td>
+      <td>CGACA</td>
+      <td>15</td>
+      <td>...</td>
+      <td>valid</td>
+      <td>121.944500</td>
+      <td>11.669998</td>
+    </tr>
+    <tr>
+      <th>2</th>
+      <td>6</td>
+      <td>GACAT</td>
+      <td>1</td>
+      <td>...</td>
+      <td>valid</td>
+      <td>75.939900</td>
+      <td>0.930199</td>
+    </tr>
+    <tr>
+      <th>3</th>
+      <td>7</td>
+      <td>ACATA</td>
+      <td>4</td>
+      <td>...</td>
+      <td>valid</td>
+      <td>77.039300</td>
+      <td>2.452454</td>
+    </tr>
+    <tr>
+      <th>4</th>
+      <td>8</td>
+      <td>CATAG</td>
+      <td>1</td>
+      <td>...</td>
+      <td>valid</td>
+      <td>92.515045</td>
+      <td>0.845703</td>
+    </tr>
+  </tbody>
+</table>
+<p>5 rows × 10 columns</p>
+</div>
+</div>
+
+</div>
+
+<div class="output_area">
+<div class="output_subarea output_stream output_stdout output_text">
+<pre>#2cc2d044-d8d9-4e72-a616-a0d25a787b2d  control
+</pre>
+</div>
+</div>
+
+<div class="output_area">
+
+<div class="output_html rendered_html output_subarea ">
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>ref_pos</th>
+      <th>ref_kmer</th>
+      <th>num_events</th>
+      <th>...</th>
+      <th>status</th>
+      <th>median</th>
+      <th>mad</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>9</td>
+      <td>ATAGA</td>
+      <td>1</td>
+      <td>...</td>
+      <td>NNNNN</td>
+      <td>82.00195</td>
+      <td>2.714901</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <td>13</td>
+      <td>ATAGG</td>
+      <td>6</td>
+      <td>...</td>
+      <td>valid</td>
+      <td>82.24150</td>
+      <td>2.714897</td>
+    </tr>
+    <tr>
+      <th>2</th>
+      <td>14</td>
+      <td>TAGGA</td>
+      <td>1</td>
+      <td>...</td>
+      <td>valid</td>
+      <td>109.31050</td>
+      <td>4.791000</td>
+    </tr>
+    <tr>
+      <th>3</th>
+      <td>15</td>
+      <td>AGGAC</td>
+      <td>17</td>
+      <td>...</td>
+      <td>NNNNN</td>
+      <td>118.49300</td>
+      <td>5.828999</td>
+    </tr>
+    <tr>
+      <th>4</th>
+      <td>16</td>
+      <td>GGACT</td>
+      <td>45</td>
+      <td>...</td>
+      <td>NNNNN</td>
+      <td>126.79800</td>
+      <td>4.152000</td>
+    </tr>
+  </tbody>
+</table>
+<p>5 rows × 10 columns</p>
+</div>
+</div>
+
+</div>
+
+<div class="output_area">
+<div class="output_subarea output_stream output_stdout output_text">
+<pre>#6f044625-cf92-4819-9e1d-31757d003355  control
+</pre>
+</div>
+</div>
+
+<div class="output_area">
+
+<div class="output_html rendered_html output_subarea ">
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>ref_pos</th>
+      <th>ref_kmer</th>
+      <th>num_events</th>
+      <th>...</th>
+      <th>status</th>
+      <th>median</th>
+      <th>mad</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>9</td>
+      <td>ATAGA</td>
+      <td>4</td>
+      <td>...</td>
+      <td>valid</td>
+      <td>109.451000</td>
+      <td>13.992195</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <td>10</td>
+      <td>TAGAT</td>
+      <td>7</td>
+      <td>...</td>
+      <td>valid</td>
+      <td>118.098495</td>
+      <td>6.315506</td>
+    </tr>
+    <tr>
+      <th>2</th>
+      <td>11</td>
+      <td>AGATA</td>
+      <td>4</td>
+      <td>...</td>
+      <td>valid</td>
+      <td>134.714000</td>
+      <td>6.024002</td>
+    </tr>
+    <tr>
+      <th>3</th>
+      <td>12</td>
+      <td>GATAG</td>
+      <td>23</td>
+      <td>...</td>
+      <td>valid</td>
+      <td>98.568100</td>
+      <td>1.360298</td>
+    </tr>
+    <tr>
+      <th>4</th>
+      <td>13</td>
+      <td>ATAGG</td>
+      <td>11</td>
+      <td>...</td>
+      <td>valid</td>
+      <td>84.964900</td>
+      <td>3.109299</td>
+    </tr>
+  </tbody>
+</table>
+<p>5 rows × 10 columns</p>
+</div>
+</div>
+
+</div>
+
+<div class="output_area">
+<div class="output_subarea output_stream output_stdout output_text">
+<pre>#c96c0f7b-9596-43c5-a545-8e15a8a7f368  control
+</pre>
+</div>
+</div>
+
+<div class="output_area">
+
+<div class="output_html rendered_html output_subarea ">
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>ref_pos</th>
+      <th>ref_kmer</th>
+      <th>num_events</th>
+      <th>...</th>
+      <th>status</th>
+      <th>median</th>
+      <th>mad</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>1</td>
+      <td>TACTC</td>
+      <td>1</td>
+      <td>...</td>
+      <td>valid</td>
+      <td>96.916504</td>
+      <td>0.864204</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <td>2</td>
+      <td>ACTCG</td>
+      <td>1</td>
+      <td>...</td>
+      <td>valid</td>
+      <td>95.188150</td>
+      <td>0.864151</td>
+    </tr>
+    <tr>
+      <th>2</th>
+      <td>3</td>
+      <td>CTCGA</td>
+      <td>1</td>
+      <td>...</td>
+      <td>valid</td>
+      <td>85.682100</td>
+      <td>1.536301</td>
+    </tr>
+    <tr>
+      <th>3</th>
+      <td>4</td>
+      <td>TCGAC</td>
+      <td>2</td>
+      <td>...</td>
+      <td>valid</td>
+      <td>96.436400</td>
+      <td>1.920403</td>
+    </tr>
+    <tr>
+      <th>4</th>
+      <td>5</td>
+      <td>CGACA</td>
+      <td>5</td>
+      <td>...</td>
+      <td>valid</td>
+      <td>110.840000</td>
+      <td>4.224998</td>
+    </tr>
+  </tbody>
+</table>
+<p>5 rows × 10 columns</p>
+</div>
+</div>
+
+</div>
+
+</div>
+</div>
+
+</div>
+
+<div class="cell border-box-sizing text_cell rendered">
+<div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<h2 id="Full-CLI-and-API-documentations">Full CLI and API documentations<a class="anchor-link" href="#Full-CLI-and-API-documentations">&#182;</a></h2>
+</div>
+</div>
+</div>
+
+<div class="cell border-box-sizing text_cell rendered">
+<div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<h3 id="API-documentation">API documentation<a class="anchor-link" href="#API-documentation">&#182;</a></h3>
+</div>
+</div>
+</div>
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="codehilite"><pre><span></span><span class="kn">from</span> <span class="nn">nanocompore.Eventalign_collapse</span> <span class="kn">import</span> <span class="n">Eventalign_collapse</span>
+<span class="kn">from</span> <span class="nn">nanocompore.common</span> <span class="kn">import</span> <span class="n">jhelp</span>
+<span class="n">jhelp</span><span class="p">(</span><span class="n">Eventalign_collapse</span><span class="o">.</span><span class="fm">__init__</span><span class="p">)</span>
+</pre></div>
+
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+
+<div class="output_area">
+
+<div class="output_markdown rendered_html output_subarea ">
+<p><strong><strong>init</strong></strong> (eventalign_fn, outpath, outprefix, overwrite, n_lines, nthreads, progress)</p>
+<p>Collapse the nanopolish eventalign events at kmer level</p>
+<hr>
+<ul>
+<li><strong>eventalign_fn</strong> (required) [str]</li>
+</ul>
+<p>Path to a nanopolish eventalign tsv output file, or a list of file, or a regex (can be gzipped)</p>
+<ul>
+<li><strong>outpath</strong> (default: ./) [str]</li>
+</ul>
+<p>Path to the output folder (will be created if it does exist yet)</p>
+<ul>
+<li><strong>outprefix</strong> (default: out) [str]</li>
+</ul>
+<p>text outprefix for all the files generated</p>
+<ul>
+<li><strong>overwrite</strong> (default: False) [bool]</li>
+</ul>
+<p>If the output directory already exists, the standard behaviour is to raise an error to prevent overwriting existing data This option ignore the error and overwrite data if they have the same outpath and outprefix.</p>
+<ul>
+<li><strong>n_lines</strong> (default: None) [int]</li>
+</ul>
+<p>Maximum number of read to parse.</p>
+<ul>
+<li><strong>nthreads</strong> (default: 3) [int]</li>
+</ul>
+<p>Number of threads (two are used for reading and writing, all the others for parallel processing).</p>
+<ul>
+<li><strong>progress</strong> (default: False) [bool]</li>
+</ul>
+<p>Display a progress bar during execution</p>
+
+</div>
+
+</div>
+
+</div>
+</div>
+
+</div>
+
+<div class="cell border-box-sizing text_cell rendered">
+<div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<h3 id="CLI-documentation">CLI documentation<a class="anchor-link" href="#CLI-documentation">&#182;</a></h3>
+</div>
+</div>
+</div>
+
+<div class="cell border-box-sizing text_cell rendered">
+<div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<div class="highlight"><pre><span></span>nanocompore eventalign_collapse --help
+</pre></div>
+<div class="highlight"><pre><span></span>usage: nanocompore eventalign_collapse [-h] [--eventalign EVENTALIGN]
+                                       [--n_lines N_LINES]
+                                       [--nthreads NTHREADS]
+                                       [--outpath OUTPATH]
+                                       [--outprefix OUTPREFIX] [--overwrite]
+                                       [--log_level {warning,info,debug}]
+                                       [--progress]
+
+Collapse the nanopolish eventalign output at kmers level and compute kmer level statistics
+* Minimal example
+    nanocompore eventalign_collapse -i nanopolish_eventalign.tsv -outprefix out
+
+optional arguments:
+  -h, --help            show this help message and exit
+
+Input options:
+  --eventalign EVENTALIGN, -i EVENTALIGN
+                        Path to a nanopolish eventalign tsv output file, or a
+                        list of file, or a regex (can be gzipped). It can be
+                        ommited if piped to standard input (default: piped to
+                        stdin)
+
+Run parameters options:
+  --n_lines N_LINES, -l N_LINES
+                        Number of lines to parse.(default: no limits
+
+Other options:
+  --nthreads NTHREADS, -t NTHREADS
+                        Total number of threads. 2 threads are reserved for
+                        the reader and the writer (default: 3)
+
+Output options:
+  --outpath OUTPATH, -o OUTPATH
+                        Path to the output folder (default: ./)
+  --outprefix OUTPREFIX, -p OUTPREFIX
+                        text outprefix for all the files generated (default:
+                        out)
+  --overwrite, -w       Use --outpath even if it exists already (default:
+                        False)
+
+Verbosity options:
+  --log_level {warning,info,debug}
+                        Set the log level (default: info)
+  --progress            Display a progress bar during execution (default:
+                        False)
+</pre></div>
+
+</div>
+</div>
+</div>
+
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+
+<div class="codehilite"><pre><span></span><span class="nb">list</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="mi">1</span><span class="p">))</span>
+</pre></div>
+
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+
+<div class="output_area">
+
+
+<div class="output_text output_subarea output_execute_result">
+<pre>[0]</pre>
+</div>
+
+</div>
+
+</div>
+</div>
+
+</div>
+                
+                  
+                
+                
+              
+              
+                
+
+
+              
+            </article>
+          </div>
+        </div>
+      </main>
+      
+        
+<footer class="md-footer">
+  
+    <div class="md-footer-nav">
+      <nav class="md-footer-nav__inner md-grid">
+        
+          <a href="../../usage/" title="How to use Nanocompore" class="md-flex md-footer-nav__link md-footer-nav__link--prev" rel="prev">
+            <div class="md-flex__cell md-flex__cell--shrink">
+              <i class="md-icon md-icon--arrow-back md-footer-nav__button"></i>
+            </div>
+            <div class="md-flex__cell md-flex__cell--stretch md-footer-nav__title">
+              <span class="md-flex__ellipsis">
+                <span class="md-footer-nav__direction">
+                  Previous
+                </span>
+                How to use Nanocompore
+              </span>
+            </div>
+          </a>
+        
+        
+          <a href="../SampComp_usage/" title="Compare samples with SampComp" class="md-flex md-footer-nav__link md-footer-nav__link--next" rel="next">
+            <div class="md-flex__cell md-flex__cell--stretch md-footer-nav__title">
+              <span class="md-flex__ellipsis">
+                <span class="md-footer-nav__direction">
+                  Next
+                </span>
+                Compare samples with SampComp
+              </span>
+            </div>
+            <div class="md-flex__cell md-flex__cell--shrink">
+              <i class="md-icon md-icon--arrow-forward md-footer-nav__button"></i>
+            </div>
+          </a>
+        
+      </nav>
+    </div>
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-footer-copyright">
+        
+          <div class="md-footer-copyright__highlight">
+            Copyright &copy; 2019 Adrien Leger & Tommaso Leonardi
+          </div>
+        
+        powered by
+        <a href="https://www.mkdocs.org">MkDocs</a>
+        and
+        <a href="https://squidfunk.github.io/mkdocs-material/">
+          Material for MkDocs</a>
+      </div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    
+      <script src="../../assets/javascripts/application.808e90bb.js"></script>
+      
+      <script>app.initialize({version:"1.0.4",url:{base:"../.."}})</script>
+      
+    
+  </body>
+</html>

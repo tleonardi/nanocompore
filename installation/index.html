@@ -246,22 +246,15 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#option-1-direct-installation-with-pip-from-pypi-recommended" class="md-nav__link">
-    Option 1: Direct installation with pip from PyPi (recommended)
+  <a href="#option-1-direct-installation-with-pip-from-pypi-or-conda-recommended" class="md-nav__link">
+    Option 1: Direct installation with pip from PyPi or conda (recommended)
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#option-2-direct-installation-with-pip-from-github" class="md-nav__link">
-    Option 2: Direct installation with pip from github
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#option-3-clone-the-repository-and-install-locally-in-develop-mode" class="md-nav__link">
-    Option 3: Clone the repository and install locally in develop mode
+  <a href="#option-2-clone-the-repository-and-install-locally-in-develop-mode-with-poetry" class="md-nav__link">
+    Option 2: Clone the repository and install locally in develop mode with poetry
   </a>
   
 </li>
@@ -323,6 +316,18 @@
   <li class="md-nav__item">
     <a href="../usage/" title="How to use Nanocompore" class="md-nav__link">
       How to use Nanocompore
+    </a>
+  </li>
+
+        
+          
+          
+          
+
+
+  <li class="md-nav__item">
+    <a href="../demo/Eventalign_collapse_usage/" title="Collapse nanopolish data at kmer level" class="md-nav__link">
+      Collapse nanopolish data at kmer level
     </a>
   </li>
 
@@ -475,22 +480,15 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#option-1-direct-installation-with-pip-from-pypi-recommended" class="md-nav__link">
-    Option 1: Direct installation with pip from PyPi (recommended)
+  <a href="#option-1-direct-installation-with-pip-from-pypi-or-conda-recommended" class="md-nav__link">
+    Option 1: Direct installation with pip from PyPi or conda (recommended)
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#option-2-direct-installation-with-pip-from-github" class="md-nav__link">
-    Option 2: Direct installation with pip from github
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#option-3-clone-the-repository-and-install-locally-in-develop-mode" class="md-nav__link">
-    Option 3: Clone the repository and install locally in develop mode
+  <a href="#option-2-clone-the-repository-and-install-locally-in-develop-mode-with-poetry" class="md-nav__link">
+    Option 2: Clone the repository and install locally in develop mode with poetry
   </a>
   
 </li>
@@ -525,38 +523,39 @@
 <h2 id="create-a-clean-virtual-environment">Create a clean virtual environment</h2>
 <p>Ideally, before installation, create a clean <strong>python3.6+</strong> virtual environment to deploy the package. <strong>Python 2 is not supported</strong>. For example one can use conda or virtualenvwrapper.</p>
 <p>With <a href="https://virtualenvwrapper.readthedocs.io/en/latest/install.html">virtualenvwrapper</a>:</p>
-<div class="codehilite"><pre><span></span>mkvirtualenv nanocompore -p python3.6
+<div class="codehilite"><pre><span></span>mkvirtualenv nanocompore -p python3.7
 </pre></div>
 
 <p>With <a href="https://conda.io/projects/conda/en/latest/user-guide/install/index.html">conda</a>:</p>
-<div class="codehilite"><pre><span></span>conda create -n nanocompore <span class="nv">python</span><span class="o">=</span><span class="m">3</span>.6
+<div class="codehilite"><pre><span></span>conda create -n nanocompore <span class="nv">python</span><span class="o">=</span><span class="m">3</span>.7
 </pre></div>
 
 <h2 id="dependencies">Dependencies</h2>
 <p>Nanocompore relies on a the following robustly maintained third party python libraries:</p>
 <ul>
-<li>numpy &gt;= 1.16.0</li>
-<li>scipy &gt;= 1.2.0</li>
-<li>tqdm &gt;= 4.32.0</li>
-<li>pyfaidx &gt;= 0.5.5</li>
-<li>matplotlib &gt;= 3.1</li>
-<li>seaborn &gt;= 0.9.0</li>
-<li>pandas &gt;= 0.24.2</li>
-<li>statsmodels &gt;= 0.9.0</li>
-<li>scikit-learn &gt;= 0.21.2</li>
-<li>bedparse &gt;= 0.2.2</li>
+<li>python = "&gt;=3.6.1"</li>
+<li>numpy = "~1.19"</li>
+<li>scipy = "~1.5"</li>
+<li>tqdm = "~4"</li>
+<li>pyfaidx = "~0.5"</li>
+<li>matplotlib = "~3.1"</li>
+<li>seaborn = "~0"</li>
+<li>pandas = "~0.25"</li>
+<li>statsmodels = "~0.12"</li>
+<li>scikit-learn = "~0.23"</li>
+<li>bedparse = "~0.2"</li>
+<li>pyyaml = "~5"</li>
+<li>loguru = "~0.5"</li>
 </ul>
 <p>The correct versions of packages are installed together with the software when using pip.</p>
-<h2 id="option-1-direct-installation-with-pip-from-pypi-recommended">Option 1: Direct installation with pip from PyPi (recommended)</h2>
+<h2 id="option-1-direct-installation-with-pip-from-pypi-or-conda-recommended">Option 1: Direct installation with pip from PyPi or conda (recommended)</h2>
 <div class="codehilite"><pre><span></span>pip3 install nanocompore
 </pre></div>
 
-<h2 id="option-2-direct-installation-with-pip-from-github">Option 2: Direct installation with pip from github</h2>
-<p>To install the package with https/ssh you need pip&gt;=19</p>
-<div class="codehilite"><pre><span></span>pip3 install git+https://github.com/tleonardi/nanocompore.git
+<div class="codehilite"><pre><span></span>conda install -c bioconda nanocompore
 </pre></div>
 
-<h2 id="option-3-clone-the-repository-and-install-locally-in-develop-mode">Option 3: Clone the repository and install locally in develop mode</h2>
+<h2 id="option-2-clone-the-repository-and-install-locally-in-develop-mode-with-poetry">Option 2: Clone the repository and install locally in develop mode with poetry</h2>
 <p>With this option, the package will be locally installed in <em>editable</em> or <em>develop mode</em>. This allows the package to be both installed and editable in project form. This is the recommended option if you wish to modify the code and/or participate to the development of the package (see <a href="../contributing/">contribution guidelines</a>).</p>
 <div class="codehilite"><pre><span></span><span class="c1"># Clone repo localy</span>
 git clone https://github.com/tleonardi/nanocompore.git
@@ -565,7 +564,8 @@ git clone https://github.com/tleonardi/nanocompore.git
 <span class="nb">cd</span> nanocompore
 
 <span class="c1"># Install with pip3</span>
-pip3 install -e ./
+pip install poetry
+poetry install
 </pre></div>
 
 <h2 id="testing-the-installation-optional">Testing the installation (Optional)</h2>

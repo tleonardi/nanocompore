@@ -312,6 +312,18 @@
 
 
   <li class="md-nav__item">
+    <a href="../demo/Eventalign_collapse_usage/" title="Collapse nanopolish data at kmer level" class="md-nav__link">
+      Collapse nanopolish data at kmer level
+    </a>
+  </li>
+
+        
+          
+          
+          
+
+
+  <li class="md-nav__item">
     <a href="../demo/SampComp_usage/" title="Compare samples with SampComp" class="md-nav__link">
       Compare samples with SampComp
     </a>
@@ -502,14 +514,19 @@ samtools index <span class="o">{</span>aligned_reads_bam<span class="o">}</span>
 </pre></div>
 
 <h3 id="read-indexing-and-resquiggling">Read indexing and resquiggling</h3>
-<p>Nanopolish is required to realign raw signal to the expected reference sequence. Reads have to be indexed first with nanopolish index, realigned with nanopolish eventalign and finally the data has to be collapsed per kmer and indexed by NanopolishComp Eventalign_collapse.</p>
-<p>Example with <a href="https://github.com/jts/nanopolish">Nanopolish v0.10.1</a> and <a href="https://github.com/a-slide/NanopolishComp">NanopolishComp v0.4.3</a></p>
+<p>Nanopolish is required to realign raw signal to the expected reference sequence. For each samples, reads have to be preprocessed with <a href="https://github.com/jts/nanopolish">nanopolish 0.10.1+</a>. First index the reads with nanopolish index and then  resquiggle them with nanopolish eventalign</p>
+<p><strong>Please be carefull to use the following options with nanopolish:</strong> <code class="codehilite"><span class="err">--print-read-names --scale-events --samples</span></code></p>
+<p>Example with <a href="https://github.com/jts/nanopolish">Nanopolish v0.10.1</a> </p>
 <div class="codehilite"><pre><span></span>nanopolish index -s <span class="o">{</span>sequencing_summary.txt<span class="o">}</span> -d <span class="o">{</span>raw_fast5_dir<span class="o">}</span> <span class="o">{</span>basecalled_fastq<span class="o">}</span>
 
-nanopolish eventalign --reads <span class="o">{</span>basecalled_fastq<span class="o">}</span> --bam <span class="o">{</span>aligned_reads_bam<span class="o">}</span> --genome <span class="o">{</span>transcriptome_fasta<span class="o">}</span> --samples --print-read-names --scale-events --samples &gt; <span class="o">{</span>eventalign_reads_tsv<span class="o">}</span>
-
-NanopolishComp Eventalign_collapse -i <span class="o">{</span>eventalign_reads_tsv<span class="o">}</span> -o <span class="o">{</span>eventalign_collapsed_reads_tsv<span class="o">}</span>
+nanopolish eventalign --reads <span class="o">{</span>basecalled_fastq<span class="o">}</span> --bam <span class="o">{</span>aligned_reads_bam<span class="o">}</span> --genome <span class="o">{</span>transcriptome_fasta<span class="o">}</span> --print-read-names --scale-events --samples &gt; <span class="o">{</span>eventalign_reads_tsv<span class="o">}</span>
 </pre></div>
+
+<p>Finally the data has to be collapsed per kmer and indexed using the <code class="codehilite"><span class="err">Eventalign_collapse</span></code> command provided in Nanocompore.</p>
+<div class="codehilite"><pre><span></span>nanocompore Eventalign_collapse -t <span class="m">6</span> -i <span class="o">{</span>eventalign_reads_tsv<span class="o">}</span> -o <span class="o">{</span>eventalign_collapsed_reads_tsv<span class="o">}</span>
+</pre></div>
+
+<p>Once you have done that with all your samples, you are ready to run <code class="codehilite"><span class="err">SampComp</span></code>, the sample comparison command of Nanocompore</p>
                 
                   
                 

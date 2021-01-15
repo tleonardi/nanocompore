@@ -256,6 +256,18 @@
           
           
 
+
+  <li class="md-nav__item">
+    <a href="../Eventalign_collapse_usage/" title="Collapse nanopolish data at kmer level" class="md-nav__link">
+      Collapse nanopolish data at kmer level
+    </a>
+  </li>
+
+        
+          
+          
+          
+
   
 
 
@@ -430,7 +442,7 @@
     --label1 S1 <span class="se">\</span>
     --label2 S2 <span class="se">\</span>
     --fasta ./reference/ref.fa <span class="se">\</span>
-    --outpath ./results/ <span class="se">\</span>
+    --outpath ./results
 </pre></div>
 <p>Example API call</p>
 <div class="highlight"><pre><span></span><span class="c1"># Import package</span>
@@ -575,6 +587,14 @@ eventalign_fn_dict = {
 
 ```python
 from nanocompore.SampComp import SampComp
+from nanocompore.common import *
+import shutil
+
+# Create output dir and define log level
+outdir = &quot;results&quot;
+shutil.rmtree (outdir)
+mkdir(outdir, exist_ok=True)
+set_logger(&quot;info&quot;)
 </pre></div>
 
 </div>
@@ -609,6 +629,9 @@ from nanocompore.SampComp import SampComp
             <span class="s2">&quot;rep2&quot;</span><span class="p">:</span><span class="s2">&quot;./eventalign_files/yeast/WT_2_eventalign_collapsed.tsv&quot;</span><span class="p">}},</span>
     <span class="n">outpath</span> <span class="o">=</span> <span class="s2">&quot;./results&quot;</span><span class="p">,</span>
     <span class="n">outprefix</span><span class="o">=</span> <span class="s2">&quot;yeast_&quot;</span><span class="p">,</span>
+    <span class="n">nthreads</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span>
+    <span class="n">max_invalid_kmers_freq</span> <span class="o">=</span> <span class="mf">0.2</span><span class="p">,</span>
+    <span class="n">min_coverage</span><span class="o">=</span><span class="mi">30</span><span class="p">,</span>
     <span class="n">fasta_fn</span> <span class="o">=</span> <span class="s2">&quot;./references/yeast/Yeast_transcriptome.fa&quot;</span><span class="p">,</span>
     <span class="n">overwrite</span> <span class="o">=</span> <span class="kc">True</span><span class="p">)</span>
 
@@ -624,16 +647,16 @@ from nanocompore.SampComp import SampComp
 
 <div class="output_area">
 <div class="output_subarea output_stream output_stderr output_text">
-<pre>Initialising SampComp and checking options
-Initialising Whitelist and checking options
-Reading eventalign index files
-    References found in index: 125
-Filtering out references with low coverage
-    References remaining after reference coverage filtering: 1
-Starting data processing
-100%|██████████| 1/1 [00:25&lt;00:00, 25.07s/ Processed References]
-Loading SampCompDB
-Calculate results
+<pre>2020-12-07T18:30:16.356391+0000 INFO - MainProcess | Checking and initialising SampComp
+2020-12-07T18:30:16.419459+0000 INFO - MainProcess | Reading eventalign index files
+2020-12-07T18:30:16.431004+0000 ERROR - MainProcess | High fraction of invalid kmers (20.74%) for read 107
+2020-12-07T18:30:16.432924+0000 INFO - MainProcess |    References found in index: 146
+2020-12-07T18:30:16.433256+0000 INFO - MainProcess | Filtering out references with low coverage
+2020-12-07T18:30:16.613162+0000 INFO - MainProcess |    References remaining after reference coverage filtering: 1
+2020-12-07T18:30:16.613684+0000 INFO - MainProcess | Starting data processing
+2020-12-07T18:31:08.593363+0000 INFO - Process-17 | All Done. Transcripts processed: 1
+2020-12-07T18:31:08.636924+0000 INFO - MainProcess | Loading SampCompDB
+2020-12-07T18:31:08.654674+0000 INFO - MainProcess | Calculate results
 </pre>
 </div>
 </div>
@@ -697,7 +720,8 @@ Unmodified:
     <span class="n">outprefix</span><span class="o">=</span> <span class="s2">&quot;simulated_&quot;</span><span class="p">,</span>
     <span class="n">fasta_fn</span> <span class="o">=</span> <span class="s2">&quot;./references/simulated/ref.fa&quot;</span><span class="p">,</span>
     <span class="n">overwrite</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
-    <span class="n">nthreads</span> <span class="o">=</span> <span class="mi">10</span><span class="p">)</span>
+    <span class="n">progress</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+    <span class="n">nthreads</span> <span class="o">=</span> <span class="mi">4</span><span class="p">)</span>
 
 <span class="c1"># Run the analysis</span>
 <span class="n">db</span> <span class="o">=</span> <span class="n">s</span> <span class="p">()</span>
@@ -711,16 +735,16 @@ Unmodified:
 
 <div class="output_area">
 <div class="output_subarea output_stream output_stderr output_text">
-<pre>Initialising SampComp and checking options
-Initialising Whitelist and checking options
-Reading eventalign index files
-    References found in index: 5
-Filtering out references with low coverage
-    References remaining after reference coverage filtering: 5
-Starting data processing
-100%|██████████| 5/5 [00:05&lt;00:00,  2.41s/ Processed References]
-Loading SampCompDB
-Calculate results
+<pre>2020-12-07T18:31:19.526366+0000 INFO - MainProcess | Checking and initialising SampComp
+2020-12-07T18:31:19.536530+0000 INFO - MainProcess | Reading eventalign index files
+2020-12-07T18:31:19.559451+0000 INFO - MainProcess |    References found in index: 5
+2020-12-07T18:31:19.559797+0000 INFO - MainProcess | Filtering out references with low coverage
+2020-12-07T18:31:19.563239+0000 INFO - MainProcess |    References remaining after reference coverage filtering: 5
+2020-12-07T18:31:19.566024+0000 INFO - MainProcess | Starting data processing
+100%|██████████| 5/5 [00:13&lt;00:00,  2.63s/ Processed References]
+2020-12-07T18:31:32.819370+0000 INFO - Process-21 | All Done. Transcripts processed: 5
+2020-12-07T18:31:32.828972+0000 INFO - MainProcess | Loading SampCompDB
+2020-12-07T18:31:32.841026+0000 INFO - MainProcess | Calculate results
 </pre>
 </div>
 </div>
@@ -757,7 +781,8 @@ Calculate results
     <span class="n">comparison_methods</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;GMM&quot;</span><span class="p">,</span> <span class="s2">&quot;MW&quot;</span><span class="p">,</span> <span class="s2">&quot;KS&quot;</span><span class="p">,</span> <span class="s2">&quot;TT&quot;</span><span class="p">],</span>
     <span class="n">sequence_context</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
     <span class="n">sequence_context_weights</span><span class="o">=</span><span class="s2">&quot;harmonic&quot;</span><span class="p">,</span>
-    <span class="n">logit</span> <span class="o">=</span> <span class="kc">True</span><span class="p">)</span>
+    <span class="n">logit</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+    <span class="n">nthreads</span> <span class="o">=</span> <span class="mi">6</span><span class="p">)</span>
 
 <span class="c1"># Run the analysis</span>
 <span class="n">db</span> <span class="o">=</span> <span class="n">s</span> <span class="p">()</span>
@@ -771,16 +796,15 @@ Calculate results
 
 <div class="output_area">
 <div class="output_subarea output_stream output_stderr output_text">
-<pre>Initialising SampComp and checking options
-Initialising Whitelist and checking options
-Reading eventalign index files
-    References found in index: 5
-Filtering out references with low coverage
-    References remaining after reference coverage filtering: 5
-Starting data processing
-100%|██████████| 5/5 [00:17&lt;00:00,  3.45s/ Processed References]
-Loading SampCompDB
-Calculate results
+<pre>2020-12-07T18:31:48.171748+0000 INFO - MainProcess | Checking and initialising SampComp
+2020-12-07T18:31:48.176382+0000 INFO - MainProcess | Reading eventalign index files
+2020-12-07T18:31:48.189340+0000 INFO - MainProcess |    References found in index: 5
+2020-12-07T18:31:48.189937+0000 INFO - MainProcess | Filtering out references with low coverage
+2020-12-07T18:31:48.193885+0000 INFO - MainProcess |    References remaining after reference coverage filtering: 5
+2020-12-07T18:31:48.195954+0000 INFO - MainProcess | Starting data processing
+2020-12-07T18:32:08.969484+0000 INFO - Process-27 | All Done. Transcripts processed: 5
+2020-12-07T18:32:08.983224+0000 INFO - MainProcess | Loading SampCompDB
+2020-12-07T18:32:09.000121+0000 INFO - MainProcess | Calculate results
 </pre>
 </div>
 </div>
@@ -826,13 +850,10 @@ Calculate results
 
 <div class="output_area">
 <div class="output_subarea output_stream output_stdout output_text">
-<pre>{&#39;package_name&#39;: &#39;nanocompore&#39;, &#39;package_version&#39;: &#39;1.0.0rc3-dev&#39;, &#39;timestamp&#39;: &#39;2019-06-19 14:11:42.582069&#39;, &#39;comparison_methods&#39;: [&#39;GMM&#39;, &#39;KS&#39;], &#39;pvalue_tests&#39;: [&#39;GMM_anova_pvalue&#39;, &#39;KS_dwell_pvalue&#39;, &#39;KS_intensity_pvalue&#39;], &#39;sequence_context&#39;: 0, &#39;min_coverage&#39;: 30, &#39;n_samples&#39;: 4}
-[&#39;ref_0002&#39;, &#39;ref_0000&#39;, &#39;ref_0003&#39;, &#39;ref_0001&#39;, &#39;ref_0004&#39;]
-{&#39;GMM_model&#39;: {&#39;model&#39;: GaussianMixture(covariance_type=&#39;full&#39;, init_params=&#39;kmeans&#39;, max_iter=100,
-                means_init=None, n_components=2, n_init=1, precisions_init=None,
-                random_state=&lt;mtrand.RandomState object at 0x7ff59c481ee8&gt;,
-                reg_covar=1e-06, tol=0.001, verbose=0, verbose_interval=10,
-                warm_start=False, weights_init=None), &#39;cluster_counts&#39;: &#39;Modified_rep1:6/49__Modified_rep2:6/54__Unmodified_rep1:50/5__Unmodified_rep2:52/8&#39;}, &#39;GMM_anova_pvalue&#39;: 0.0022723661815992765, &#39;GMM_anova_model&#39;: {&#39;pvalue&#39;: 0.0022723661815992765, &#39;delta_logit&#39;: -3.9703346955, &#39;table&#39;: F_onewayResult(statistic=438.5704870887501, pvalue=0.0022723661815992765), &#39;log_ratios&#39;: array([-1.96611286, -2.06142304,  2.14006616,  1.77306734])}, &#39;KS_intensity_pvalue&#39;: 2.2306904419226962e-17, &#39;KS_dwell_pvalue&#39;: 1.0667209507829918e-31, &#39;shift_stats&#39;: OrderedDict([(&#39;c1_mean_intensity&#39;, 99.54709799468591), (&#39;c2_mean_intensity&#39;, 91.84415815799566), (&#39;c1_median_intensity&#39;, 100.61305720731731), (&#39;c2_median_intensity&#39;, 92.05605629218894), (&#39;c1_sd_intensity&#39;, 6.85551651760893), (&#39;c2_sd_intensity&#39;, 5.143626863495356), (&#39;c1_mean_dwell&#39;, 0.02567361308475615), (&#39;c2_mean_dwell&#39;, 0.009745078440682191), (&#39;c1_median_dwell&#39;, 0.023047132241771167), (&#39;c2_median_dwell&#39;, 0.007591605413309661), (&#39;c1_sd_dwell&#39;, 0.010681688969392145), (&#39;c2_sd_dwell&#39;, 0.007203231747770627)])}
+<pre>{&#39;package_name&#39;: &#39;1.0.1.dev0&#39;, &#39;package_version&#39;: &#39;nanocompore&#39;, &#39;timestamp&#39;: &#39;2020-12-07 18:31:32.813597&#39;, &#39;comparison_methods&#39;: [&#39;GMM&#39;, &#39;KS&#39;], &#39;pvalue_tests&#39;: [&#39;GMM_anova_pvalue&#39;, &#39;KS_dwell_pvalue&#39;, &#39;KS_intensity_pvalue&#39;], &#39;sequence_context&#39;: 0, &#39;min_coverage&#39;: 30, &#39;n_samples&#39;: 4}
+[&#39;ref_0001&#39;, &#39;ref_0000&#39;, &#39;ref_0002&#39;, &#39;ref_0003&#39;, &#39;ref_0004&#39;]
+{&#39;GMM_model&#39;: {&#39;model&#39;: GaussianMixture(n_components=2,
+                random_state=RandomState(MT19937) at 0x7FE80C820270), &#39;cluster_counts&#39;: &#39;Modified_rep1:43/12__Modified_rep2:49/11__Unmodified_rep1:4/51__Unmodified_rep2:3/57&#39;}, &#39;GMM_anova_pvalue&#39;: 0.0026070675453166692, &#39;GMM_anova_model&#39;: {&#39;pvalue&#39;: 0.0026070675453166692, &#39;delta_logit&#39;: 3.8311555435, &#39;table&#39;: F_onewayResult(statistic=382.0733766141018, pvalue=0.0026070675453166692), &#39;log_ratios&#39;: array([ 1.21924028,  1.42711636, -2.34180581, -2.67414865])}, &#39;KS_intensity_pvalue&#39;: 2.0829525794874904e-18, &#39;KS_dwell_pvalue&#39;: 4.9251621679434625e-36, &#39;shift_stats&#39;: OrderedDict([(&#39;c1_mean_intensity&#39;, 99.54709799468591), (&#39;c2_mean_intensity&#39;, 91.84415815799566), (&#39;c1_median_intensity&#39;, 100.61305720731731), (&#39;c2_median_intensity&#39;, 92.05605629218894), (&#39;c1_sd_intensity&#39;, 6.85551651760893), (&#39;c2_sd_intensity&#39;, 5.143626863495356), (&#39;c1_mean_dwell&#39;, 0.02567361308475615), (&#39;c2_mean_dwell&#39;, 0.009745078440682191), (&#39;c1_median_dwell&#39;, 0.023047132241771167), (&#39;c2_median_dwell&#39;, 0.007591605413309661), (&#39;c1_sd_dwell&#39;, 0.010681688969392145), (&#39;c2_sd_dwell&#39;, 0.007203231747770627)])}
 </pre>
 </div>
 </div>
@@ -880,7 +901,7 @@ Calculate results
 <div class="output_area">
 
 <div class="output_markdown rendered_html output_subarea ">
-<p><strong>SampComp</strong> (eventalign_fn_dict, fasta_fn, bed_fn, outpath, outprefix, overwrite, whitelist, comparison_methods, logit, allow_warnings, sequence_context, sequence_context_weights, min_coverage, min_ref_length, downsample_high_coverage, max_invalid_kmers_freq, select_ref_id, exclude_ref_id, nthreads, log_level)</p>
+<p><strong>SampComp</strong> (eventalign_fn_dict, fasta_fn, bed_fn, outpath, outprefix, overwrite, whitelist, comparison_methods, logit, allow_warnings, sequence_context, sequence_context_weights, min_coverage, min_ref_length, downsample_high_coverage, max_invalid_kmers_freq, select_ref_id, exclude_ref_id, nthreads, progress)</p>
 <p>Init analysis and check args</p>
 <hr>
 <ul>
@@ -940,7 +961,7 @@ Calculate results
 </ul>
 <p>minimal length of a reference transcript to be considered in the analysis</p>
 <ul>
-<li><strong>downsample_high_coverage</strong> (default: 0) [int]</li>
+<li><strong>downsample_high_coverage</strong> (default: 1000) [int]</li>
 </ul>
 <p>For reference with higher coverage, downsample by randomly selecting reads.</p>
 <ul>
@@ -960,9 +981,9 @@ Calculate results
 </ul>
 <p>Number of threads (two are used for reading and writing, all the others for parallel processing).</p>
 <ul>
-<li><strong>log_level</strong> (default: info) [str]</li>
+<li><strong>progress</strong> (default: False) [bool]</li>
 </ul>
-<p>Set the log level. {warning,info,debug}</p>
+<p>Display a progress bar during execution</p>
 
 </div>
 
@@ -988,8 +1009,7 @@ Calculate results
                             [--file_list1 /path/to/Condition1_rep1,/path/to/Condition1_rep2]
                             [--file_list2 /path/to/Condition2_rep1,/path/to/Condition2_rep2]
                             [--label1 Condition1] [--label2 Condition2]
-                            --fasta FASTA [--bed BED] [--outpath OUTPATH]
-                            [--outprefix OUTPREFIX] [--overwrite]
+                            --fasta FASTA [--bed BED]
                             [--max_invalid_kmers_freq MAX_INVALID_KMERS_FREQ]
                             [--min_coverage MIN_COVERAGE]
                             [--downsample_high_coverage DOWNSAMPLE_HIGH_COVERAGE]
@@ -999,9 +1019,11 @@ Calculate results
                             [--sequence_context_weights {uniform,harmonic}]
                             [--pvalue_thr PVALUE_THR] [--logit]
                             [--allow_warnings] [--nthreads NTHREADS]
-                            [--log_level {warning,info,debug}]
+                            [--outpath OUTPATH] [--outprefix OUTPREFIX]
+                            [--overwrite] [--log_level {warning,info,debug}]
+                            [--progress]
 
-Compare 2 samples and find significant signal
+Compare 2 samples and find significant signal differences
 
 * Minimal example with file_list arguments
 
@@ -1033,18 +1055,11 @@ Arguments sample files:
   --label1 Condition1   Label for files in --file_list1 (default: Condition1)
   --label2 Condition2   Label for files in --file_list2 (default: Condition2)
 
-Input/Output options:
+Input options:
   --fasta FASTA, -f FASTA
                         Fasta file used for mapping (required)
   --bed BED             BED file with annotation of transcriptome used for
                         mapping (optional)
-  --outpath OUTPATH, -o OUTPATH
-                        Path to the output folder (default: results)
-  --outprefix OUTPREFIX, -p OUTPREFIX
-                        text outprefix for all the files generated by the
-                        function (default: out_)
-  --overwrite           Use --outpath even if it exists already (default:
-                        False)
 
 Transcript filtering options:
   --max_invalid_kmers_freq MAX_INVALID_KMERS_FREQ
@@ -1053,8 +1068,8 @@ Transcript filtering options:
                         Minimum coverage required in each condition to do the
                         comparison (default: 30)
   --downsample_high_coverage DOWNSAMPLE_HIGH_COVERAGE
-                        Used for debug: transcripts with high covergage will
-                        be downsampled (default: 0)
+                        Transcripts with high coverage will be downsampled
+                        (default: 5000)
   --min_ref_length MIN_REF_LENGTH
                         Minimum length of a reference transcript to include it
                         in the analysis (default: 100)
@@ -1078,8 +1093,21 @@ Statistical testing options:
 Other options:
   --nthreads NTHREADS, -t NTHREADS
                         Number of threads (default: 3)
+
+Output options:
+  --outpath OUTPATH, -o OUTPATH
+                        Path to the output folder (default: ./)
+  --outprefix OUTPREFIX, -p OUTPREFIX
+                        text outprefix for all the files generated (default:
+                        out)
+  --overwrite, -w       Use --outpath even if it exists already (default:
+                        False)
+
+Verbosity options:
   --log_level {warning,info,debug}
-                        log level (default: info)
+                        Set the log level (default: info)
+  --progress            Display a progress bar during execution (default:
+                        False)
 </pre></div>
 
 </div>
@@ -1106,7 +1134,7 @@ Other options:
     <div class="md-footer-nav">
       <nav class="md-footer-nav__inner md-grid">
         
-          <a href="../../usage/" title="How to use Nanocompore" class="md-flex md-footer-nav__link md-footer-nav__link--prev" rel="prev">
+          <a href="../Eventalign_collapse_usage/" title="Collapse nanopolish data at kmer level" class="md-flex md-footer-nav__link md-footer-nav__link--prev" rel="prev">
             <div class="md-flex__cell md-flex__cell--shrink">
               <i class="md-icon md-icon--arrow-back md-footer-nav__button"></i>
             </div>
@@ -1115,7 +1143,7 @@ Other options:
                 <span class="md-footer-nav__direction">
                   Previous
                 </span>
-                How to use Nanocompore
+                Collapse nanopolish data at kmer level
               </span>
             </div>
           </a>

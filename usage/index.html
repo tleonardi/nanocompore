@@ -277,6 +277,13 @@
     <ul class="md-nav__list" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#eventalign_collapse" class="md-nav__link">
+    Eventalign_collapse
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#sampcomp" class="md-nav__link">
     SampComp
   </a>
@@ -305,6 +312,18 @@
   
 </nav>
     
+  </li>
+
+        
+          
+          
+          
+
+
+  <li class="md-nav__item">
+    <a href="../demo/Eventalign_collapse_usage/" title="Collapse nanopolish data at kmer level" class="md-nav__link">
+      Collapse nanopolish data at kmer level
+    </a>
   </li>
 
         
@@ -442,6 +461,13 @@
     <ul class="md-nav__list" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#eventalign_collapse" class="md-nav__link">
+    Eventalign_collapse
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#sampcomp" class="md-nav__link">
     SampComp
   </a>
@@ -483,6 +509,11 @@
                 
                 <h1 id="how-to-use-nanocompore">How to use Nanocompore</h1>
 <p>Nanocompore was designed to be used either through a python API or a command line interface. The package contains 3 main modules: <code class="codehilite"><span class="err">SampComp</span></code>, <code class="codehilite"><span class="err">SampCompDB</span></code> and <code class="codehilite"><span class="err">SimReads</span></code></p>
+<h3 id="eventalign_collapse">Eventalign_collapse</h3>
+<p>As its name suggests <code class="codehilite"><span class="err">Eventalign_collapse</span></code>, collapses nanopolish eventalign files at kmer level. This step drastically reduces the size of the resquiggled file and allow to index the data by read and reference, which allows fast random access to the file by <code class="codehilite"><span class="err">SampComp</span></code>. This step is required and described in the data preparation section. It can be run either through the API (<code class="codehilite"><span class="err">nanocompore.Eventalign_collapse.Eventalign_collapse</span></code>) or the CLI (<code class="codehilite"><span class="err">nanocompore eventalign_collapse</span></code>).</p>
+<ul>
+<li><a href="https://nanocompore.rna.rocks/demo/Eventalign_collapse_usage/">SampComp Usage</a></li>
+</ul>
 <h3 id="sampcomp">SampComp</h3>
 <p>This is the main module which compares the signal of 2 experimental conditions. It takes Nanopolished datasets as input and generates a database containing all the results as output. <code class="codehilite"><span class="err">SampComp</span></code> has to be run first either through the API (<code class="codehilite"><span class="err">nanocompore.SampComp.SampComp</span></code>) or the CLI (<code class="codehilite"><span class="err">nanocompore sampcomp</span></code>).</p>
 <ul>
@@ -534,13 +565,13 @@
           </a>
         
         
-          <a href="../demo/SampComp_usage/" title="Compare samples with SampComp" class="md-flex md-footer-nav__link md-footer-nav__link--next" rel="next">
+          <a href="../demo/Eventalign_collapse_usage/" title="Collapse nanopolish data at kmer level" class="md-flex md-footer-nav__link md-footer-nav__link--next" rel="next">
             <div class="md-flex__cell md-flex__cell--stretch md-footer-nav__title">
               <span class="md-flex__ellipsis">
                 <span class="md-footer-nav__direction">
                   Next
                 </span>
-                Compare samples with SampComp
+                Collapse nanopolish data at kmer level
               </span>
             </div>
             <div class="md-flex__cell md-flex__cell--shrink">
