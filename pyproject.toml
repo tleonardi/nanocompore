@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "nanocompore"
-version = "1.0.2.dev"
+version = "1.0.4.dev"
 description = "Software package that identifies raw signal changes between two conditions from https://github.com/jts/nanopolish resquiggled dRNA-Seq data."
 authors = ["Tommaso Leonardi <tom@itm6.xyz>", "Adrien Leger <aleg@ebi.ac.uk>"]
 license = "GPL-3.0"
