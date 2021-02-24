@@ -115,6 +115,11 @@ class DataStore(object):
         sample_id = self.get_sample_id_by_name(read.sample_name, create_if_not_exists=True)
         self.__cursor.execute("INSERT into reads values(NULL, ?, ?, ?, ?, ?, ?, ?, ?)", (read.read_id, sample_id, tx_id, read.ref_start, read.ref_end, read.n_events, read.n_signals, read.dwell_time))
         read_id = self.__cursor.lastrowid
+        for kmer in read.kmer_l:
+            self.__add_kmer(kmer=kmer, read_id=read_id)
+
+    def add_kmer(self, read):
+        pass
 
     def get_transcript_id_by_name(self, tx_name, create_if_not_exists=False):
         # TODO: This function should cache results
