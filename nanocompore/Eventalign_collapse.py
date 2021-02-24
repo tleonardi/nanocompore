@@ -17,6 +17,7 @@ from tqdm import tqdm
 # Local imports
 from nanocompore.common import *
 from nanocompore.SuperParser import SuperParser
+from nanocompore.DataStore import DataStore
 
 # Disable multithreading for MKL and openBlas
 os.environ["MKL_NUM_THREADS"] = "1"
@@ -33,6 +34,7 @@ class Eventalign_collapse ():
 
     def __init__ (self,
         eventalign_fn:str,
+        sample_name:str,
         outpath:str="./",
         outprefix:str="out",
         overwrite:bool = False,
@@ -43,6 +45,8 @@ class Eventalign_collapse ():
         Collapse the nanopolish eventalign events at kmer level
         * eventalign_fn
             Path to a nanopolish eventalign tsv output file, or a list of file, or a regex (can be gzipped)
+        * sample_name
+            The name of the sample being processed
         * outpath
             Path to the output folder (will be created if it does exist yet)
         * outprefix
@@ -67,6 +71,7 @@ class Eventalign_collapse ():
             raise NanocomporeError("Minimal required number of threads >=3")
 
         # Save args to self values
+        self.__sample_name = sample_name
         self.__outpath = outpath
         self.__outprefix = outprefix
         self.__eventalign_fn = eventalign_fn
@@ -94,7 +99,10 @@ class Eventalign_collapse ():
         ps_list.append (mp.Process (target=self.__split_reads, args=(in_q, error_q)))
         for i in range (self.__nthreads):
             ps_list.append (mp.Process (target=self.__process_read, args=(in_q, out_q, error_q)))
-        ps_list.append (mp.Process (target=self.__write_output, args=(out_q, error_q)))
+        ps_list.append (mp.Process (target=self.__write_output_to_db, args=(out_q, error_q)))
+
+
+        # TODO: Check that sample_name does not exist already in DB
 
         # Start processes and monitor error queue
         try:
@@ -193,7 +201,7 @@ class Eventalign_collapse ():
 
                 # Create an empty Read object and fill it with event lines
                 # events aggregation at kmer level is managed withon the object
-                read = Read (read_id=events_l[0]["read_id"], ref_id=events_l[0]["ref_id"])
+                read = Read (read_id=events_l[0]["read_id"], ref_id=events_l[0]["ref_id"], sample_name=self.__sample_name)
                 for event_d in events_l:
                     read.add_event(event_d)
                     n_events+=1
@@ -202,20 +210,41 @@ class Eventalign_collapse ():
                 if read.n_events > 1:
                     read_res_d = read.get_read_results()
                     kmer_res_l = read.get_kmer_results()
-                    out_q.put((read_res_d, kmer_res_l))
+                    out_q.put(read)
                     n_reads+=1
                     n_kmers+= len(kmer_res_l)
                     n_signals+= read.n_signals
 
         # Manage exceptions and add error trackback to error queue
         except Exception:
-            logger.error("Error in Worker. Event:{}".format(event_d))
+            logger.error("Error in Worker.")
             error_q.put (NanocomporeError(traceback.format_exc()))
 
         # Deal poison pill
         finally:
             logger.debug("Processed Reads:{} Kmers:{} Events:{} Signals:{}".format(n_reads, n_kmers, n_events, n_signals))
             out_q.put(None)
+
+    def __write_output_to_db (self, out_q, error_q):
+        """
+        Mono-threaded Writer
+        """
+        logger.debug("Start writing output to DB")
+
+        n_reads = 0
+        try:
+            with DataStore(db_path=os.path.join(self.__outpath, self.__outprefix+"nanocompore.db")) as datastore, tqdm (unit=" reads") as pbar:
+                # Iterate over out queue until nthread poison pills are found
+                for _ in range (self.__nthreads):
+                    for read in iter (out_q.get, None):
+                        logger.debug(f"Written {read.read_id}")
+                        n_reads+=1
+                        datastore.add_read(read)
+                        pbar.update(1)
+        except Exception:
+            logger.error("Error adding read to DB")
+            raise Exception
+
 
     def __write_output (self, out_q, error_q):
         """
@@ -235,11 +264,13 @@ class Eventalign_collapse ():
 
                 # Iterate over out queue until nthread poison pills are found
                 for _ in range (self.__nthreads):
-                    for read_res_d, kmer_res_l in iter (out_q.get, None):
+                    for read in iter (out_q.get, None):
+                        read_res_d = read.get_read_results()
+                        kmer_res_l = read.get_kmer_results()
                         n_reads+=1
 
                         # Define file header from first read and first kmer
-                        if byte_offset is 0:
+                        if byte_offset == 0:
                             idx_header_list = list(read_res_d.keys())+["byte_offset","byte_len"]
                             idx_header_str = "\t".join(idx_header_list)
                             data_header_list = list(kmer_res_l[0].keys())
@@ -290,9 +321,10 @@ class Eventalign_collapse ():
 class Read ():
     """Helper class representing a single read"""
 
-    def __init__ (self, read_id, ref_id):
+    def __init__ (self, read_id, ref_id, sample_name):
         self.read_id = read_id
         self.ref_id = ref_id
+        self.sample_name = sample_name
         self.ref_start = None
         self.ref_end = None
         self.kmer_l = [Kmer()]

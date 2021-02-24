@@ -136,6 +136,7 @@ def main(args=None):
     parser_ec_io = parser_ec.add_argument_group("Input options")
     parser_ec_io.add_argument("--eventalign", "-i", default=0,
         help="Path to a nanopolish eventalign tsv output file, or a list of file, or a regex (can be gzipped). It can be ommited if piped to standard input (default: piped to stdin)")
+    parser_ec_io.add_argument("--sample_name", "-s", default=None, required=True, help="Unique identifier of the sample")
     parser_ec_rp = parser_ec.add_argument_group("Run parameters options")
     parser_ec_rp.add_argument("--n_lines", "-l", default=None , type=int ,
         help = "Number of lines to parse.(default: no limits")
@@ -246,6 +247,7 @@ def eventalign_collapse_main (args):
     # Init Eventalign_collapse
     e = Eventalign_collapse (
         eventalign_fn = args.eventalign,
+        sample_name = args.sample_name,
         outpath = args.outpath,
         outprefix = args.outprefix,
         overwrite = args.overwrite,
