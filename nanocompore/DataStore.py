@@ -44,22 +44,19 @@ class DataStore(object):
                           ")"
                           )
 
-                         
+
     create_samples_query = ("CREATE TABLE IF NOT EXISTS samples ("
                             "id INTEGER NOT NULL PRIMARY KEY,"
-                            "name VARCHAR NOT NULL,"
-                            "UNIQUE(id, name)"
+                            "name VARCHAR NOT NULL UNIQUE,"
                             ")"
-                           )
-                  
-                  
+                            )
+
+
     create_transcripts_query = ("CREATE TABLE IF NOT EXISTS transcripts ("
                                 "id INTEGER NOT NULL PRIMARY KEY,"
-                                "name VARCHAR NOT NULL,"
-                                "UNIQUE(id, name)"
+                                "name VARCHAR NOT NULL UNIQUE"
                                 ")"
-                               )
-                  
+                                )
 
 
 
@@ -104,27 +101,45 @@ class DataStore(object):
         self.__connection.commit()
         self.__close_db_connection()
 
-    def add_read(self, read):
-        """ Inserts into the DB data corresponding to a read.
-            Args:
-                read (read): an instance of class Read that contains kmer-level data.
-            Returns:
-                Bool: returns True is read added successfully.
+    def store_read(self, read):
+        """
+        Insert data corresponding to a read into the DB.
+        Args:
+            read (Read): an instance of class Read that contains read-level data.
+        Returns:
+            Bool: returns True is read added successfully.
         """
         tx_id = self.get_transcript_id_by_name(read.ref_id, create_if_not_exists=True)
         sample_id = self.get_sample_id_by_name(read.sample_name, create_if_not_exists=True)
-        self.__cursor.execute("INSERT into reads values(NULL, ?, ?, ?, ?, ?, ?, ?, ?)", (read.read_id, sample_id, tx_id, read.ref_start, read.ref_end, read.n_events, read.n_signals, read.dwell_time))
+        self.__cursor.execute("INSERT INTO reads VALUES(NULL, ?, ?, ?, ?, ?, ?, ?, ?)",
+                              (read.read_id, sample_id, tx_id, read.ref_start, read.ref_end,
+                               read.n_events, read.n_signals, read.dwell_time))
         read_id = self.__cursor.lastrowid
         for kmer in read.kmer_l:
-            self.__add_kmer(kmer=kmer, read_id=read_id)
+            self.__store_kmer(kmer=kmer, read_id=read_id)
+        # TODO check for success and return true/false
 
-    def add_kmer(self, read):
-        pass
+
+    def __store_kmer(self, kmer, read_id):
+        """
+        Insert data corresponding to a kmer into the DB.
+        Args:
+            kmer (Kmer): instance of class Kmer that contains kmer-level data
+            read_id (int): DB key of the read the kmer belongs to
+        """
+        res = kmer.get_results() # needed for 'median' and 'mad' values
+        self.__cursor.execute("INSERT INTO kmers VALUES(NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                              (read_id, res["ref_pos"], res["ref_kmer"], res["num_events"],
+                               res["num_signals"], res["dwell_time"], res["NNNNN_dwell_time"],
+                               res["mismatch_dwell_time"], res["median"], res["mad"]))
+        # TODO: should 'res["status"]' get stored as well?
+        # TODO: check for success?
+
 
     def get_transcript_id_by_name(self, tx_name, create_if_not_exists=False):
         # TODO: This function should cache results
         if create_if_not_exists:
-            query = ("INSERT INTO transcripts(id, name) " 
+            query = ("INSERT INTO transcripts(id, name) "
                      f"SELECT NULL,'{tx_name}' "
                      " WHERE NOT EXISTS ( "
                      "  SELECT 1"
@@ -155,7 +170,7 @@ class DataStore(object):
     def get_sample_id_by_name(self, sample_name, create_if_not_exists=False):
         # TODO: This function should cache results
         if create_if_not_exists:
-            query = ("INSERT INTO samples(id, name) " 
+            query = ("INSERT INTO samples(id, name) "
                      f"SELECT NULL,'{sample_name}' "
                      " WHERE NOT EXISTS ( "
                      "  SELECT 1"
