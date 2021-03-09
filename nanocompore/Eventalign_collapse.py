@@ -32,15 +32,16 @@ logger.remove()
 #~~~~~~~~~~~~~~MAIN CLASS~~~~~~~~~~~~~~#
 class Eventalign_collapse ():
 
-    def __init__ (self,
-        eventalign_fn:str,
-        sample_name:str,
-        outpath:str="./",
-        outprefix:str="out",
-        overwrite:bool = False,
-        n_lines:int=None,
-        nthreads:int = 3,
-        progress:bool = False):
+    def __init__(self,
+                 eventalign_fn:str,
+                 sample_name:str,
+                 outpath:str="./",
+                 outprefix:str="out",
+                 write_db:bool = True,
+                 overwrite:bool = False,
+                 n_lines:int=None,
+                 nthreads:int = 3,
+                 progress:bool = False):
         """
         Collapse the nanopolish eventalign events at kmer level
         * eventalign_fn
@@ -51,6 +52,8 @@ class Eventalign_collapse ():
             Path to the output folder (will be created if it does exist yet)
         * outprefix
             text outprefix for all the files generated
+        * write_db
+            Write output to database? (Otherwise to TSV file.)
         * overwrite
             If the output directory already exists, the standard behaviour is to raise an error to prevent overwriting existing data
             This option ignore the error and overwrite data if they have the same outpath and outprefix.
@@ -74,6 +77,7 @@ class Eventalign_collapse ():
         self.__sample_name = sample_name
         self.__outpath = outpath
         self.__outprefix = outprefix
+        self.__write_db = write_db
         self.__eventalign_fn = eventalign_fn
         self.__n_lines = n_lines
         self.__nthreads = nthreads - 2 # subtract 1 for reading and 1 for writing
@@ -99,10 +103,11 @@ class Eventalign_collapse ():
         ps_list.append (mp.Process (target=self.__split_reads, args=(in_q, error_q)))
         for i in range (self.__nthreads):
             ps_list.append (mp.Process (target=self.__process_read, args=(in_q, out_q, error_q)))
-        ps_list.append (mp.Process (target=self.__write_output_to_db, args=(out_q, error_q)))
-
-
-        # TODO: Check that sample_name does not exist already in DB
+        if self.__write_db:
+            ps_list.append (mp.Process (target=self.__write_output_to_db, args=(out_q, error_q)))
+            # TODO: Check that sample_name does not exist already in DB
+        else:
+            ps_list.append(mp.Process(target=self.__write_output, args=(out_q, error_q)))
 
         # Start processes and monitor error queue
         try:
@@ -233,13 +238,13 @@ class Eventalign_collapse ():
 
         n_reads = 0
         try:
-            with DataStore(db_path=os.path.join(self.__outpath, self.__outprefix+"nanocompore.db")) as datastore, tqdm (unit=" reads") as pbar:
+            with DataStore(db_path=os.path.join(self.__outpath, self.__outprefix+"_nanocompore.db")) as datastore, tqdm (unit=" reads") as pbar:
                 # Iterate over out queue until nthread poison pills are found
                 for _ in range (self.__nthreads):
                     for read in iter (out_q.get, None):
                         logger.debug(f"Written {read.read_id}")
                         n_reads+=1
-                        datastore.add_read(read)
+                        datastore.store_read(read)
                         pbar.update(1)
         except Exception:
             logger.error("Error adding read to DB")
