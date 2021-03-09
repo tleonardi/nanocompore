@@ -45,10 +45,9 @@ class DataStore(object):
                           ")"
                           )
 
-
     create_samples_query = ("CREATE TABLE IF NOT EXISTS samples ("
                             "id INTEGER NOT NULL PRIMARY KEY,"
-                            "name VARCHAR NOT NULL UNIQUE,"
+                            "name VARCHAR NOT NULL UNIQUE"
                             ")"
                             )
 
@@ -95,10 +94,15 @@ class DataStore(object):
     def __init_db(self):
         logger.debug("Setting up DB tables")
         self.__open_db_connection()
-        self.__cursor.execute(self.create_reads_query)
-        self.__cursor.execute(self.create_kmers_query)
-        self.__cursor.execute(self.create_samples_query)
-        self.__cursor.execute(self.create_transcripts_query)
+        try:
+            self.__cursor.execute(self.create_reads_query)
+            self.__cursor.execute(self.create_kmers_query)
+            self.__cursor.execute(self.create_samples_query)
+            self.__cursor.execute(self.create_transcripts_query)
+        except:
+            self.__close_db_connection()
+            logger.error("Error creating tables")
+            raise
         self.__connection.commit()
         self.__close_db_connection()
 
@@ -135,9 +139,9 @@ class DataStore(object):
         """
         res = kmer.get_results() # needed for 'median' and 'mad' values
         try:
-            self.__cursor.execute("INSERT INTO kmers VALUES(NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            self.__cursor.execute("INSERT INTO kmers VALUES(NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                               (read_id, res["ref_pos"], res["ref_kmer"], res["num_events"],
-                               res["num_signals"], res["num_signals"], res["dwell_time"],
+                               res["num_signals"], res["status"], res["dwell_time"],
                                res["NNNNN_dwell_time"], res["mismatch_dwell_time"], res["median"], res["mad"]))
         except Exception:
             logger.error("Error inserting kmer into DB")
