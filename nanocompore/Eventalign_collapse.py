@@ -27,7 +27,7 @@ os.environ["OMP_NUM_THREADS"] = "1"
 os.environ['OPENBLAS_NUM_THREADS'] = '1'
 
 log_level_dict = {"debug":"DEBUG", "info":"INFO", "warning":"WARNING"}
-logger.remove()
+#logger.remove()
 
 #~~~~~~~~~~~~~~MAIN CLASS~~~~~~~~~~~~~~#
 class Eventalign_collapse ():
@@ -117,7 +117,7 @@ class Eventalign_collapse ():
 
             # Monitor error queue
             for tb in iter(error_q.get, None):
-                logger.trace("Error caught from error_q")
+                logger.error("Error caught from error_q")
                 raise NanocomporeError(tb)
 
             # Soft processes and queues stopping
@@ -242,14 +242,17 @@ class Eventalign_collapse ():
                 # Iterate over out queue until nthread poison pills are found
                 for _ in range (self.__nthreads):
                     for read in iter (out_q.get, None):
-                        logger.debug(f"Written {read.read_id}")
                         n_reads+=1
                         datastore.store_read(read)
                         pbar.update(1)
         except Exception:
             logger.error("Error adding read to DB")
-            raise Exception
+            error_q.put (NanocomporeError(traceback.format_exc()))
 
+        finally:
+            logger.info ("Output reads written:{}".format(n_reads))
+            # Kill error queue with poison pill
+            error_q.put(None)
 
     def __write_output (self, out_q, error_q):
         """

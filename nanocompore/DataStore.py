@@ -35,6 +35,7 @@ class DataStore(object):
                           "sequence INTEGER NOT NULL,"
                           "num_events INTEGER NOT NULL,"
                           "num_signals INTEGER NOT NULL,"
+                          "status VARCHAR NOT NULL,"
                           "dwell_time REAL NOT NULL,"
                           "NNNNN_dwell_time REAL NOT NULL,"
                           "mismatch_dwell_time REAL NOT NULL,"
@@ -44,7 +45,6 @@ class DataStore(object):
                           ")"
                           )
     # TODO: 'sequence' is stored redundantly - move it to a separate table
-
 
     create_samples_query = ("CREATE TABLE IF NOT EXISTS samples ("
                             "id INTEGER NOT NULL PRIMARY KEY,"
@@ -94,10 +94,15 @@ class DataStore(object):
     def __init_db(self):
         logger.debug("Setting up DB tables")
         self.__open_db_connection()
-        self.__cursor.execute(self.create_reads_query)
-        self.__cursor.execute(self.create_kmers_query)
-        self.__cursor.execute(self.create_samples_query)
-        self.__cursor.execute(self.create_transcripts_query)
+        try:
+            self.__cursor.execute(self.create_reads_query)
+            self.__cursor.execute(self.create_kmers_query)
+            self.__cursor.execute(self.create_samples_query)
+            self.__cursor.execute(self.create_transcripts_query)
+        except:
+            self.__close_db_connection()
+            logger.error("Error creating tables")
+            raise
         self.__connection.commit()
         self.__close_db_connection()
 
@@ -111,14 +116,19 @@ class DataStore(object):
         """
         tx_id = self.get_transcript_id_by_name(read.ref_id, create_if_not_exists=True)
         sample_id = self.get_sample_id_by_name(read.sample_name, create_if_not_exists=True)
-        self.__cursor.execute("INSERT INTO reads VALUES(NULL, ?, ?, ?, ?, ?, ?, ?, ?)",
-                              (read.read_id, sample_id, tx_id, read.ref_start, read.ref_end,
-                               read.n_events, read.n_signals, read.dwell_time))
-        read_id = self.__cursor.lastrowid
+        try:
+            self.__cursor.execute("INSERT INTO reads VALUES(NULL, ?, ?, ?, ?, ?, ?, ?, ?)",
+                                    (read.read_id, sample_id, tx_id, read.ref_start, read.ref_end,
+                                     read.n_events, read.n_signals, read.dwell_time))
+            read_id = self.__cursor.lastrowid
+        except Exception:
+            logger.error("Error inserting read into DB")
+            raise Exception
+
         for kmer in read.kmer_l:
             self.__store_kmer(kmer=kmer, read_id=read_id)
+        self.__connection.commit()
         # TODO check for success and return true/false
-
 
     def __store_kmer(self, kmer, read_id):
         """
@@ -128,13 +138,14 @@ class DataStore(object):
             read_id (int): DB key of the read the kmer belongs to
         """
         res = kmer.get_results() # needed for 'median' and 'mad' values
-        self.__cursor.execute("INSERT INTO kmers VALUES(NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        try:
+            self.__cursor.execute("INSERT INTO kmers VALUES(NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                               (read_id, res["ref_pos"], res["ref_kmer"], res["num_events"],
-                               res["num_signals"], res["dwell_time"], res["NNNNN_dwell_time"],
-                               res["mismatch_dwell_time"], res["median"], res["mad"]))
-        # TODO: should 'res["status"]' get stored as well?
-        # TODO: check for success?
-
+                               res["num_signals"], res["status"], res["dwell_time"],
+                               res["NNNNN_dwell_time"], res["mismatch_dwell_time"], res["median"], res["mad"]))
+        except Exception:
+            logger.error("Error inserting kmer into DB")
+            raise Exception
 
     def get_transcript_id_by_name(self, tx_name, create_if_not_exists=False):
         # TODO: This function should cache results
@@ -165,7 +176,6 @@ class DataStore(object):
             return record[0]
         else:
             return None
-
 
     def get_sample_id_by_name(self, sample_name, create_if_not_exists=False):
         # TODO: This function should cache results
