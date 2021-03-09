@@ -238,7 +238,7 @@ class Eventalign_collapse ():
                 for _ in range (self.__nthreads):
                     for read in iter (out_q.get, None):
                         n_reads+=1
-                        datastore.add_read(read)
+                        datastore.add_store(read)
                         pbar.update(1)
         except Exception:
             logger.error("Error adding read to DB")
