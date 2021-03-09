@@ -43,11 +43,12 @@ class DataStore(object):
                           "FOREIGN KEY(readid) REFERENCES reads(id)"
                           ")"
                           )
+    # TODO: 'sequence' is stored redundantly - move it to a separate table
 
 
     create_samples_query = ("CREATE TABLE IF NOT EXISTS samples ("
                             "id INTEGER NOT NULL PRIMARY KEY,"
-                            "name VARCHAR NOT NULL UNIQUE,"
+                            "name VARCHAR NOT NULL UNIQUE"
                             ")"
                             )
 
@@ -57,7 +58,6 @@ class DataStore(object):
                                 "name VARCHAR NOT NULL UNIQUE"
                                 ")"
                                 )
-
 
 
     def __init__(self, db_path:str):
