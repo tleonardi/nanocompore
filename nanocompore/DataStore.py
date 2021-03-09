@@ -35,6 +35,7 @@ class DataStore(object):
                           "sequence INTEGER NOT NULL,"
                           "num_events INTEGER NOT NULL,"
                           "num_signals INTEGER NOT NULL,"
+                          "status VARCHAR NOT NULL,"
                           "dwell_time REAL NOT NULL,"
                           "NNNNN_dwell_time REAL NOT NULL,"
                           "mismatch_dwell_time REAL NOT NULL,"
@@ -113,13 +114,24 @@ class DataStore(object):
         """
         tx_id = self.get_transcript_id_by_name(read.ref_id, create_if_not_exists=True)
         sample_id = self.get_sample_id_by_name(read.sample_name, create_if_not_exists=True)
-        self.__cursor.execute("INSERT into reads values(NULL, ?, ?, ?, ?, ?, ?, ?, ?)", (read.read_id, sample_id, tx_id, read.ref_start, read.ref_end, read.n_events, read.n_signals, read.dwell_time))
-        read_id = self.__cursor.lastrowid
+        try:
+            self.__cursor.execute("INSERT into reads values(NULL, ?, ?, ?, ?, ?, ?, ?, ?)", (read.read_id, sample_id, tx_id, read.ref_start, read.ref_end, read.n_events, read.n_signals, read.dwell_time))
+            read_id = self.__cursor.lastrowid
+        except Exception:
+            logger.error("Error inserting read into DB")
+            raise Exception
+
         for kmer in read.kmer_l:
             self.__add_kmer(kmer=kmer, read_id=read_id)
+        self.__connection.commit()
 
-    def add_kmer(self, read):
-        pass
+    def __add_kmer(self, kmer, read_id):
+        kr = kmer.get_results()
+        try:
+            self.__cursor.execute("INSERT into kmers values(NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", (read_id, kr["ref_pos"], kr["ref_kmer"], kr["num_events"], kr["num_signals"], kr["status"], kr["dwell_time"], kr["NNNNN_dwell_time"], kr["mismatch_dwell_time"], kr["median"], kr["mad"]))
+        except Exception:
+            logger.error("Error inserting kmer into DB")
+            raise Exception
 
     def get_transcript_id_by_name(self, tx_name, create_if_not_exists=False):
         # TODO: This function should cache results
