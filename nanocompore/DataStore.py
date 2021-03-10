@@ -63,7 +63,10 @@ class DataStore(object):
     def __init__(self, db_path:str):
         self.__db_path=db_path
         db_is_new = not os.path.exists(self.__db_path)
-        logger.debug(f"DB file doesn't exist: {db_is_new}")
+        if db_is_new:
+            logger.info("Creating new database")
+        else:
+            logger.info("Using existing database")
         if db_is_new: self.__init_db()
 
     def __enter__(self):
@@ -77,7 +80,7 @@ class DataStore(object):
     def __open_db_connection(self):
         try:
             logger.debug("Connecting to DB")
-            self.__connection = lite.connect(self.__db_path);
+            self.__connection = lite.connect(self.__db_path)
             self.__cursor = self.__connection.cursor()
         except:
             logger.error("Error connecting to database")
