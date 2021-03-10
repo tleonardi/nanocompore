@@ -45,6 +45,7 @@ mkdocs-material = "~4"
 markdown = "<3.2"
 pyinstrument = "^3.4.1"
 py-spy = "^0.3.4"
+yappi = "^1.3.2"
 
 [build-system]
 requires = ["poetry>=0.12"]

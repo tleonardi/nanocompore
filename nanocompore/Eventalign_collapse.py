@@ -8,6 +8,8 @@ from time import time
 from collections import *
 import traceback
 import os
+import cProfile as profile
+import statistics
 
 # Third party imports
 from loguru import logger
@@ -231,6 +233,8 @@ class Eventalign_collapse ():
         """
         logger.debug("Start writing output to DB")
 
+        pr = profile.Profile()
+        pr.enable()
         n_reads = 0
         try:
             with DataStore(db_path=os.path.join(self.__outpath, self.__outprefix+"nanocompore.db")) as datastore, tqdm (unit=" reads") as pbar:
@@ -248,6 +252,8 @@ class Eventalign_collapse ():
             logger.info ("Output reads written:{}".format(n_reads))
             # Kill error queue with poison pill
             error_q.put(None)
+            pr.disable()
+            pr.dump_stats("prof")
 
     def __write_output (self, out_q, error_q):
         """
@@ -448,7 +454,6 @@ class Kmer ():
             return "mismatch"
 
     def get_results(self):
-        sample_array = np.array(self.sample_list, dtype=np.float32)
         d = OrderedDict()
         d["ref_pos"] = self.ref_pos
         d["ref_kmer"] = self.ref_kmer
@@ -458,7 +463,8 @@ class Kmer ():
         d["NNNNN_dwell_time"] = self.NNNNN_dwell_time
         d["mismatch_dwell_time"] = self.mismatch_dwell_time
         d["status"] = self.status
-        d["median"] = np.median(sample_array)
-        d["mad"] = np.median(np.abs(sample_array-d["median"]))
+        d["median"] = statistics.median(self.sample_list)
+        d["mad"] = statistics.median([ abs( i-d["median"] ) for i in self.sample_list])
 
         return d
+
