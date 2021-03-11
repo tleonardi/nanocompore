@@ -22,9 +22,13 @@ class DataStore(object):
                           "numevents INT NOT NULL,"
                           "numsignals INT NOT NULL,"
                           "dwelltime REAL NOT NULL,"
+                          "kmers INT NOT NULL,"
+                          "missing_kmers INT NOT NULL,"
+                          "NNNNN_kmers INT NOT NULL,"
+                          "mismatch_kmers INT NOT NULL,"
+                          "valid_kmers INT NOT NULL,"
                           "FOREIGN KEY(sampleid) REFERENCES samples(id)"
-                          "FOREIGN KEY(transcriptid) REFERENCES transcripts(id),"
-                          "UNIQUE(id, name)"
+                          "FOREIGN KEY(transcriptid) REFERENCES transcripts(id)"
                           ")"
                           )
 
@@ -119,10 +123,11 @@ class DataStore(object):
         """
         tx_id = self.get_transcript_id_by_name(read.ref_id, create_if_not_exists=True)
         sample_id = self.get_sample_id_by_name(read.sample_name, create_if_not_exists=True)
+        values = (read.read_id, sample_id, tx_id, read.ref_start, read.ref_end,
+                  read.n_events, read.n_signals, read.dwell_time) + tuple(read.kmers_status.values())
         try:
-            self.__cursor.execute("INSERT INTO reads VALUES(NULL, ?, ?, ?, ?, ?, ?, ?, ?)",
-                                    (read.read_id, sample_id, tx_id, read.ref_start, read.ref_end,
-                                     read.n_events, read.n_signals, read.dwell_time))
+            self.__cursor.execute("INSERT INTO reads VALUES(NULL" + ", ?" * len(values) + ")",
+                                  values)
             read_id = self.__cursor.lastrowid
         except Exception:
             logger.error("Error inserting read into DB")
