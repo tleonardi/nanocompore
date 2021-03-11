@@ -246,12 +246,12 @@ class Eventalign_collapse ():
                 # Iterate over out queue until nthread poison pills are found
                 for _ in range (self.__nthreads):
                     for read in iter (out_q.get, None):
-                        n_reads+=1
+                        n_reads += 1
                         datastore.store_read(read)
                         pbar.update(1)
         except Exception:
             logger.error("Error adding read to DB")
-            error_q.put (NanocomporeError(traceback.format_exc()))
+            error_q.put(NanocomporeError(traceback.format_exc()))
 
         finally:
             logger.info ("Output reads written:{}".format(n_reads))
@@ -301,10 +301,10 @@ class Eventalign_collapse ():
 
                         # Write kmer data matching data field order
                         for kmer in kmer_res_l:
-                            n_kmers+=1
-                            data_str = "\t".join([str(kmer[f]) for f in data_header_list])+"\n"
+                            n_kmers += 1
+                            data_str = "\t".join([str(kmer[f]) for f in data_header_list]) + "\n"
                             data_fp.write(data_str)
-                            byte_len+=len(data_str)
+                            byte_len += len(data_str)
 
                         # Add byte
                         read_res_d["byte_offset"] = byte_offset
@@ -313,7 +313,7 @@ class Eventalign_collapse ():
                         idx_fp.write("{}\n".format(idx_str))
 
                         # Update pbar
-                        byte_offset+=byte_len
+                        byte_offset += byte_len
                         pbar.update(1)
 
                 # Flag last line
@@ -380,13 +380,13 @@ class Read ():
     @property
     def kmers_status (self):
         d = OrderedDict()
-        d["kmers"] = self.ref_end-self.ref_start+1
+        d["kmers"] = self.ref_end - self.ref_start + 1
         d["missing_kmers"] = d["kmers"] - len(self.kmer_l)
-        d["NNNNN_kmers"]=0
-        d["mismatch_kmers"]=0
-        d["valid_kmers"]=0
+        d["NNNNN_kmers"] = 0
+        d["mismatch_kmers"] = 0
+        d["valid_kmers"] = 0
         for k in self.kmer_l:
-            d[k.status+"_kmers"]+=1
+            d[k.status + "_kmers"] += 1
         return d
 
     def get_read_results (self):
@@ -469,7 +469,5 @@ class Kmer ():
         d["mismatch_dwell_time"] = self.mismatch_dwell_time
         d["status"] = self.status
         d["median"] = statistics.median(self.sample_list)
-        d["mad"] = statistics.median([ abs( i-d["median"] ) for i in self.sample_list])
-
+        d["mad"] = statistics.median([abs(i - d["median"]) for i in self.sample_list])
         return d
-
