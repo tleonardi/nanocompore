@@ -6,6 +6,7 @@ from collections import *
 import logging
 from loguru import logger
 import random
+import sqlite3
 
 # Third party
 import numpy as np
@@ -24,22 +25,26 @@ class Whitelist(object):
 
     #~~~~~~~~~~~~~~MAGIC METHODS~~~~~~~~~~~~~~#
     def __init__(self,
-        eventalign_fn_dict,
-        fasta_fn,
-        min_coverage = 10,
-        min_ref_length = 100,
-        downsample_high_coverage = False,
-        max_invalid_kmers_freq = 0.1,
-        max_NNNNN_freq = 0.1,
-        max_mismatching_freq = 0.1,
-        max_missing_freq = 0.1,
-        select_ref_id = [],
-        exclude_ref_id = []):
+                 db_path,
+                 sample_dict,
+                 fasta_fn,
+                 min_coverage = 10,
+                 min_ref_length = 100,
+                 downsample_high_coverage = False,
+                 max_invalid_kmers_freq = 0.1,
+                 max_NNNNN_freq = 0.1,
+                 max_mismatching_freq = 0.1,
+                 max_missing_freq = 0.1,
+                 select_ref_id = [],
+                 exclude_ref_id = []):
         """
-        #########################################################
-        * eventalign_fn_dict
-            Multilevel dictionnary indicating the condition_label, sample_label and file name of the eventalign_collapse output
-            example d = {"S1": {"R1":"path1.tsv", "R2":"path2.tsv"}, "S2": {"R1":"path3.tsv", "R2":"path4.tsv"}}
+        Generate a whitelist of reads that fulfill filtering criteria
+        Args:
+        * db_path
+            Path to the SQLite database file with event-aligned read/kmer data
+        * sample_dict
+            Dictionary containing lists of (unique) sample names, grouped by condition
+            example d = {"control": ["C1", "C2"], "treatment": ["T1", "T2"]}
         * fasta_fn
             Path to a fasta file corresponding to the reference used for read alignemnt
         * min_coverage
@@ -63,53 +68,91 @@ class Whitelist(object):
             if given, refid in the list will be excluded from the analysis
         """
 
-        # Check index files
-        self.__filter_invalid_kmers = True
-        for sample_dict in eventalign_fn_dict.values():
-            for fn in sample_dict.values():
-                idx_fn = fn+".idx"
-                if not access_file(idx_fn):
-                    raise NanocomporeError("Cannot access eventalign_collapse index file {}".format(idx_fn))
-                # Check header line and set a flag to skip filter if the index file does not contain kmer status information
-                with open(idx_fn, "r") as fp:
-                    header = fp.readline().rstrip().split("\t")
-                if not all_values_in (("ref_id", "read_id", "byte_offset", "byte_len"), header):
-                    raise NanocomporeError("The index file {} does not contain the require header fields".format(idx_fn))
-                if not all_values_in (("kmers", "NNNNN_kmers", "mismatch_kmers", "missing_kmers"), header):
-                    self.__filter_invalid_kmers = False
-                    logger.debug("Invalid kmer information not available in index file")
+        # Check that sample names are unique and create look-up dict. of conditions
+        cond_dict = {}
+        for cond, samples in sample_dict.items():
+            for sample in samples:
+                if sample in cond_dict:
+                    raise NanocomporeError(f"Sample name '{sample}' is not unique")
+                cond_dict[sample] = cond
 
-        self.__eventalign_fn_dict = eventalign_fn_dict
+        # Get sample names and IDs from DB
+        self.__db_path = db_path
+        self.__open_db_connection()
+        db_samples = {}
+        try:
+            self.__cursor.execute("SELECT * FROM samples")
+            for row in self.__cursor:
+                db_samples[row["id"]] = row["name"]
+        except Exception:
+            logger.error("Error reading sample names from DB")
+            raise Exception
+        # Check that requested samples are in DB
+        for samples in sample_dict.values():
+            for sample in samples:
+                if sample not in db_samples.values():
+                    raise NanocomporeError(f"Sample '{sample}' not present in DB")
 
-        # Get number of samples
-        n = 0
-        for sample_dict in self.__eventalign_fn_dict.values():
-            for sample_lab in sample_dict.keys():
-                n+=1
-        self.__n_samples = n
-
-        # Test is Fasta can be opened
+        # Test if Fasta can be opened
         try:
             with Fasta(fasta_fn):
                 self._fasta_fn = fasta_fn
         except IOError:
             raise NanocomporeError("The fasta file cannot be opened")
 
-        # Create reference index for both files
-        logger.info("Reading eventalign index files")
-        ref_reads = self.__read_eventalign_index(
-            eventalign_fn_dict = eventalign_fn_dict,
-            max_invalid_kmers_freq = max_invalid_kmers_freq,
-            max_NNNNN_freq = max_NNNNN_freq,
-            max_mismatching_freq = max_mismatching_freq,
-            max_missing_freq = max_missing_freq,
-            select_ref_id = select_ref_id,
-            exclude_ref_id = exclude_ref_id)
+        # Set up filters by adding conditions for DB query
+        select = ["reads.id AS readid", "sampleid", "transcriptid", "transcripts.name AS transcriptname"]
+        where = []
+        # Get reads only from a subset of samples?
+        if len(cond_dict) != len(db_samples):
+            where = ["sampleid IN (%s)" % ", ".join(map(str, db_samples))]
+
+        if select_ref_id:
+            select.append("reads.name AS readname")
+            where.append("readname IN ('%s')" % "', '".join(select_ref_id))
+        elif exclude_ref_id:
+            select.append("reads.name AS readname")
+            where.append("readname NOT IN ('%s')" % "', '".join(exclude_ref_id))
+
+        if max_invalid_kmers_freq is not None:
+            if max_invalid_kmers_freq < 1.0:
+                select.append("1.0 - CAST(valid_kmers AS REAL) / kmers AS invalid_freq")
+                where.append(f"invalid_freq <= {max_invalid_kmers_freq}")
+        else:
+            if max_NNNNN_freq < 1.0:
+                select.append("CAST(NNNNN_kmers AS REAL) / kmers AS NNNNN_freq")
+                where.append(f"NNNNN_freq <= {max_NNNNN_freq}")
+            if max_mismatching_freq < 1.0:
+                select.append("CAST(mismatch_kmers AS REAL) / kmers AS mismatch_freq")
+                where.append(f"mismatch_freq <= {max_mismatching_freq}")
+            if max_missing_freq < 1.0:
+                select.append("CAST(missing_kmers AS REAL) / kmers AS missing_freq")
+                where.append(f"missing_freq <= {max_missing_freq}")
+
+        query = "SELECT %s FROM reads LEFT JOIN transcripts ON transcriptid = transcripts.id" % \
+            ", ".join(select)
+        if where:
+            query += " WHERE %s" % " AND ".join(where)
+
+        # dict. structure: transcript -> condition -> sample -> list of reads
+        ref_reads = {}
+        logger.info("Querying reads from DB")
+        try:
+            self.__cursor.execute(query)
+            for row in self.__cursor:
+                read_id = row["readid"]
+                sample_id = row["sampleid"]
+                condition = cond_dict[db_samples[sample_id]]
+                ref_id = row["transcriptname"]
+                ref_reads.setdefault(ref_id, {}).setdefault(condition, {}).setdefault(sample_id, []).append(read_id)
+        except Exception:
+            logger.error("Error querying reads from DB")
+            raise Exception
 
         # Filtering at transcript level
         logger.info("Filtering out references with low coverage")
         self.ref_reads = self.__select_ref(
-            ref_reads = ref_reads,
+            ref_reads=ref_reads,
             min_coverage=min_coverage,
             min_ref_length=min_ref_length,
             downsample_high_coverage=downsample_high_coverage)
@@ -118,6 +161,7 @@ class Whitelist(object):
         self.__min_ref_length = min_ref_length
         self.__downsample_high_coverage = downsample_high_coverage
         self.__max_invalid_kmers_freq = max_invalid_kmers_freq
+
 
     def __repr__(self):
         return "Whitelist: Number of references: {}".format(len(self))
@@ -152,81 +196,24 @@ class Whitelist(object):
         return list(self.ref_reads.keys())
 
     #~~~~~~~~~~~~~~PRIVATE METHODS~~~~~~~~~~~~~~#
-    def __read_eventalign_index(self,
-        eventalign_fn_dict,
-        max_invalid_kmers_freq,
-        max_NNNNN_freq,
-        max_mismatching_freq,
-        max_missing_freq,
-        select_ref_id,
-        exclude_ref_id):
-        """Read the 2 index files and sort by sample and ref_id in a multi level dict"""
 
-        ref_reads = OrderedDict()
+    def __open_db_connection(self):
+        try:
+            logger.debug("Connecting to DB")
+            self.__connection = sqlite3.connect(self.__db_path)
+            self.__connection.row_factory = sqlite3.Row
+            self.__cursor = self.__connection.cursor()
+        except:
+            logger.error("Error connecting to database")
+            raise
 
-        for cond_lab, sample_dict in eventalign_fn_dict.items():
-            for sample_lab, fn in sample_dict.items():
-                idx_fn = fn+".idx"
-                with open(idx_fn) as fp:
-
-                    # Get column names from header
-                    col_names = fp.readline().rstrip().split()
-                    c = Counter()
-                    for line in fp:
-                        try:
-                            # Transform line to dict and cast str numbers to actual numbers
-                            read = numeric_cast_dict(keys=col_names, values=line.rstrip().split("\t"))
-
-                            # Filter out ref_id if a select_ref_id list or exclude_ref_id list was provided
-                            if select_ref_id and not read["ref_id"] in select_ref_id:
-                                raise NanocomporeError("Ref_id not in select list")
-                            elif exclude_ref_id and read["ref_id"] in exclude_ref_id:
-                                raise NanocomporeError("Ref_id in exclude list")
-
-                            # Filter out reads with high number of invalid kmers if information available
-                            if self.__filter_invalid_kmers:
-                                if max_invalid_kmers_freq:
-                                    invalid_kmers_freq = (read["NNNNN_kmers"]+read["mismatch_kmers"]+read["missing_kmers"])/read["kmers"]
-                                    if invalid_kmers_freq > max_invalid_kmers_freq:
-                                        raise NanocomporeError("High fraction of invalid kmers ({}%) for read {}".format(round(invalid_kmers_freq*100,2), read["read_id"]))
-                                else:
-                                    NNNNN_kmers_freq = read["NNNNN_kmers"]/read["kmers"]
-                                    max_mismatching_freq = read["mismatch_kmers"]/read["kmers"]
-                                    max_missing_freq = read["missing_kmers"]/read["kmers"]
-                                    if NNNNN_kmers_freq > max_NNNNN_freq:
-                                        raise NanocomporeError("High fraction of NNNNN kmers ({}%) for read {}".format(round(NNNNN_kmers_freq*100,2), read["read_id"]))
-                                    elif max_mismatching_freq > max_mismatching_freq:
-                                        raise NanocomporeError("High fraction of mismatching kmers ({}%) for read {}".format(round(max_mismatching_freq*100,2), read["read_id"]))
-                                    elif max_missing_freq > max_missing_freq:
-                                        raise NanocomporeError("High fraction of missing kmers ({}%) for read {}".format(round(max_missing_freq*100,2), read["read_id"]))
-
-                            # Create dict arborescence and save valid reads
-                            if not read["ref_id"] in ref_reads:
-                                ref_reads[read["ref_id"]] = OrderedDict()
-                            if not cond_lab in ref_reads[read["ref_id"]]:
-                                ref_reads[read["ref_id"]][cond_lab] = OrderedDict()
-                            if not sample_lab in ref_reads[read["ref_id"]][cond_lab]:
-                                ref_reads[read["ref_id"]][cond_lab][sample_lab] = []
-
-                            # Fill in list of reads
-                            ref_reads[read["ref_id"]][cond_lab][sample_lab].append(read)
-                            c ["valid reads"] += 1
-
-                        except NanocomporeError as E:
-                            c [str(E)] += 1
-
-                logger.debug("\tCondition:{} Sample:{} {}".format(cond_lab, sample_lab, counter_to_str(c)))
-        # Fill in missing condition/sample slots in case
-        # a ref_id is missing from one of the eventalign files
-        for ref_id in ref_reads.keys():
-            for cond_lab, sample_dict in eventalign_fn_dict.items():
-                for sample_lab in sample_dict.keys():
-                    if not cond_lab in ref_reads[ref_id]:
-                        ref_reads[ref_id][cond_lab] = OrderedDict()
-                    if not sample_lab in ref_reads[ref_id][cond_lab]:
-                        ref_reads[ref_id][cond_lab][sample_lab] = []
-        logger.info("\tReferences found in index: {}".format(len(ref_reads)))
-        return ref_reads
+    def __close_db_connection(self):
+        if self.__connection:
+            logger.debug("Closing connection to DB")
+            self.__connection.commit()
+            self.__connection.close()
+            self.__connection = None
+            self.__cursor = None
 
     def __select_ref(self,
         ref_reads,
