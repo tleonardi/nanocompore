@@ -77,7 +77,7 @@ class DataStore(object):
         self.__open_db_connection()
         return self
 
-    def __exit__(self,exc_type, exc_value, traceback):
+    def __exit__(self, exc_type, exc_value, traceback):
         self.__connection.commit()
         self.__close_db_connection()
 
