@@ -1,16 +1,17 @@
 # -*- coding: utf-8 -*-
 
-from collections import *
+from enum import Enum
 import datetime
 import os
-import sqlite3 as lite
+import sqlite3
+import contextlib
 
 # Third party
 from loguru import logger
-import nanocompore as pkg
+from nanocompre.common import NanoporeError
 
 class DataStore(object):
-    """ Init analysis and check args"""
+    """Store Nanocompore data in an SQLite database"""
 
     create_reads_query = ("CREATE TABLE IF NOT EXISTS reads ("
                           "id INTEGER NOT NULL PRIMARY KEY,"
@@ -63,55 +64,60 @@ class DataStore(object):
                                 ")"
                                 )
 
+    class DBCreateMode(Enum):
+        """Options for handling (non-) existence of the SQLite database file"""
+        MUST_EXIST = "r" # open for reading, error if file doesn't exist
+        CREATE_MAYBE = "a" # use an existing database, otherwise create one
+        OVERWRITE = "w" # always create a new database, overwrite if it exists
 
-    def __init__(self, db_path:str):
-        self.__db_path=db_path
-        db_is_new = not os.path.exists(self.__db_path)
-        if db_is_new:
-            logger.info("Creating new database")
-        else:
-            logger.info("Using existing database")
-        if db_is_new: self.__init_db()
+
+    def __init__(self,
+                 db_path:str,
+                 create_mode=DBCreateMode.MUST_EXIST):
+        self.__db_path = db_path
+        self.__create_mode = create_mode
+        self.__connection = None
+        self.__cursor = None
 
     def __enter__(self):
-        self.__open_db_connection()
-        return self
-
-    def __exit__(self, exc_type, exc_value, traceback):
-        self.__connection.commit()
-        self.__close_db_connection()
-
-    def __open_db_connection(self):
+        if self.__create_mode == DBCreateMode.MUST_EXIST and not os.path.exists(self.__db_path):
+            raise NanocomporeError(f"Database file '{self.__db_path}' does not exist")
+        if self.__create_mode == DBCreateMode.OVERWRITE:
+            with contextlib.suppress(FileNotFoundError): # file may not exist
+                os.remove(self.__db_path)
+                logger.debug(f"Removed existing database file '{self.__db_path}'")
         try:
-            logger.debug("Connecting to DB")
-            self.__connection = lite.connect(self.__db_path)
+            logger.debug("Connecting to database")
+            self.__connection = sqlite3.connect(self.__db_path)
+            self.__connection.row_factory = sqlite3.Row
             self.__cursor = self.__connection.cursor()
         except:
             logger.error("Error connecting to database")
             raise
+        if self.__create_mode == DBCreateMode.OVERWRITE or \
+           (self.__create_mode == DBCreateMode.CREATE_MAYBE and not os.path.exists(self.__db_path)):
+            self.__init_db()
+        return self
 
-    def __close_db_connection(self):
+    def __exit__(self, exc_type, exc_value, traceback):
         if self.__connection:
-            logger.debug("Closing connection to DB")
+            logger.debug("Closing database connection")
             self.__connection.commit()
             self.__connection.close()
             self.__connection = None
             self.__cursor = None
 
-    def __init_db(self):
-        logger.debug("Setting up DB tables")
-        self.__open_db_connection()
+   def __init_db(self):
+        logger.debug("Setting up database tables")
         try:
             self.__cursor.execute(self.create_reads_query)
             self.__cursor.execute(self.create_kmers_query)
             self.__cursor.execute(self.create_samples_query)
             self.__cursor.execute(self.create_transcripts_query)
+            self.__connection.commit()
         except:
-            self.__close_db_connection()
-            logger.error("Error creating tables")
+            logger.error("Error creating database tables")
             raise
-        self.__connection.commit()
-        self.__close_db_connection()
 
     def store_read(self, read):
         """
@@ -130,7 +136,7 @@ class DataStore(object):
                                   values)
             read_id = self.__cursor.lastrowid
         except Exception:
-            logger.error("Error inserting read into DB")
+            logger.error("Error inserting read into database")
             raise Exception
 
         for kmer in read.kmer_l:
@@ -152,7 +158,7 @@ class DataStore(object):
                                res["num_signals"], res["status"], res["dwell_time"],
                                res["NNNNN_dwell_time"], res["mismatch_dwell_time"], res["median"], res["mad"]))
         except Exception:
-            logger.error("Error inserting kmer into DB")
+            logger.error("Error inserting kmer into database")
             raise Exception
 
     def get_transcript_id_by_name(self, tx_name, create_if_not_exists=False):
@@ -169,7 +175,7 @@ class DataStore(object):
             try:
                 self.__cursor.execute(query)
             except Exception:
-                logger.error("There was an error while inserting a new transcript in the DB")
+                logger.error("Error while inserting transcript into the database")
                 raise Exception
 
         query = f"SELECT id from transcripts WHERE name = '{tx_name}'"
@@ -178,7 +184,7 @@ class DataStore(object):
             record = self.__cursor.fetchone()
             self.__connection.commit()
         except Exception:
-            logger.error("There was an error while selecting the transcript_id from the DB")
+            logger.error("Error while selecting transcript ID from the database")
             raise Exception
         if record is not None:
             return record[0]
@@ -199,7 +205,7 @@ class DataStore(object):
             try:
                 self.__cursor.execute(query)
             except Exception:
-                logger.error("There was an error while inserting a new sample in the DB")
+                logger.error("Error while inserting sample into the database")
                 raise Exception
 
         query = f"SELECT id from samples WHERE name = '{sample_name}'"
@@ -208,9 +214,38 @@ class DataStore(object):
             record = self.__cursor.fetchone()
             self.__connection.commit()
         except Exception:
-            logger.error("There was an error while selecting the sample_id from the DB")
+            logger.error("Error while selecting sample ID from the database")
             raise Exception
         if record is not None:
             return record[0]
         else:
             return None
+
+    @property
+    def cursor(self):
+        return self.__cursor
+
+    def get_samples(self, sample_dict=None):
+        if not self.__connection:
+            raise NanocomporeError("Database connection not yet opened")
+        expected_samples = []
+        if sample_dict: # query only relevant samples
+            for samples in sample_dict.values():
+                expected_samples += samples
+            if not expected_samples:
+                raise NanocomporeError("No sample names in 'sample_dict'")
+            where = " WHERE name IN ('%s')" % "', '".join(expected_samples)
+        else:
+            where = ""
+        db_samples = {}
+        try:
+            self.__cursor.execute("SELECT * FROM samples" + where)
+            for row in self.__cursor:
+                db_samples[row["id"]] = row["name"]
+        except Exception:
+            logger.error("Error reading sample names from database")
+            raise Exception
+        for sample in expected_samples: # check that requested samples are in DB
+            if sample not in db_samples.values():
+                raise NanocomporeError(f"Sample '{sample}' not present in database")
+        return db_samples

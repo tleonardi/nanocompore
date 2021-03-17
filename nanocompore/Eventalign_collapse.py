@@ -241,8 +241,9 @@ class Eventalign_collapse ():
         pr = profile.Profile()
         pr.enable()
         n_reads = 0
+        db_path = os.path.join(self.__outpath, self.__outprefix+"_nanocompore.db")
         try:
-            with DataStore(db_path=os.path.join(self.__outpath, self.__outprefix+"_nanocompore.db")) as datastore, tqdm (unit=" reads") as pbar:
+            with DataStore(db_path, DataStore.DBCreateMode.CREATE_MAYBE) as datastore, tqdm (unit=" reads") as pbar:
                 # Iterate over out queue until nthread poison pills are found
                 for _ in range (self.__nthreads):
                     for read in iter (out_q.get, None):
