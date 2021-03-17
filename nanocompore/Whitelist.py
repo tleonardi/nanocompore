@@ -88,11 +88,18 @@ class Whitelist(object):
         with DatabaseWrapper(db_path) as db:
             db_samples = db.get_samples(sample_dict)
 
+            # How many samples are in the DB? If we want all, we don't need a constraint below.
+            try:
+                db_sample_count = db.cursor.execute("SELECT COUNT(*) FROM samples").fetchone()[0]
+            except Exception:
+                logger.error("Error counting samples in database")
+                raise Exception
+
             # Set up filters by adding conditions for DB query
             select = ["reads.id AS readid", "sampleid", "transcriptid", "transcripts.name AS transcriptname"]
             where = []
             # Get reads only from a subset of samples?
-            if len(cond_dict) != len(db_samples):
+            if len(db_samples) < db_sample_count:
                 where = ["sampleid IN (%s)" % ", ".join(map(str, db_samples))]
 
             if select_ref_id:
@@ -124,7 +131,7 @@ class Whitelist(object):
 
             # dict. structure: transcript -> condition -> sample -> list of reads
             ref_reads = {}
-            logger.info("Querying reads from DB")
+            logger.info("Querying reads from database")
             try:
                 db.cursor.execute(query)
                 for row in db.cursor:
@@ -135,7 +142,7 @@ class Whitelist(object):
                     ref_reads.setdefault(ref_id, {}).setdefault(condition, {}).\
                         setdefault(sample_id, []).append(read_id)
             except Exception:
-                logger.error("Error querying reads from DB")
+                logger.error("Error querying reads from database")
                 raise Exception
 
         # Filtering at transcript level
