@@ -8,7 +8,15 @@ import contextlib
 
 # Third party
 from loguru import logger
-from nanocompre.common import NanoporeError
+from nanocompore.common import NanocomporeError
+
+
+class DBCreateMode(Enum):
+    """Options for handling (non-) existence of the SQLite database file"""
+    MUST_EXIST = "r" # open for reading, error if file doesn't exist
+    CREATE_MAYBE = "a" # use an existing database, otherwise create one
+    OVERWRITE = "w" # always create a new database, overwrite if it exists
+
 
 class DataStore(object):
     """Store Nanocompore data in an SQLite database"""
@@ -50,26 +58,20 @@ class DataStore(object):
                           ")"
                           )
     # TODO: 'sequence' is stored redundantly - move it to a separate table
+    # TODO: encode 'status' as int to save space (foreign key referencing a table with all possible statuses)
 
     create_samples_query = ("CREATE TABLE IF NOT EXISTS samples ("
                             "id INTEGER NOT NULL PRIMARY KEY,"
                             "name VARCHAR NOT NULL UNIQUE"
                             ")"
                             )
-
+    # TODO: add 'condition' column
 
     create_transcripts_query = ("CREATE TABLE IF NOT EXISTS transcripts ("
                                 "id INTEGER NOT NULL PRIMARY KEY,"
                                 "name VARCHAR NOT NULL UNIQUE"
                                 ")"
                                 )
-
-    class DBCreateMode(Enum):
-        """Options for handling (non-) existence of the SQLite database file"""
-        MUST_EXIST = "r" # open for reading, error if file doesn't exist
-        CREATE_MAYBE = "a" # use an existing database, otherwise create one
-        OVERWRITE = "w" # always create a new database, overwrite if it exists
-
 
     def __init__(self,
                  db_path:str,
@@ -107,7 +109,7 @@ class DataStore(object):
             self.__connection = None
             self.__cursor = None
 
-   def __init_db(self):
+    def __init_db(self):
         logger.debug("Setting up database tables")
         try:
             self.__cursor.execute(self.create_reads_query)
