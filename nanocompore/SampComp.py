@@ -18,6 +18,7 @@ from pyfaidx import Fasta
 
 # Local package
 from nanocompore.common import *
+from nanocompore.DataStore import DataStore
 from nanocompore.Whitelist import Whitelist
 from nanocompore.TxComp import txCompare
 from nanocompore.SampCompDB import SampCompDB
@@ -37,36 +38,38 @@ class SampComp(object):
     #~~~~~~~~~~~~~~FUNDAMENTAL METHODS~~~~~~~~~~~~~~#
 
     def __init__(self,
-        eventalign_fn_dict:dict,
-        fasta_fn:str,
-        bed_fn:str = None,
-        outpath:str = "results",
-        outprefix:str = "out_",
-        overwrite:bool = False,
-        whitelist:Whitelist = None,
-        comparison_methods:list = ["GMM", "KS"],
-        logit:bool = True,
-        anova:bool = False,
-        allow_warnings:bool = False,
-        sequence_context:int = 0,
-        sequence_context_weights:str = "uniform",
-        min_coverage:int = 30,
-        min_ref_length:int = 100,
-        downsample_high_coverage:int = 5000,
-        max_invalid_kmers_freq:float = 0.1,
-        select_ref_id:list = [],
-        exclude_ref_id:list = [],
-        nthreads:int = 3,
-        progress:bool = False):
+                 db_path:str,
+                 sample_dict:dict,
+                 fasta_fn:str,
+                 bed_fn:str = None,
+                 outpath:str = "results",
+                 outprefix:str = "out",
+                 overwrite:bool = False,
+                 whitelist:Whitelist = None,
+                 comparison_methods:list = ["GMM", "KS"],
+                 logit:bool = True,
+                 anova:bool = False,
+                 allow_warnings:bool = False,
+                 sequence_context:int = 0,
+                 sequence_context_weights:str = "uniform",
+                 min_coverage:int = 30,
+                 min_ref_length:int = 100,
+                 downsample_high_coverage:int = 5000,
+                 max_invalid_kmers_freq:float = 0.1,
+                 select_ref_id:list = [],
+                 exclude_ref_id:list = [],
+                 nthreads:int = 3,
+                 progress:bool = False):
 
         """
         Initialise a `SampComp` object and generates a white list of references with sufficient coverage for subsequent analysis.
         The retuned object can then be called to start the analysis.
-        * eventalign_fn_dict
-            Multilevel dictionnary indicating the condition_label, sample_label and file name of the eventalign_collapse output.
-            2 conditions are expected and at least 2 sample replicates per condition are highly recommended.
-            One can also pass YAML file describing the samples instead.
-            Example `d = {"S1": {"R1":"path1.tsv", "R2":"path2.tsv"}, "S2": {"R1":"path3.tsv", "R2":"path4.tsv"}}`
+        Args:
+        * db_path
+            Path to the SQLite database file with event-aligned read/kmer data
+        * sample_dict
+            Dictionary containing lists of (unique) sample names, grouped by condition
+            example d = {"control": ["C1", "C2"], "treatment": ["T1", "T2"]}
         * outpath
             Path to the output folder.
         * outprefix
@@ -113,17 +116,18 @@ class SampComp(object):
         # Save init options in dict for later
         log_init_state(loc=locals())
 
-        # If eventalign_fn_dict is not a dict try to load a YAML file instead
-        if type(eventalign_fn_dict) == str:
+        # TODO: remove this? (may be better handled in '__main__.py', if needed)
+        # If 'sample_dict' is not a dict try to load a YAML file instead
+        if type(sample_dict) == str:
             logger.debug("Parsing YAML file")
-            if not access_file(eventalign_fn_dict):
-                raise NanocomporeError("{} is not a valid file".format(eventalign_fn_dict))
-            with open(eventalign_fn_dict, "r") as fp:
-                eventalign_fn_dict = yaml.load(fp, Loader=yaml.SafeLoader)
+            if not access_file(sample_dict):
+                raise NanocomporeError("{} is not a valid file".format(sample_dict))
+            with open(sample_dict, "r") as fp:
+                sample_dict = yaml.load(fp, Loader=yaml.SafeLoader)
 
         # Check eventalign_dict file paths and labels
-        eventalign_fn_dict = self.__check_eventalign_fn_dict(eventalign_fn_dict)
-        logger.debug(eventalign_fn_dict)
+        check_sample_dict(sample_dict)
+        logger.debug(sample_dict)
 
         # Check if fasta and bed files exist
         if not access_file(fasta_fn):
@@ -153,15 +157,15 @@ class SampComp(object):
                     raise NanocomporeError("Invalid comparison method {}".format(method))
 
         if not whitelist:
-            whitelist = Whitelist(
-                eventalign_fn_dict = eventalign_fn_dict,
-                fasta_fn = fasta_fn,
-                min_coverage = min_coverage,
-                min_ref_length = min_ref_length,
-                downsample_high_coverage = downsample_high_coverage,
-                max_invalid_kmers_freq = max_invalid_kmers_freq,
-                select_ref_id = select_ref_id,
-                exclude_ref_id = exclude_ref_id)
+            whitelist = Whitelist(db_path,
+                                  sample_dict,
+                                  fasta_fn,
+                                  min_coverage = min_coverage,
+                                  min_ref_length = min_ref_length,
+                                  downsample_high_coverage = downsample_high_coverage,
+                                  max_invalid_kmers_freq = max_invalid_kmers_freq,
+                                  select_ref_id = select_ref_id,
+                                  exclude_ref_id = exclude_ref_id)
         elif not isinstance(whitelist, Whitelist):
             raise NanocomporeError("Whitelist is not valid")
 
@@ -171,10 +175,11 @@ class SampComp(object):
         self.__max_invalid_kmers_freq = whitelist._Whitelist__max_invalid_kmers_freq
 
         # Save private args
-        self.__eventalign_fn_dict = eventalign_fn_dict
-        self.__db_fn = os.path.join(outpath, outprefix+"SampComp.db")
+        self.__db_path = db_path
+        self.__sample_dict = sample_dict
         self.__fasta_fn = fasta_fn
         self.__bed_fn = bed_fn
+        self.__db_fn = os.path.join(outpath, outprefix + "_SampComp.db")
         self.__whitelist = whitelist
         self.__comparison_methods = comparison_methods
         self.__logit = logit
@@ -186,11 +191,10 @@ class SampComp(object):
         self.__progress = progress
 
         # Get number of samples
-        n = 0
-        for sample_dict in self.__eventalign_fn_dict.values():
-            for sample_lab in sample_dict.keys():
-                n+=1
-        self.__n_samples = n
+        self.__n_samples = 0
+        for samples in sample_dict.values():
+            self.__n_samples += len(samples)
+
 
     def __call__(self):
         """
@@ -244,6 +248,68 @@ class SampComp(object):
                 logger.error("An error occured while trying to kill processes\n")
             raise E
 
+
+    def process_transcript(self, tx_id, whitelist_reads):
+        """Process a transcript given filtered reads from Whitelist"""
+        logger.debug("Processing transcript: {tx_id}")
+
+        # Kmer data from whitelisted reads from all samples for this transcript
+        # Structure: kmer position -> condition -> sample -> data
+        kmer_data = defaultdict(lambda: {condition:
+                                    defaultdict(lambda: {"intensity": [],
+                                                    "dwell": [],
+                                                    "coverage": 0,
+                                                    "kmers_stats": {"valid": 0,
+                                                                    # "missing": 0, # TODO: needed?
+                                                                    "NNNNN": 0,
+                                                                    "mismatching": 0}})
+                                    for condition in self.__sample_dict})
+        n_reads = n_kmers = 0
+
+        # Read kmer data from database
+        with DataStore(self.__db_path) as db:
+            for cond_lab, sample_dict in whitelist_reads.items():
+                for sample_id, read_ids in sample_dict.items():
+                    if not read_ids: continue # TODO: error?
+                    n_reads += len(read_ids)
+                    values = ", ".join([str(read_id) for read_id in read_ids])
+                    query = f"SELECT * FROM kmers WHERE readid IN ({values})"
+                    for row in db.cursor.execute(query):
+                        n_kmers += 1
+                        pos = row["position"]
+                        # TODO: check that kmer seq. agrees with FASTA?
+                        data = kmer_data[pos][cond_lab][sample_id]
+                        data["intensity"].append(row["median"])
+                        data["dwell"].append(row["dwell_time"])
+                        data["coverage"] += 1
+                        status = row["status"]
+                        data["kmers_stats"][status] += 1
+
+        logger.debug(f"Data loaded for transcript: {tx_id}")
+        test_results = {}
+        if self.__comparison_methods:
+            random_state = np.random.RandomState(seed=42)
+            test_results = txCompare(tx_id,
+                                     kmer_data,
+                                     random_state=random_state,
+                                     methods=self.__comparison_methods,
+                                     sequence_context=self.__sequence_context,
+                                     sequence_context_weights=self.__sequence_context_weights,
+                                     min_coverage= self.__min_coverage,
+                                     allow_warnings=self.__allow_warnings,
+                                     logit=self.__logit,
+                                     anova=self.__anova)
+
+        # Remove 'default_factory' functions from 'kmer_data' to enable pickle/multiprocessing
+        kmer_data.default_factory = None
+        for pos_dict in kmer_data.values():
+            for cond_dict in pos_dict.values():
+                cond_dict.default_factory = None
+
+        return {"kmer_data": kmer_data, "test_results": test_results,
+                "n_reads": n_reads, "n_kmers": n_kmers}
+
+
     #~~~~~~~~~~~~~~PRIVATE MULTIPROCESSING METHOD~~~~~~~~~~~~~~#
     def __list_refid(self, in_q, error_q):
         """Add valid refid from whitelist to input queue to dispatch the data among the workers"""
@@ -252,7 +318,7 @@ class SampComp(object):
             for ref_id, ref_dict in self.__whitelist:
                 logger.debug("Adding {} to in_q".format(ref_id))
                 in_q.put((ref_id, ref_dict))
-                n_tx+=1
+                n_tx += 1
 
         # Manage exceptions and add error trackback to error queue
         except Exception:
@@ -265,101 +331,26 @@ class SampComp(object):
                 in_q.put(None)
             logger.debug("Parsed transcripts:{}".format(n_tx))
 
+
     def __process_references(self, in_q, out_q, error_q):
         """
         Consume ref_id, agregate intensity and dwell time at position level and
         perform statistical analyses to find significantly different regions
         """
-        n_tx = n_reads = n_lines = 0
+        n_tx = n_reads = n_kmers = 0
         try:
             logger.debug("Worker thread started")
-            # Open all files for reading. File pointer are stored in a dict matching the ref_dict entries
-            fp_dict = self.__eventalign_fn_open()
-
-            # Process refid in input queue
+            # Process references in input queue
             for ref_id, ref_dict in iter(in_q.get, None):
-                logger.debug("Worker thread processing new item from in_q: {}".format(ref_id))
-                # Create an empty dict for all positions first
-                ref_pos_list = self.__make_ref_pos_list(ref_id)
-
-                for cond_lab, sample_dict in ref_dict.items():
-                    for sample_lab, read_list in sample_dict.items():
-                        fp = fp_dict[cond_lab][sample_lab]
-
-                        for read in read_list:
-
-                            # Move to read, save read data chunk and reset file pointer
-                            fp.seek(read["byte_offset"])
-                            line_list = fp.read(read["byte_len"]).split("\n")
-                            fp.seek(0)
-
-                            # Check read_id ref_id concordance between index and data file
-                            header = numeric_cast_list(line_list[0][1:].split("\t"))
-                            if not header[0] == read["read_id"] or not header[1] == read["ref_id"]:
-                                raise NanocomporeError("Index and data files are not matching:\n{}\n{}".format(header, read))
-
-                            # Extract col names from second line
-                            col_names = line_list[1].split("\t")
-                            # Check that all required fields are present
-                            if not all_values_in (["ref_pos", "ref_kmer", "median", "dwell_time"], col_names):
-                                raise NanocomporeError("Required fields not found in the data file: {}".format(col_names))
-                            # Verify if kmers events stats values are present or not
-                            kmers_stats = all_values_in (["NNNNN_dwell_time", "mismatch_dwell_time"], col_names)
-
-                            # Parse data files kmers per kmers
-                            prev_pos = None
-                            for line in line_list[2:]:
-                                # Transform line to dict and cast str numbers to actual numbers
-                                kmer = numeric_cast_dict(keys=col_names, values=line.split("\t"))
-                                pos = kmer["ref_pos"]
-
-                                # Check consistance between eventalign data and reference sequence
-                                if kmer["ref_kmer"] != ref_pos_list[pos]["ref_kmer"]:
-                                    ref_pos_list[pos]["ref_kmer"] = ref_pos_list[pos]["ref_kmer"]+"!!!!"
-                                    #raise NanocomporeError ("Data reference kmer({}) doesn't correspond to the reference sequence ({})".format(ref_pos_list[pos]["ref_kmer"], kmer["ref_kmer"]))
-
-                                # Fill dict with the current pos values
-                                ref_pos_list[pos]["data"][cond_lab][sample_lab]["intensity"].append(kmer["median"])
-                                ref_pos_list[pos]["data"][cond_lab][sample_lab]["dwell"].append(kmer["dwell_time"])
-                                ref_pos_list[pos]["data"][cond_lab][sample_lab]["coverage"] += 1
-
-                                if kmers_stats:
-                                    # Fill in the missing positions
-                                    if prev_pos and pos-prev_pos > 1:
-                                        for missing_pos in range(prev_pos+1, pos):
-                                            ref_pos_list[missing_pos]["data"][cond_lab][sample_lab]["kmers_stats"]["missing"] += 1
-                                    # Also fill in with normalised position event stats
-                                    n_valid = (kmer["dwell_time"]-(kmer["NNNNN_dwell_time"]+kmer["mismatch_dwell_time"])) / kmer["dwell_time"]
-                                    n_NNNNN = kmer["NNNNN_dwell_time"] / kmer["dwell_time"]
-                                    n_mismatching = kmer["mismatch_dwell_time"] / kmer["dwell_time"]
-                                    ref_pos_list[pos]["data"][cond_lab][sample_lab]["kmers_stats"]["valid"] += n_valid
-                                    ref_pos_list[pos]["data"][cond_lab][sample_lab]["kmers_stats"]["NNNNN"] += n_NNNNN
-                                    ref_pos_list[pos]["data"][cond_lab][sample_lab]["kmers_stats"]["mismatching"] += n_mismatching
-                                    # Save previous position
-                                    prev_pos = pos
-
-                                n_lines+=1
-                            n_reads+=1
-
-                logger.debug("Data for {} loaded.".format(ref_id))
-                if self.__comparison_methods:
-                    random_state=np.random.RandomState(seed=42)
-                    ref_pos_list = txCompare(
-                        ref_id=ref_id,
-                        ref_pos_list=ref_pos_list,
-                        methods=self.__comparison_methods,
-                        sequence_context=self.__sequence_context,
-                        sequence_context_weights=self.__sequence_context_weights,
-                        min_coverage= self.__min_coverage,
-                        allow_warnings=self.__allow_warnings,
-                        logit=self.__logit,
-                        anova=self.__anova,
-                        random_state=random_state)
+                logger.debug(f"Worker thread processing new item from in_q: {ref_id}")
+                results = self.process_transcript(ref_id, ref_dict)
+                n_tx += 1
+                n_reads += results["n_reads"]
+                n_kmers += results["n_kmers"]
 
                 # Add the current read details to queue
-                logger.debug("Adding %s to out_q"%(ref_id))
-                out_q.put((ref_id, ref_pos_list))
-                n_tx+=1
+                logger.debug(f"Adding '{ref_id}' to out_q")
+                out_q.put((ref_id, results["kmer_data"], results["test_results"]))
 
         # Manage exceptions and add error trackback to error queue
         except Exception as e:
@@ -368,10 +359,10 @@ class SampComp(object):
 
         # Deal poison pill and close file pointer
         finally:
-            logger.debug("Processed Transcrits:{} Reads:{} Lines:{}".format(n_tx, n_reads, n_lines))
+            logger.debug(f"Processed {n_tx} transcripts, {n_reads} reads, {n_kmers} kmers")
             logger.debug("Adding poison pill to out_q")
-            self.__eventalign_fn_close(fp_dict)
             out_q.put(None)
+
 
     def __write_output(self, out_q, error_q):
         # Get results out of the out queue and write in shelve
@@ -379,23 +370,25 @@ class SampComp(object):
         ref_id_list = []
         n_tx = n_pos = 0
         try:
-            with shelve.open(self.__db_fn, flag='n') as db, tqdm(total=len(self.__whitelist), unit=" Processed References", disable= not self.__progress) as pbar:
+            with shelve.open(self.__db_fn, flag='n') as db, \
+                 tqdm(total=len(self.__whitelist), unit=" Processed References",
+                      disable=not self.__progress) as pbar:
                 # Iterate over the counter queue and process items until all poison pills are found
                 for _ in range(self.__nthreads):
-                    for ref_id, ref_pos_list in iter(out_q.get, None):
+                    for ref_id, kmer_data, test_results in iter(out_q.get, None):
                         ref_id_list.append(ref_id)
                         logger.debug("Writer thread writing %s"%ref_id)
-                        # Get pvalue fields available in analysed data before
-                        for pos_dict in ref_pos_list:
-                            if 'txComp' in pos_dict:
-                                for res in pos_dict['txComp'].keys():
+                        # Get pvalue fields available in analysed data
+                        for res_dict in test_results.values():
+                            if "txComp" in res_dict:
+                                for res in res_dict["txComp"].keys():
                                     if "pvalue" in res:
-                                        n_pos+=1
+                                        n_pos += 1
                                         pvalue_tests.add(res)
                         # Write results in a shelve db
-                        db [ref_id] = ref_pos_list
+                        db[ref_id] = (kmer_data, test_results)
                         pbar.update(1)
-                        n_tx+=1
+                        n_tx += 1
 
                 # Write list of refid
                 db["__ref_id_list"] = ref_id_list
@@ -417,84 +410,7 @@ class SampComp(object):
             error_q.put(traceback.format_exc())
 
         finally:
-            logger.debug("Written Transcripts:{} Valid positions:{}".format(n_tx, n_pos))
-            logger.info ("All Done. Transcripts processed: {}".format(n_tx))
+            logger.debug(f"Wrote {n_tx} transcripts, {n_pos} valid positions")
+            logger.info(f"All done. Transcripts processed: {n_tx}")
             # Kill error queue with poison pill
             error_q.put(None)
-
-    #~~~~~~~~~~~~~~PRIVATE HELPER METHODS~~~~~~~~~~~~~~#
-    def __check_eventalign_fn_dict(self, d):
-        """"""
-        # Check that the number of condition is 2 and raise a warning if there are less than 2 replicates per conditions
-        if len(d) != 2:
-            raise NanocomporeError("2 conditions are expected. Found {}".format(len(d)))
-        for cond_lab, sample_dict in d.items():
-            if len(sample_dict) == 1:
-                logger.info("Only 1 replicate found for condition {}".format(cond_lab))
-                logger.info("This is not recommended. The statistics will be calculated with the logit method")
-
-        # Test if files are accessible and verify that there are no duplicated replicate labels
-        duplicated_lab = False
-        rep_lab_list = []
-        rep_fn_list = []
-        for cond_lab, sd in d.items():
-            for rep_lab, fn in sd.items():
-                if not access_file(fn):
-                    raise NanocomporeError("Cannot access eventalign file: {}".format(fn))
-                if fn in rep_fn_list:
-                    raise NanocomporeError("Duplicated eventalign file detected: {}".format(fn))
-                if rep_lab in rep_lab_list:
-                    duplicated_lab = True
-                rep_lab_list.append(rep_lab)
-                rep_fn_list.append(fn)
-        if not duplicated_lab:
-            return d
-
-        # If duplicated replicate labels found, prefix labels with condition name
-        else:
-            logger.debug("Found duplicated labels in the replicate names. Prefixing with condition name")
-            d_clean = OrderedDict()
-            for cond_lab, sd in d.items():
-                d_clean[cond_lab] = OrderedDict()
-                for rep_lab, fn in sd.items():
-                    d_clean[cond_lab]["{}_{}".format(cond_lab, rep_lab)] = fn
-            return d_clean
-
-    def __eventalign_fn_open(self):
-        """"""
-        fp_dict = OrderedDict()
-        for cond_lab, sample_dict in self.__eventalign_fn_dict.items():
-            fp_dict[cond_lab] = OrderedDict()
-            for sample_lab, fn in sample_dict.items():
-                fp_dict[cond_lab][sample_lab] = open(fn, "r")
-        return fp_dict
-
-    def __eventalign_fn_close(self, fp_dict):
-        """"""
-        for sample_dict in fp_dict.values():
-            for fp in sample_dict.values():
-                fp.close()
-
-    def __make_ref_pos_list(self, ref_id):
-        """"""
-        ref_pos_list = []
-        with Fasta(self.__fasta_fn) as fasta:
-            ref_fasta = fasta [ref_id]
-            ref_len = len(ref_fasta)
-            ref_seq = str(ref_fasta)
-
-            for pos in range(ref_len-4):
-                pos_dict = OrderedDict()
-                pos_dict["ref_kmer"] = ref_seq[pos:pos+5]
-                pos_dict["data"] = OrderedDict()
-                for cond_lab, s_dict in self.__eventalign_fn_dict.items():
-                    pos_dict["data"][cond_lab] = OrderedDict()
-                    for sample_lab in s_dict.keys():
-
-                        pos_dict["data"][cond_lab][sample_lab] = {
-                            "intensity":[],
-                            "dwell":[],
-                            "coverage":0,
-                            "kmers_stats":{"missing":0,"valid":0,"NNNNN":0,"mismatching":0}}
-                ref_pos_list.append(pos_dict)
-        return ref_pos_list
