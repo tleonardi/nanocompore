@@ -85,7 +85,7 @@ class Whitelist(object):
             raise NanocomporeError("The fasta file cannot be opened")
 
         # Database interaction
-        with DataStore(db_path, DataStore.DBCreateMode.MUST_EXIST) as db:
+        with DataStore(db_path) as db:
             db_samples = db.get_samples(sample_dict)
 
             # How many samples are in the DB? If we want all, we don't need a constraint below.
@@ -129,7 +129,7 @@ class Whitelist(object):
             if where:
                 query += " WHERE %s" % " AND ".join(where)
 
-            # dict. structure: transcript -> condition -> sample -> list of reads
+            # Dict. structure: transcript -> condition -> sample -> list of reads
             ref_reads = {}
             logger.info("Querying reads from database")
             try:
@@ -181,7 +181,7 @@ class Whitelist(object):
 
     def __iter__(self):
         for i, j in self.ref_reads.items():
-            yield(i,j)
+            yield (i, j)
 
     def __getitem__(self, items):
         return self.ref_reads.get(items, None)
