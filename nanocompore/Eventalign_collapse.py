@@ -19,7 +19,7 @@ from tqdm import tqdm
 # Local imports
 from nanocompore.common import *
 from nanocompore.SuperParser import SuperParser
-from nanocompore.DataStore import DataStore
+from nanocompore.DataStore import DataStore, DBCreateMode
 
 # Disable multithreading for MKL and openBlas
 os.environ["MKL_NUM_THREADS"] = "1"
@@ -90,6 +90,7 @@ class Eventalign_collapse ():
         self.__change_colnames = {"contig":"ref_id" ,"position":"ref_pos", "read_name":"read_id", "samples":"sample_list", "event_length":"dwell_time"}
         self.__cast_colnames = {"ref_pos":int, "dwell_time":np.float32, "sample_list":lambda x: [float(i) for i in x.split(",")]}
 
+
     def __call__(self):
         """
         Run the analysis
@@ -139,6 +140,7 @@ class Eventalign_collapse ():
             except:
                 logger.error("An error occured while trying to kill processes\n")
             raise E
+
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~PRIVATE METHODS~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
     def __split_reads (self, in_q, error_q):
@@ -195,6 +197,7 @@ class Eventalign_collapse ():
                 in_q.put(None)
             logger.debug("Parsed Reads:{} Events:{}".format(n_reads, n_events))
 
+
     def __process_read (self, in_q, out_q, error_q):
         """
         Multi-threaded workers collapsing events at kmer level
@@ -232,7 +235,8 @@ class Eventalign_collapse ():
             logger.debug("Processed Reads:{} Kmers:{} Events:{} Signals:{}".format(n_reads, n_kmers, n_events, n_signals))
             out_q.put(None)
 
-    def __write_output_to_db (self, out_q, error_q):
+
+    def __write_output_to_db(self, out_q, error_q):
         """
         Mono-threaded Writer
         """
@@ -243,7 +247,7 @@ class Eventalign_collapse ():
         n_reads = 0
         db_path = os.path.join(self.__outpath, self.__outprefix+"_nanocompore.db")
         try:
-            with DataStore(db_path, DataStore.DBCreateMode.CREATE_MAYBE) as datastore, tqdm (unit=" reads") as pbar:
+            with DataStore(self.__db_path, DBCreateMode.CREATE_MAYBE) as datastore, tqdm (unit=" reads") as pbar:
                 # Iterate over out queue until nthread poison pills are found
                 for _ in range (self.__nthreads):
                     for read in iter (out_q.get, None):
@@ -260,6 +264,7 @@ class Eventalign_collapse ():
             error_q.put(None)
             pr.disable()
             pr.dump_stats("prof")
+
 
     def __write_output (self, out_q, error_q):
         """
