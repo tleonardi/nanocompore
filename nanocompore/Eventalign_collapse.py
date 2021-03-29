@@ -19,7 +19,7 @@ from tqdm import tqdm
 # Local imports
 from nanocompore.common import *
 from nanocompore.SuperParser import SuperParser
-from nanocompore.DataStore import DataStore, DBCreateMode
+from nanocompore.DataStore import DataStore_EventAlign, DBCreateMode
 
 # Disable multithreading for MKL and openBlas
 os.environ["MKL_NUM_THREADS"] = "1"
@@ -247,7 +247,8 @@ class Eventalign_collapse ():
         n_reads = 0
         db_path = os.path.join(self.__outpath, self.__outprefix+"_nanocompore.db")
         try:
-            with DataStore(self.__db_path, DBCreateMode.CREATE_MAYBE) as datastore, tqdm (unit=" reads") as pbar:
+            with DataStore_EventAlign(self.__db_path, DBCreateMode.CREATE_MAYBE) as datastore, \
+                 tqdm (unit=" reads") as pbar:
                 # Iterate over out queue until nthread poison pills are found
                 for _ in range (self.__nthreads):
                     for read in iter (out_q.get, None):

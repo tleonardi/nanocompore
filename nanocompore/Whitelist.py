@@ -15,7 +15,7 @@ from pyfaidx import Fasta
 
 # Local package
 from nanocompore.common import *
-from nanocompore.DataStore import DataStore
+from nanocompore.DataStore import DataStore_EventAlign
 
 # Set global random seed
 downsample_random_seed = 42
@@ -85,7 +85,7 @@ class Whitelist(object):
             raise NanocomporeError("The fasta file cannot be opened")
 
         # Database interaction
-        with DataStore(db_path) as db:
+        with DataStore_EventAlign(db_path) as db:
             db_samples = db.get_samples(sample_dict)
 
             # How many samples are in the DB? If we want all, we don't need a constraint below.
