@@ -19,7 +19,64 @@ class DBCreateMode(Enum):
 
 
 class DataStore(object):
-    """Store Nanocompore data in an SQLite database"""
+    """Store Nanocompore data in an SQLite database - base class"""
+
+    create_tables_queries = [] # to be filled by derived classes
+
+    def __init__(self,
+                 db_path:str,
+                 create_mode=DBCreateMode.MUST_EXIST):
+        self._db_path = db_path
+        self._create_mode = create_mode
+        self._connection = None
+        self._cursor = None
+
+    def _init_db(self):
+        if self.create_tables_queries:
+            logger.debug("Setting up database tables")
+            try:
+                for query in create_tables_queries:
+                    self._cursor.execute(query)
+                self._connection.commit()
+            except:
+                logger.error("Error creating database tables")
+                raise
+
+    def __enter__(self):
+        if self._create_mode == DBCreateMode.MUST_EXIST and not os.path.exists(self._db_path):
+            raise NanocomporeError(f"Database file '{self._db_path}' does not exist")
+        if self._create_mode == DBCreateMode.OVERWRITE:
+            with contextlib.suppress(FileNotFoundError): # file may not exist
+                os.remove(self._db_path)
+                logger.debug(f"Removed existing database file '{self._db_path}'")
+        try:
+            logger.debug("Connecting to database")
+            self._connection = sqlite3.connect(self._db_path)
+            self._connection.row_factory = sqlite3.Row
+            self._cursor = self._connection.cursor()
+        except:
+            logger.error("Error connecting to database")
+            raise
+        if self._create_mode == DBCreateMode.OVERWRITE or \
+           (self._create_mode == DBCreateMode.CREATE_MAYBE and not os.path.exists(self._db_path)):
+            self._init_db()
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        if self._connection:
+            logger.debug("Closing database connection")
+            self._connection.commit()
+            self._connection.close()
+            self._connection = None
+            self._cursor = None
+
+    @property
+    def cursor(self):
+        return self._cursor
+
+
+class DataStore_EventAlign(DataStore):
+    """Store Nanocompore data in an SQLite database - subclass for Eventalign_collapse results"""
 
     create_reads_query = ("CREATE TABLE IF NOT EXISTS reads ("
                           "id INTEGER NOT NULL PRIMARY KEY,"
@@ -73,53 +130,8 @@ class DataStore(object):
                                 ")"
                                 )
 
-    def __init__(self,
-                 db_path:str,
-                 create_mode=DBCreateMode.MUST_EXIST):
-        self.__db_path = db_path
-        self.__create_mode = create_mode
-        self.__connection = None
-        self.__cursor = None
-
-    def __enter__(self):
-        if self.__create_mode == DBCreateMode.MUST_EXIST and not os.path.exists(self.__db_path):
-            raise NanocomporeError(f"Database file '{self.__db_path}' does not exist")
-        if self.__create_mode == DBCreateMode.OVERWRITE:
-            with contextlib.suppress(FileNotFoundError): # file may not exist
-                os.remove(self.__db_path)
-                logger.debug(f"Removed existing database file '{self.__db_path}'")
-        try:
-            logger.debug("Connecting to database")
-            self.__connection = sqlite3.connect(self.__db_path)
-            self.__connection.row_factory = sqlite3.Row
-            self.__cursor = self.__connection.cursor()
-        except:
-            logger.error("Error connecting to database")
-            raise
-        if self.__create_mode == DBCreateMode.OVERWRITE or \
-           (self.__create_mode == DBCreateMode.CREATE_MAYBE and not os.path.exists(self.__db_path)):
-            self.__init_db()
-        return self
-
-    def __exit__(self, exc_type, exc_value, traceback):
-        if self.__connection:
-            logger.debug("Closing database connection")
-            self.__connection.commit()
-            self.__connection.close()
-            self.__connection = None
-            self.__cursor = None
-
-    def __init_db(self):
-        logger.debug("Setting up database tables")
-        try:
-            self.__cursor.execute(self.create_reads_query)
-            self.__cursor.execute(self.create_kmers_query)
-            self.__cursor.execute(self.create_samples_query)
-            self.__cursor.execute(self.create_transcripts_query)
-            self.__connection.commit()
-        except:
-            logger.error("Error creating database tables")
-            raise
+    create_tables_queries = [create_reads_query, create_kmers_query,
+                             create_samples_query, create_transcripts_query]
 
     def store_read(self, read):
         """
@@ -134,16 +146,16 @@ class DataStore(object):
         values = (read.read_id, sample_id, tx_id, read.ref_start, read.ref_end,
                   read.n_events, read.n_signals, read.dwell_time) + tuple(read.kmers_status.values())
         try:
-            self.__cursor.execute("INSERT INTO reads VALUES(NULL" + ", ?" * len(values) + ")",
+            self._cursor.execute("INSERT INTO reads VALUES(NULL" + ", ?" * len(values) + ")",
                                   values)
-            read_id = self.__cursor.lastrowid
+            read_id = self._cursor.lastrowid
         except Exception:
             logger.error("Error inserting read into database")
             raise Exception
 
         for kmer in read.kmer_l:
             self.__store_kmer(kmer=kmer, read_id=read_id)
-        self.__connection.commit()
+        self._connection.commit()
         # TODO check for success and return true/false
 
     def __store_kmer(self, kmer, read_id):
@@ -155,7 +167,7 @@ class DataStore(object):
         """
         res = kmer.get_results() # needed for 'median' and 'mad' values
         try:
-            self.__cursor.execute("INSERT INTO kmers VALUES(NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            self._cursor.execute("INSERT INTO kmers VALUES(NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                               (read_id, res["ref_pos"], res["ref_kmer"], res["num_events"],
                                res["num_signals"], res["status"], res["dwell_time"],
                                res["NNNNN_dwell_time"], res["mismatch_dwell_time"], res["median"], res["mad"]))
@@ -175,16 +187,16 @@ class DataStore(object):
                      ");"
                      )
             try:
-                self.__cursor.execute(query)
+                self._cursor.execute(query)
             except Exception:
                 logger.error("Error while inserting transcript into the database")
                 raise Exception
 
         query = f"SELECT id from transcripts WHERE name = '{tx_name}'"
         try:
-            self.__cursor.execute(query)
-            record = self.__cursor.fetchone()
-            self.__connection.commit()
+            self._cursor.execute(query)
+            record = self._cursor.fetchone()
+            self._connection.commit()
         except Exception:
             logger.error("Error while selecting transcript ID from the database")
             raise Exception
@@ -205,16 +217,16 @@ class DataStore(object):
                      ");"
                      )
             try:
-                self.__cursor.execute(query)
+                self._cursor.execute(query)
             except Exception:
                 logger.error("Error while inserting sample into the database")
                 raise Exception
 
         query = f"SELECT id from samples WHERE name = '{sample_name}'"
         try:
-            self.__cursor.execute(query)
-            record = self.__cursor.fetchone()
-            self.__connection.commit()
+            self._cursor.execute(query)
+            record = self._cursor.fetchone()
+            self._connection.commit()
         except Exception:
             logger.error("Error while selecting sample ID from the database")
             raise Exception
@@ -223,12 +235,8 @@ class DataStore(object):
         else:
             return None
 
-    @property
-    def cursor(self):
-        return self.__cursor
-
     def get_samples(self, sample_dict=None):
-        if not self.__connection:
+        if not self._connection:
             raise NanocomporeError("Database connection not yet opened")
         expected_samples = []
         if sample_dict: # query only relevant samples
@@ -241,8 +249,8 @@ class DataStore(object):
             where = ""
         db_samples = {}
         try:
-            self.__cursor.execute("SELECT * FROM samples" + where)
-            for row in self.__cursor:
+            self._cursor.execute("SELECT * FROM samples" + where)
+            for row in self._cursor:
                 db_samples[row["id"]] = row["name"]
         except Exception:
             logger.error("Error reading sample names from database")
@@ -251,3 +259,74 @@ class DataStore(object):
             if sample not in db_samples.values():
                 raise NanocomporeError(f"Sample '{sample}' not present in database")
         return db_samples
+
+
+class DataStore_SampComp(DataStore):
+    """Store Nanocompore data in an SQLite database - subclass for SampComp results"""
+
+    create_transcripts_query = ("CREATE TABLE IF NOT EXISTS transcripts ("
+                                "id INTEGER NOT NULL PRIMARY KEY,"
+                                "name VARCHAR NOT NULL UNIQUE"
+                                ")"
+                                )
+
+    create_test_results_query = ("CREATE TABLE IF NOT EXISTS test_results ("
+                                 "id INTEGER NOT NULL PRIMARY KEY,"
+                                 "transcriptid VARCHAR NOT NULL,"
+                                 "kmer INTEGER NOT NULL,"
+                                 "KS_intensity_pvalue REAL,"
+                                 "KS_dwell_pvalue REAL,"
+                                 "GMM_n_components INTEGER,"
+                                 "GMM_cluster_counts VARCHAR,"
+                                 "GMM_logit_pvalue REAL,"
+                                 "GMM_logit_coef REAL,"
+                                 "c1_mean_intensity REAL,"
+                                 "c2_mean_intensity REAL,"
+                                 "c1_median_intensity REAL,"
+                                 "c2_median_intensity REAL,"
+                                 "c1_sd_intensity REAL,"
+                                 "c2_sd_intensity REAL,"
+                                 "c1_mean_dwell REAL,"
+                                 "c2_mean_dwell REAL,"
+                                 "c1_median_dwell REAL,"
+                                 "c2_median_dwell REAL,"
+                                 "c1_sd_dwell REAL,"
+                                 "c2_sd_dwell REAL,"
+                                 "UNIQUE (transcriptname, kmer)"
+                                 ")"
+                                 )
+
+    create_tables_queries = [create_transcripts_query, create_test_results_query]
+
+    def __insert_transcript_get_id(self, tx_name):
+        try:
+            self._cursor.execute("SELECT id FROM transcripts WHERE name = ?", tx_name)
+            if (row := self._cursor.fetchone()) is not None:
+                return row["id"]
+            self._cursor.execute("INSERT INTO transcripts VALUES (NULL, ?)", tx_name)
+            # TODO: if there could be multiple writing threads, "INSERT OR IGNORE"
+            # query should go before "SELECT"
+            return self._cursor.lastrowid
+        except:
+            logger.error(f"Failed to insert/look up transcript '{tx_name}'")
+            raise
+
+    def store_test_results(self, tx_name, test_results):
+        if not self._connection:
+            raise NanocomporeError("Database connection not yet opened")
+        tx_id = self._insert_transcript_get_id(tx_name)
+        for kmer, res in test_results.items():
+            values = [tx_id, kmer, res["KS_intensity_pvalue"], res["KS_dwell_pvalue"]]
+            if "GMM_model" in res:
+                values += [res["GMM_model"]["model"].n_components,
+                           res["GMM_model"]["cluster_counts"],
+                           res["GMM_logit_model"]["pvalue"],
+                           res["GMM_logit_model"]["coef"]]
+            else:
+                values += [None, None, None, None]
+            values.append(res["shift_stats"].values())
+            try:
+                self._cursor.execute("INSERT INTO test_results VALUES (NULL" + ", ?" * len(values) + ")", values)
+            except:
+                logger.error(f"Error storing test results for transcript '{tx_name}'")
+                raise
