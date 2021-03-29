@@ -46,18 +46,17 @@ def txCompare(ref_id,
         anova = False
         logit = True
 
-    results = defaultdict(dict)
+    results = {}
     for pos, pos_dict in kmer_data.items():
         logger.trace(f"Processing position {pos}")
         # Filter out low coverage positions
-        results[pos]["lowCov"] = lowcov = has_low_coverage(pos_dict, min_coverage)
-        if lowcov:
+        if has_low_coverage(pos_dict, min_coverage):
             logger.trace(f"Position {pos} has low coverage, skipping")
             n_lowcov += 1
             continue
 
         # Perform stat tests
-        res = dict()
+        res = {}
         condition_labels = tuple(pos_dict.keys())
         if len(condition_labels) != 2:
             raise NanocomporeError("The %s method only supports two conditions" % method)
@@ -94,15 +93,15 @@ def txCompare(ref_id,
 
         # Calculate shift statistics
         logger.trace(f"Calculatign shift stats for {pos}")
-        res['shift_stats'] = shift_stats(condition1_intensity, condition2_intensity, condition1_dwell, condition2_dwell)
+        res["shift_stats"] = shift_stats(condition1_intensity, condition2_intensity, condition1_dwell, condition2_dwell)
         # Save results in main
         logger.trace(f"Saving test results for {pos}")
-        results[pos]["txComp"] = res
+        results[pos] = res
     logger.debug("Skipped {} positions because not present in all samples with sufficient coverage".format(n_lowcov))
 
     # Combine pvalue within a given sequence context
     if sequence_context > 0:
-        logger.debug ("Calculate weighs and cross correlation matrices by tests")
+        logger.debug ("Calculate weights and cross correlation matrices by tests")
         if sequence_context_weights == "harmonic":
             # Generate weights as a symmetrical harmonic series
             weights = harmonic_series(sequence_context)
@@ -112,12 +111,8 @@ def txCompare(ref_id,
         # Collect pvalue lists per tests
         pval_list_dict = defaultdict(list)
         for res_dict in results.values():
-            if "txComp" in res_dict:
-                for test in tests:
-                    pval_list_dict[test].append(res_dict["txComp"][test])
-            elif res_dict["lowCov"]:
-                for test in tests:
-                    pval_list_dict[test].append(np.nan)
+            for test in tests:
+                pval_list_dict[test].append(res_dict[test])
         # Compute cross correlation matrix per test
         corr_matrix_dict = OrderedDict()
         for test in tests:
@@ -126,30 +121,26 @@ def txCompare(ref_id,
         logger.debug("Combine adjacent position pvalues with Hou's method position by position")
         # Iterate over each position in previously generated result dictionary
         for mid_pos, res_dict in results.items():
-            # Perform test only if middle pos is valid
-            if res_dict["lowCov"]:
-                continue
-
             pval_list_dict = defaultdict(list)
             for pos in range(mid_pos - sequence_context, mid_pos + sequence_context + 1):
-                # If any of the positions is missing or lowCov, or any of the p-values in the context is NaN, consider it 1
-                if (pos not in results) or results[pos]["lowCov"]:
+                # If any of the positions is missing or any of the p-values in the context is NaN, consider it 1
+                if pos not in results:
                     for test in tests:
                         pval_list_dict[test].append(1)
                 else:
                     for test in tests:
-                        if np.isnan(results[pos]["txComp"][test]):
+                        if np.isnan(results[pos][test]):
                             pval_list_dict[test].append(1)
                         else: # just extract the corresponding pvalue
-                            pval_list_dict[test].append(results[pos]["txComp"][test])
+                            pval_list_dict[test].append(results[pos][test])
             # Combine collected pvalues and add to dict
             for test in tests:
                 test_label = "{}_context_{}".format(test, sequence_context)
                 # If the mid p-value is NaN, also set the context p-value to NaN
-                if np.isnan(res_dict["txComp"][test]):
-                    res_dict["txComp"][test_label] = np.nan
+                if np.isnan(res_dict[test]):
+                    res_dict[test_label] = np.nan
                 else:
-                    res_dict["txComp"][test_label] = combine_pvalues_hou(pval_list_dict[test], weights, corr_matrix_dict[test])
+                    res_dict[test_label] = combine_pvalues_hou(pval_list_dict[test], weights, corr_matrix_dict[test])
 
     return results
 
