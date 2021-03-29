@@ -11,7 +11,6 @@ import os
 
 # Third party
 from loguru import logger
-import yaml
 from tqdm import tqdm
 import numpy as np
 from pyfaidx import Fasta
@@ -115,15 +114,6 @@ class SampComp(object):
 
         # Save init options in dict for later
         log_init_state(loc=locals())
-
-        # TODO: remove this? (may be better handled in '__main__.py', if needed)
-        # If 'sample_dict' is not a dict try to load a YAML file instead
-        if type(sample_dict) == str:
-            logger.debug("Parsing YAML file")
-            if not access_file(sample_dict):
-                raise NanocomporeError("{} is not a valid file".format(sample_dict))
-            with open(sample_dict, "r") as fp:
-                sample_dict = yaml.load(fp, Loader=yaml.SafeLoader)
 
         # Check eventalign_dict file paths and labels
         check_sample_dict(sample_dict)
@@ -251,7 +241,7 @@ class SampComp(object):
 
     def process_transcript(self, tx_id, whitelist_reads):
         """Process a transcript given filtered reads from Whitelist"""
-        logger.debug("Processing transcript: {tx_id}")
+        logger.debug(f"Processing transcript: {tx_id}")
 
         # Kmer data from whitelisted reads from all samples for this transcript
         # Structure: kmer position -> condition -> sample -> data
@@ -380,11 +370,10 @@ class SampComp(object):
                         logger.debug("Writer thread writing %s"%ref_id)
                         # Get pvalue fields available in analysed data
                         for res_dict in test_results.values():
-                            if "txComp" in res_dict:
-                                for res in res_dict["txComp"].keys():
-                                    if "pvalue" in res:
-                                        n_pos += 1
-                                        pvalue_tests.add(res)
+                            for res in res_dict.keys():
+                                if "pvalue" in res:
+                                    n_pos += 1
+                                    pvalue_tests.add(res)
                         # Write results in a shelve db
                         db[ref_id] = (kmer_data, test_results)
                         pbar.update(1)
