@@ -5,6 +5,7 @@ import datetime
 import os
 import sqlite3
 import contextlib
+from itertools import zip_longest
 
 # Third party
 from loguru import logger
@@ -119,10 +120,10 @@ class DataStore_EventAlign(DataStore):
 
     create_samples_query = ("CREATE TABLE IF NOT EXISTS samples ("
                             "id INTEGER NOT NULL PRIMARY KEY,"
-                            "name VARCHAR NOT NULL UNIQUE"
+                            "name VARCHAR NOT NULL UNIQUE,"
+                            "condition VARCHAR"
                             ")"
                             )
-    # TODO: add 'condition' column
 
     create_transcripts_query = ("CREATE TABLE IF NOT EXISTS transcripts ("
                                 "id INTEGER NOT NULL PRIMARY KEY,"
@@ -260,6 +261,21 @@ class DataStore_EventAlign(DataStore):
                 raise NanocomporeError(f"Sample '{sample}' not present in database")
         return db_samples
 
+    def store_sample_info(self, sample_dict):
+        if not self._connection:
+            raise NanocomporeError("Database connection not yet opened")
+        # query: insert sample; if it exists, update condition if that's missing
+        query = "INSERT INTO samples(id, name, condition) VALUES (NULL, ?, ?) " \
+            "ON CONFLICT(name) DO UPDATE SET condition = excluded.condition " \
+            "WHERE condition IS NULL"
+        for condition, samples in sample_dict.items():
+            try:
+                self._cursor.executemany(query, [(condition, sample) for sample in samples])
+            except:
+                logger.error(f"Error storing sample information for condition '{condition}'")
+                raise
+        self._connection.commit()
+
 
 class DataStore_SampComp(DataStore):
     """Store Nanocompore data in an SQLite database - subclass for SampComp results"""
@@ -270,12 +286,23 @@ class DataStore_SampComp(DataStore):
                                 ")"
                                 )
 
+    create_whitelist_query = ("CREATE TABLE IF NOT EXISTS whitelist ("
+                              "transcriptid INTEGER NOT NULL,"
+                              "readid INTEGER NOT NULL UNIQUE,"
+                              "FOREIGN KEY (transcriptid) REFERENCES transcripts(id)"
+                              # "readid" is foreign key for "reads" table in EventAlign DB
+                              ")")
+
     create_test_results_query = ("CREATE TABLE IF NOT EXISTS test_results ("
-                                 "id INTEGER NOT NULL PRIMARY KEY,"
+                                 "id INTEGER NOT NULL PRIMARY KEY," # needed?
                                  "transcriptid VARCHAR NOT NULL,"
                                  "kmer INTEGER NOT NULL,"
+                                 "MW_intensity_pvalue REAL,"
+                                 "MW_dwell_pvalue REAL,"
                                  "KS_intensity_pvalue REAL,"
                                  "KS_dwell_pvalue REAL,"
+                                 "TT_intensity_pvalue REAL,"
+                                 "TT_dwell_pvalue REAL,"
                                  "GMM_n_components INTEGER,"
                                  "GMM_cluster_counts VARCHAR,"
                                  "GMM_logit_pvalue REAL,"
@@ -292,11 +319,14 @@ class DataStore_SampComp(DataStore):
                                  "c2_median_dwell REAL,"
                                  "c1_sd_dwell REAL,"
                                  "c2_sd_dwell REAL,"
-                                 "UNIQUE (transcriptname, kmer)"
+                                 "UNIQUE (transcriptid, kmer),"
+                                 "FOREIGN KEY (transcriptid) REFERENCES transcripts(id)"
                                  ")"
                                  )
+    # TODO: store GMM cluster counts in a separate table (one row per sample)
 
-    create_tables_queries = [create_transcripts_query, create_test_results_query]
+    create_tables_queries = [create_transcripts_query, create_whitelist_query,
+                             create_test_results_query]
 
     def __insert_transcript_get_id(self, tx_name):
         try:
@@ -304,6 +334,7 @@ class DataStore_SampComp(DataStore):
             if (row := self._cursor.fetchone()) is not None:
                 return row["id"]
             self._cursor.execute("INSERT INTO transcripts VALUES (NULL, ?)", tx_name)
+            self._connection.commit()
             # TODO: if there could be multiple writing threads, "INSERT OR IGNORE"
             # query should go before "SELECT"
             return self._cursor.lastrowid
@@ -315,8 +346,12 @@ class DataStore_SampComp(DataStore):
         if not self._connection:
             raise NanocomporeError("Database connection not yet opened")
         tx_id = self._insert_transcript_get_id(tx_name)
+        univar_pvalues = [f"{t}_{m}_pvalue" for t in ["MW", "KS", "TT"]
+                          for m in ["intensity", "dwell"]]
         for kmer, res in test_results.items():
-            values = [tx_id, kmer, res["KS_intensity_pvalue"], res["KS_dwell_pvalue"]]
+            values = [tx_id, kmer]
+            for key in univar_pvalues:
+                values.append(res.get(key)) # appends 'None' if key doesn't exist
             if "GMM_model" in res:
                 values += [res["GMM_model"]["model"].n_components,
                            res["GMM_model"]["cluster_counts"],
@@ -329,4 +364,22 @@ class DataStore_SampComp(DataStore):
                 self._cursor.execute("INSERT INTO test_results VALUES (NULL" + ", ?" * len(values) + ")", values)
             except:
                 logger.error(f"Error storing test results for transcript '{tx_name}'")
+                raise
+        self._connection.commit()
+
+    def store_whitelist(self, whitelist):
+        if not self._connection:
+            raise NanocomporeError("Database connection not yet opened")
+        for tx_name, read_dict in whitelist:
+            try:
+                tx_id = self.__insert_transcript_get_id(tx_name)
+                for cond_reads in read_dict.values():
+                    for sample_reads in cond_reads.values():
+                        values = zip_longest([], sample_reads, fillvalue=tx_id)
+                        self._cursor.executemany("INSERT INTO whitelist VALUES (?, ?)", values)
+                        # TODO: store sample/condition information (again)?
+                        # it can be retrieved from "reads"/"samples" tables given "readid"
+                self._connection.commit()
+            except:
+                logger.error(f"Error storing whitelisted reads for transcript '{tx_name}'")
                 raise
