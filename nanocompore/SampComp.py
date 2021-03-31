@@ -17,7 +17,7 @@ from pyfaidx import Fasta
 
 # Local package
 from nanocompore.common import *
-from nanocompore.DataStore import DataStore
+from nanocompore.DataStore import *
 from nanocompore.Whitelist import Whitelist
 from nanocompore.TxComp import txCompare
 from nanocompore.SampCompDB import SampCompDB
@@ -37,10 +37,11 @@ class SampComp(object):
     #~~~~~~~~~~~~~~FUNDAMENTAL METHODS~~~~~~~~~~~~~~#
 
     def __init__(self,
-                 db_path:str,
+                 input_db_path:str,
                  sample_dict:dict,
                  fasta_fn:str,
                  bed_fn:str = None,
+                 output_db_path:str,
                  outpath:str = "results",
                  outprefix:str = "out",
                  overwrite:bool = False,
@@ -64,11 +65,17 @@ class SampComp(object):
         Initialise a `SampComp` object and generates a white list of references with sufficient coverage for subsequent analysis.
         The retuned object can then be called to start the analysis.
         Args:
-        * db_path
+        * input_db_path
             Path to the SQLite database file with event-aligned read/kmer data
         * sample_dict
             Dictionary containing lists of (unique) sample names, grouped by condition
             example d = {"control": ["C1", "C2"], "treatment": ["T1", "T2"]}
+        * fasta_fn
+            Path to a fasta file corresponding to the reference used for read alignment.
+        * bed_fn
+            Path to a BED file containing the annotation of the transcriptome used as reference when mapping.
+        * output_db_path
+            Path to the SQLite database file for storing results
         * outpath
             Path to the output folder.
         * outprefix
@@ -76,14 +83,10 @@ class SampComp(object):
         * overwrite
             If the output directory already exists, the standard behaviour is to raise an error to prevent overwriting existing data
             This option ignore the error and overwrite data if they have the same outpath and outprefix.
-        * fasta_fn
-            Path to a fasta file corresponding to the reference used for read alignment.
-        * bed_fn
-            Path to a BED file containing the annotation of the transcriptome used as reference when mapping.
         * whitelist
             Whitelist object previously generated with nanocompore Whitelist. If not given, will be automatically generated.
         * comparison_methods
-            Statistical method to compare the 2 samples (mann_whitney or MW, kolmogorov_smirnov or KS, t_test or TT, gaussian_mixture_model or GMM).
+            Statistical method to compare the two samples (mann_whitney or MW, kolmogorov_smirnov or KS, t_test or TT, gaussian_mixture_model or GMM).
             This can be a list or a comma separated string. {MW,KS,TT,GMM}
         * logit
             Force logistic regression even if we have less than 2 replicates in any condition.
@@ -147,7 +150,7 @@ class SampComp(object):
                     raise NanocomporeError("Invalid comparison method {}".format(method))
 
         if not whitelist:
-            whitelist = Whitelist(db_path,
+            whitelist = Whitelist(input_db_path,
                                   sample_dict,
                                   fasta_fn,
                                   min_coverage = min_coverage,
@@ -158,6 +161,8 @@ class SampComp(object):
                                   exclude_ref_id = exclude_ref_id)
         elif not isinstance(whitelist, Whitelist):
             raise NanocomporeError("Whitelist is not valid")
+        with DataStore_SampComp(output_db_path, DBCreateMode.CREATE_MAYBE) as db:
+            db.store_whitelist(whitelist)
 
         # Set private args from whitelist args
         self.__min_coverage = whitelist._Whitelist__min_coverage
@@ -165,7 +170,7 @@ class SampComp(object):
         self.__max_invalid_kmers_freq = whitelist._Whitelist__max_invalid_kmers_freq
 
         # Save private args
-        self.__db_path = db_path
+        self.__input_db_path = input_db_path
         self.__sample_dict = sample_dict
         self.__fasta_fn = fasta_fn
         self.__bed_fn = bed_fn
@@ -257,7 +262,7 @@ class SampComp(object):
         n_reads = n_kmers = 0
 
         # Read kmer data from database
-        with DataStore(self.__db_path) as db:
+        with DataStore_EventAlign(self.__input_db_path) as db:
             for cond_lab, sample_dict in whitelist_reads.items():
                 for sample_id, read_ids in sample_dict.items():
                     if not read_ids: continue # TODO: error?
