@@ -36,7 +36,7 @@ class DataStore(object):
         if self.create_tables_queries:
             logger.debug("Setting up database tables")
             try:
-                for query in create_tables_queries:
+                for query in self.create_tables_queries:
                     self._cursor.execute(query)
                 self._connection.commit()
             except:
@@ -44,12 +44,16 @@ class DataStore(object):
                 raise
 
     def __enter__(self):
+        init_db = False
         if self._create_mode == DBCreateMode.MUST_EXIST and not os.path.exists(self._db_path):
             raise NanocomporeError(f"Database file '{self._db_path}' does not exist")
         if self._create_mode == DBCreateMode.OVERWRITE:
             with contextlib.suppress(FileNotFoundError): # file may not exist
                 os.remove(self._db_path)
                 logger.debug(f"Removed existing database file '{self._db_path}'")
+            init_db = True
+        if self._create_mode == DBCreateMode.CREATE_MAYBE and not os.path.exists(self._db_path):
+            init_db = True
         try:
             logger.debug("Connecting to database")
             self._connection = sqlite3.connect(self._db_path)
@@ -58,8 +62,7 @@ class DataStore(object):
         except:
             logger.error("Error connecting to database")
             raise
-        if self._create_mode == DBCreateMode.OVERWRITE or \
-           (self._create_mode == DBCreateMode.CREATE_MAYBE and not os.path.exists(self._db_path)):
+        if init_db:
             self._init_db()
         return self
 
@@ -283,8 +286,7 @@ class DataStore_SampComp(DataStore):
     create_transcripts_query = ("CREATE TABLE IF NOT EXISTS transcripts ("
                                 "id INTEGER NOT NULL PRIMARY KEY,"
                                 "name VARCHAR NOT NULL UNIQUE"
-                                ")"
-                                )
+                                ")")
 
     create_whitelist_query = ("CREATE TABLE IF NOT EXISTS whitelist ("
                               "transcriptid INTEGER NOT NULL,"
@@ -293,47 +295,57 @@ class DataStore_SampComp(DataStore):
                               # "readid" is foreign key for "reads" table in EventAlign DB
                               ")")
 
-    create_test_results_query = ("CREATE TABLE IF NOT EXISTS test_results ("
-                                 "id INTEGER NOT NULL PRIMARY KEY," # needed?
-                                 "transcriptid VARCHAR NOT NULL,"
-                                 "kmer INTEGER NOT NULL,"
-                                 "MW_intensity_pvalue REAL,"
-                                 "MW_dwell_pvalue REAL,"
-                                 "KS_intensity_pvalue REAL,"
-                                 "KS_dwell_pvalue REAL,"
-                                 "TT_intensity_pvalue REAL,"
-                                 "TT_dwell_pvalue REAL,"
-                                 "GMM_n_components INTEGER,"
-                                 "GMM_cluster_counts VARCHAR,"
-                                 "GMM_logit_pvalue REAL,"
-                                 "GMM_logit_coef REAL,"
-                                 "c1_mean_intensity REAL,"
-                                 "c2_mean_intensity REAL,"
-                                 "c1_median_intensity REAL,"
-                                 "c2_median_intensity REAL,"
-                                 "c1_sd_intensity REAL,"
-                                 "c2_sd_intensity REAL,"
-                                 "c1_mean_dwell REAL,"
-                                 "c2_mean_dwell REAL,"
-                                 "c1_median_dwell REAL,"
-                                 "c2_median_dwell REAL,"
-                                 "c1_sd_dwell REAL,"
-                                 "c2_sd_dwell REAL,"
-                                 "UNIQUE (transcriptid, kmer),"
-                                 "FOREIGN KEY (transcriptid) REFERENCES transcripts(id)"
-                                 ")"
-                                 )
+    create_kmer_stats_query = ("CREATE TABLE IF NOT EXISTS kmer_stats ("
+                               "id INTEGER NOT NULL PRIMARY KEY,"
+                               "transcriptid INTEGER NOT NULL,"
+                               "kmer INTEGER NOT NULL,"
+                               "c1_mean_intensity REAL,"
+                               "c2_mean_intensity REAL,"
+                               "c1_median_intensity REAL,"
+                               "c2_median_intensity REAL,"
+                               "c1_sd_intensity REAL,"
+                               "c2_sd_intensity REAL,"
+                               "c1_mean_dwell REAL,"
+                               "c2_mean_dwell REAL,"
+                               "c1_median_dwell REAL,"
+                               "c2_median_dwell REAL,"
+                               "c1_sd_dwell REAL,"
+                               "c2_sd_dwell REAL,"
+                               "UNIQUE (transcriptid, kmer),"
+                               "FOREIGN KEY (transcriptid) REFERENCES transcripts(id)"
+                               ")")
+    # TODO: are "c1" and "c2" (conditions) properly defined?
+
+    create_gmm_results_query = ("CREATE TABLE IF NOT EXISTS gmm_results ("
+                                "statsid INTEGER NOT NULL UNIQUE,"
+                                "n_components INTEGER,"
+                                "cluster_counts VARCHAR,"
+                                "logit_pvalue REAL,"
+                                "anova_pvalue REAL,"
+                                "FOREIGN KEY (statsid) REFERENCES kmer_stats(id)"
+                                ")")
     # TODO: store GMM cluster counts in a separate table (one row per sample)
+    # TODO: store additional data from logit/ANOVA tests?
+
+    create_univariate_results_query = ("CREATE TABLE IF NOT EXISTS univariate_results ("
+                                       "statsid INTEGER NOT NULL,"
+                                       "test VARCHAR NOT NULL CHECK (test in ('ST', 'MW', 'KS')),"
+                                       "intensity_pvalue REAL,"
+                                       "dwell_pvalue REAL,"
+                                       "UNIQUE (statsid, test),"
+                                       "FOREIGN KEY (statsid) REFERENCES kmer_stats(id)"
+                                       ")")
 
     create_tables_queries = [create_transcripts_query, create_whitelist_query,
-                             create_test_results_query]
+                             create_kmer_stats_query, create_gmm_results_query,
+                             create_univariate_results_query]
 
     def __insert_transcript_get_id(self, tx_name):
         try:
-            self._cursor.execute("SELECT id FROM transcripts WHERE name = ?", tx_name)
+            self._cursor.execute("SELECT id FROM transcripts WHERE name = ?", [tx_name])
             if (row := self._cursor.fetchone()) is not None:
                 return row["id"]
-            self._cursor.execute("INSERT INTO transcripts VALUES (NULL, ?)", tx_name)
+            self._cursor.execute("INSERT INTO transcripts VALUES (NULL, ?)", [tx_name])
             self._connection.commit()
             # TODO: if there could be multiple writing threads, "INSERT OR IGNORE"
             # query should go before "SELECT"
@@ -345,27 +357,39 @@ class DataStore_SampComp(DataStore):
     def store_test_results(self, tx_name, test_results):
         if not self._connection:
             raise NanocomporeError("Database connection not yet opened")
-        tx_id = self._insert_transcript_get_id(tx_name)
-        univar_pvalues = [f"{t}_{m}_pvalue" for t in ["MW", "KS", "TT"]
+        tx_id = self.__insert_transcript_get_id(tx_name)
+        univar_pvalues = [f"{t}_{m}_pvalue" for t in ["MW", "KS", "ST"]
                           for m in ["intensity", "dwell"]]
         for kmer, res in test_results.items():
             values = [tx_id, kmer]
-            for key in univar_pvalues:
-                values.append(res.get(key)) # appends 'None' if key doesn't exist
-            if "GMM_model" in res:
-                values += [res["GMM_model"]["model"].n_components,
-                           res["GMM_model"]["cluster_counts"],
-                           res["GMM_logit_model"]["pvalue"],
-                           res["GMM_logit_model"]["coef"]]
-            else:
-                values += [None, None, None, None]
-            values.append(res["shift_stats"].values())
+            values += res["shift_stats"].values()
             try:
-                self._cursor.execute("INSERT INTO test_results VALUES (NULL" + ", ?" * len(values) + ")", values)
+                self._cursor.execute("INSERT INTO kmer_stats VALUES (NULL" + ", ?" * len(values) + ")", values)
             except:
-                logger.error(f"Error storing test results for transcript '{tx_name}'")
+                logger.error(f"Error storing statistics for transcript '{tx_name}', kmer {kmer}")
                 raise
-        self._connection.commit()
+            statsid = self._cursor.lastrowid
+            for test in ["MW", "KS", "ST"]:
+                ipv = res.get(test + "_intensity_pvalue")
+                dpv = res.get(test + "_dwell_pvalue")
+                if (ipv is not None) or (dpv is not None): # can't use ':=' here because we need both values
+                    try:
+                        self._cursor.execute("INSERT INTO univariate_results VALUES (?, ?, ?, ?)",
+                                             (statsid, test, ipv, dpv))
+                    except:
+                        logger.error(f"Error storing {test} test results for transcript '{tx_name}', kmer {kmer}")
+                        raise
+            if "GMM_model" in res:
+                lpv = res.get("GMM_logit_pvalue")
+                apv = res.get("GMM_anova_pvalue")
+                try:
+                    self._cursor.execute("INSERT INTO gmm_results VALUES (?, ?, ?, ?, ?)",
+                                         (statsid, res["GMM_model"]["model"].n_components,
+                                          res["GMM_model"]["cluster_counts"], lpv, apv))
+                except:
+                    logger.error(f"Error storing GMM results for transcript '{tx_name}', kmer {kmer}")
+                    raise
+            self._connection.commit()
 
     def store_whitelist(self, whitelist):
         if not self._connection:
