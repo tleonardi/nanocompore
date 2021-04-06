@@ -267,7 +267,7 @@ class Eventalign_collapse ():
             pr.dump_stats("prof")
 
 
-    def __write_output (self, out_q, error_q):
+    def __write_output(self, out_q, error_q):
         """
         Mono-threaded Writer
         """
