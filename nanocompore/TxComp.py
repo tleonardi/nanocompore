@@ -67,7 +67,7 @@ def txCompare(ref_id,
 
         for met in methods:
             logger.trace(f"Running {met} test on position {pos}")
-            if met in ["MW", "KS", "TT"] :
+            if met in ["MW", "KS", "ST"] :
                 try:
                     pvalues = nonparametric_test(condition1_intensity, condition2_intensity, condition1_dwell, condition2_dwell, method=met)
                 except:
@@ -150,10 +150,10 @@ def nonparametric_test(condition1_intensity, condition2_intensity, condition1_dw
         stat_test = lambda x,y: mannwhitneyu(x, y, alternative='two-sided')
     elif method in ["kolmogorov_smirnov", "KS"]:
         stat_test = ks_twosamp
-    elif method in ["t_test", "TT"]:
+    elif method in ["student_t", "ST"]:
         stat_test = lambda x,y: ttest_ind(x, y, equal_var=False)
     else:
-        raise NanocomporeError("Invalid statistical method name (MW, KS, ttest)")
+        raise NanocomporeError("Invalid statistical method name (MW, KS, ST)")
 
     pval_intensity = stat_test(condition1_intensity, condition2_intensity)[1]
     if pval_intensity == 0:
