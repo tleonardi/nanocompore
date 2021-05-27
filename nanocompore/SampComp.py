@@ -217,14 +217,20 @@ class SampComp(object):
 
             # Monitor error queue
             for tb in iter(error_q.get, None):
-                logger.trace("Error caught from error_q")
+                logger.debug("Error caught from error_q")
                 raise NanocomporeError(tb)
+            logger.debug("Error queue was closed")
 
             # Soft processes and queues stopping
+            logger.debug("Waiting for all processes to be joined")
             for ps in ps_list:
                 ps.join()
+            logger.debug("All processes joined successfully")
+
+            logger.debug("Closing all queues")
             for q in (in_q, out_q, error_q):
                 q.close()
+            logger.debug("All queues were closed")
 
             # Return database wrapper object
             return SampCompDB(

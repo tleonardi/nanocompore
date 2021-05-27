@@ -153,7 +153,7 @@ def main(args=None):
         sp_output.add_argument("--overwrite", "-w", action='store_true', default=False,
             help="Use --outpath even if it exists already (default: %(default)s)")
         sp_verbosity = sp.add_argument_group("Verbosity options")
-        sp_verbosity.add_argument("--log_level", type=str, default="info", choices=["warning", "info", "debug"],
+        sp_verbosity.add_argument("--log_level", type=str, default="info", choices=["warning", "info", "debug", "trace"],
             help="Set the log level (default: %(default)s)")
         sp_verbosity.add_argument("--progress", default=False, action='store_true',
             help="Display a progress bar during execution (default: %(default)s)")
@@ -213,6 +213,7 @@ def sampcomp_main(args):
     db = s()
 
     # Save all reports
+    logger.info("Saving results")
     if(db):
         db.save_all(pvalue_thr=args.pvalue_thr)
 
