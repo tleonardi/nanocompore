@@ -1,6 +1,11 @@
 # Changelog
 
 
+## v1.0.4
+
+### Fixed
+- Fixed logging levels and verbosity of log messages
+
 ## v1.0.3
 
 ### Fixed

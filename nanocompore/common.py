@@ -2,6 +2,7 @@
 
 #~~~~~~~~~~~~~~IMPORTS~~~~~~~~~~~~~~#
 # Standard library imports
+import pkg_resources
 import sys
 import os
 from collections import *
@@ -219,3 +220,13 @@ def jhelp (f:"python function or method"):
 
     # Display in Jupyter
     display (Markdown(s))
+
+def get_version():
+    try:
+        distribution = pkg_resources.get_distribution("nanocompore")
+    except pkg_resources.DistributionNotFound:
+        return "dev"  # or "", or None
+        # or try with importib.metadata
+        # or try reading pyproject.toml
+    else:
+        return distribution.version

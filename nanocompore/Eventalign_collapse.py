@@ -106,12 +106,17 @@ class Eventalign_collapse ():
             for tb in iter(error_q.get, None):
                 logger.trace("Error caught from error_q")
                 raise NanocomporeError(tb)
+            logger.debug("Caught poison pill in error queue")
 
             # Soft processes and queues stopping
+            logger.debug("Joining all processes")
             for ps in ps_list:
                 ps.join()
+            logger.debug("All processes were joined")
+            logger.debug("Closing all queues")
             for q in (in_q, out_q, error_q):
                 q.close()
+            logger.debug("All queues were closed")
 
         # Catch error, kill all processed and reraise error
         except Exception as E:
