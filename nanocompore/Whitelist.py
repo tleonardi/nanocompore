@@ -173,33 +173,45 @@ class Whitelist(object):
                     col_names = fp.readline().rstrip().split()
                     c = Counter()
                     for line in fp:
-                        try:
-                            # Transform line to dict and cast str numbers to actual numbers
-                            read = numeric_cast_dict(keys=col_names, values=line.rstrip().split("\t"))
+                        # Transform line to dict and cast str numbers to actual numbers
+                        read = numeric_cast_dict(keys=col_names, values=line.rstrip().split("\t"))
+                        read_is_valid = True
+                        # Filter out ref_id if a select_ref_id list or exclude_ref_id list was provided
+                        if select_ref_id and not read["ref_id"] in select_ref_id:
+                            read_is_valid = False
+                            c["Ref_id not in select list"]+=1
+                            logger.trace("Ref_id not in select list")
+                        elif exclude_ref_id and read["ref_id"] in exclude_ref_id:
+                            read_is_valid = False
+                            c["Ref_id in exclude list"]+=1
+                            logger.trace("Ref_id in exclude list")
 
-                            # Filter out ref_id if a select_ref_id list or exclude_ref_id list was provided
-                            if select_ref_id and not read["ref_id"] in select_ref_id:
-                                raise NanocomporeError("Ref_id not in select list")
-                            elif exclude_ref_id and read["ref_id"] in exclude_ref_id:
-                                raise NanocomporeError("Ref_id in exclude list")
+                        # Filter out reads with high number of invalid kmers if information available
+                        if self.__filter_invalid_kmers:
+                            if max_invalid_kmers_freq:
+                                invalid_kmers_freq = (read["NNNNN_kmers"]+read["mismatch_kmers"]+read["missing_kmers"])/read["kmers"]
+                                if invalid_kmers_freq > max_invalid_kmers_freq:
+                                    read_is_valid = False
+                                    c["High fraction of invalid kmers"]+=1
+                                    logger.trace("High fraction of invalid kmers ({}%) for read {}".format(round(invalid_kmers_freq*100,2), read["read_id"]))
+                            else:
+                                NNNNN_kmers_freq = read["NNNNN_kmers"]/read["kmers"]
+                                max_mismatching_freq = read["mismatch_kmers"]/read["kmers"]
+                                max_missing_freq = read["missing_kmers"]/read["kmers"]
+                                if NNNNN_kmers_freq > max_NNNNN_freq:
+                                    read_is_valid = False
+                                    c["High fraction of NNNNN kmers"]+=1
+                                    logger.trace("High fraction of NNNNN kmers ({}%) for read {}".format(round(NNNNN_kmers_freq*100,2), read["read_id"]))
+                                elif max_mismatching_freq > max_mismatching_freq:
+                                    read_is_valid = False
+                                    c["High fraction of mismatching kmers"]
+                                    logger.trace("High fraction of mismatching kmers ({}%) for read {}".format(round(max_mismatching_freq*100,2), read["read_id"]))
+                                elif max_missing_freq > max_missing_freq:
+                                    read_is_valid = False
+                                    c["High fraction of missing kmers"]+=1
+                                    logger.trace("High fraction of missing kmers ({}%) for read {}".format(round(max_missing_freq*100,2), read["read_id"]))
 
-                            # Filter out reads with high number of invalid kmers if information available
-                            if self.__filter_invalid_kmers:
-                                if max_invalid_kmers_freq:
-                                    invalid_kmers_freq = (read["NNNNN_kmers"]+read["mismatch_kmers"]+read["missing_kmers"])/read["kmers"]
-                                    if invalid_kmers_freq > max_invalid_kmers_freq:
-                                        raise NanocomporeError("High fraction of invalid kmers ({}%) for read {}".format(round(invalid_kmers_freq*100,2), read["read_id"]))
-                                else:
-                                    NNNNN_kmers_freq = read["NNNNN_kmers"]/read["kmers"]
-                                    max_mismatching_freq = read["mismatch_kmers"]/read["kmers"]
-                                    max_missing_freq = read["missing_kmers"]/read["kmers"]
-                                    if NNNNN_kmers_freq > max_NNNNN_freq:
-                                        raise NanocomporeError("High fraction of NNNNN kmers ({}%) for read {}".format(round(NNNNN_kmers_freq*100,2), read["read_id"]))
-                                    elif max_mismatching_freq > max_mismatching_freq:
-                                        raise NanocomporeError("High fraction of mismatching kmers ({}%) for read {}".format(round(max_mismatching_freq*100,2), read["read_id"]))
-                                    elif max_missing_freq > max_missing_freq:
-                                        raise NanocomporeError("High fraction of missing kmers ({}%) for read {}".format(round(max_missing_freq*100,2), read["read_id"]))
-
+                        if read_is_valid:
                             # Create dict arborescence and save valid reads
                             if not read["ref_id"] in ref_reads:
                                 ref_reads[read["ref_id"]] = OrderedDict()
@@ -211,9 +223,6 @@ class Whitelist(object):
                             # Fill in list of reads
                             ref_reads[read["ref_id"]][cond_lab][sample_lab].append(read)
                             c ["valid reads"] += 1
-
-                        except NanocomporeError as E:
-                            c [str(E)] += 1
 
                 logger.debug("\tCondition:{} Sample:{} {}".format(cond_lab, sample_lab, counter_to_str(c)))
         # Fill in missing condition/sample slots in case
