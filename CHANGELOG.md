@@ -2,7 +2,8 @@
 
 =======
 
-## Dev
+## v1.0.4.dev
+
 ### Fixed
 - Fixed logging levels and verbosity of log messages
 
