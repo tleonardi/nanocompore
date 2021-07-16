@@ -22,7 +22,7 @@ class DBCreateMode(Enum):
 class DataStore(object):
     """Store Nanocompore data in an SQLite database - base class"""
 
-    create_tables_queries = [] # to be filled by derived classes
+    create_tables_queries = {} # table name -> SQL query (to be filled by derived classes)
 
     def __init__(self,
                  db_path:str,
@@ -36,11 +36,11 @@ class DataStore(object):
         if self.create_tables_queries:
             logger.debug("Setting up database tables")
             try:
-                for query in self.create_tables_queries:
+                for table, query in self.create_tables_queries.items():
                     self._cursor.execute(query)
                 self._connection.commit()
             except:
-                logger.error("Error creating database tables")
+                logger.error(f"Error creating database table '{table}'")
                 raise
 
     def __enter__(self):
@@ -134,8 +134,10 @@ class DataStore_EventAlign(DataStore):
                                 ")"
                                 )
 
-    create_tables_queries = [create_reads_query, create_kmers_query,
-                             create_samples_query, create_transcripts_query]
+    create_tables_queries = {"reads": create_reads_query,
+                             "kmers": create_kmers_query,
+                             "samples": create_samples_query,
+                             "transcripts": create_transcripts_query}
 
     def store_read(self, read):
         """
@@ -316,29 +318,41 @@ class DataStore_SampComp(DataStore):
                                ")")
     # TODO: are "c1" and "c2" (conditions) properly defined?
 
-    create_gmm_results_query = ("CREATE TABLE IF NOT EXISTS gmm_results ("
-                                "statsid INTEGER NOT NULL UNIQUE,"
-                                "n_components INTEGER,"
-                                "cluster_counts VARCHAR,"
-                                "logit_pvalue REAL,"
-                                "anova_pvalue REAL,"
-                                "FOREIGN KEY (statsid) REFERENCES kmer_stats(id)"
-                                ")")
+    create_gmm_stats_query = ("CREATE TABLE IF NOT EXISTS gmm_stats ("
+                              "kmer_statsid INTEGER NOT NULL UNIQUE,"
+                              "covariance_type VARCHAR,"
+                              "n_components INTEGER,"
+                              "cluster_counts VARCHAR,"
+                              "FOREIGN KEY (kmer_statsid) REFERENCES kmer_stats(id)"
+                              ")")
     # TODO: store GMM cluster counts in a separate table (one row per sample)
-    # TODO: store additional data from logit/ANOVA tests?
+    # TODO: if "covariance_type" is the same for all rows, store it in a "parameters" table?
+
+    # TODO: add column for adjusted p-values in tables below?
+    create_gmm_results_query = ("CREATE TABLE IF NOT EXISTS gmm_results ("
+                                "gmm_statsid INTEGER NOT NULL UNIQUE,"
+                                "test VARCHAR NOT NULL CHECK (test in ('anova', 'logit')),"
+                                "test_pvalue REAL,"
+                                "test_stat REAL," # anova: delta logit, logit: LOR
+                                "UNIQUE (gmm_statsid, test),"
+                                "FOREIGN KEY (gmm_statsid) REFERENCES gmm_stats(id)"
+                                ")")
 
     create_univariate_results_query = ("CREATE TABLE IF NOT EXISTS univariate_results ("
-                                       "statsid INTEGER NOT NULL,"
+                                       "kmer_statsid INTEGER NOT NULL,"
                                        "test VARCHAR NOT NULL CHECK (test in ('ST', 'MW', 'KS')),"
                                        "intensity_pvalue REAL,"
                                        "dwell_pvalue REAL,"
-                                       "UNIQUE (statsid, test),"
-                                       "FOREIGN KEY (statsid) REFERENCES kmer_stats(id)"
+                                       "UNIQUE (kmer_statsid, test),"
+                                       "FOREIGN KEY (kmer_statsid) REFERENCES kmer_stats(id)"
                                        ")")
 
-    create_tables_queries = [create_transcripts_query, create_whitelist_query,
-                             create_kmer_stats_query, create_gmm_results_query,
-                             create_univariate_results_query]
+    create_tables_queries = {"transcripts": create_transcripts_query,
+                             "whitelist": create_whitelist_query,
+                             "kmer_stats": create_kmer_stats_query,
+                             "gmm_stats": create_gmm_stats_query,
+                             "gmm_results": create_gmm_results_query,
+                             "univariate_results": create_univariate_results_query}
 
     def __insert_transcript_get_id(self, tx_name):
         try:
@@ -354,6 +368,7 @@ class DataStore_SampComp(DataStore):
             logger.error(f"Failed to insert/look up transcript '{tx_name}'")
             raise
 
+
     def store_test_results(self, tx_name, test_results):
         if not self._connection:
             raise NanocomporeError("Database connection not yet opened")
@@ -368,28 +383,42 @@ class DataStore_SampComp(DataStore):
             except:
                 logger.error(f"Error storing statistics for transcript '{tx_name}', kmer {kmer}")
                 raise
-            statsid = self._cursor.lastrowid
+            kmer_statsid = self._cursor.lastrowid
             for test in ["MW", "KS", "ST"]:
                 ipv = res.get(test + "_intensity_pvalue")
                 dpv = res.get(test + "_dwell_pvalue")
                 if (ipv is not None) or (dpv is not None): # can't use ':=' here because we need both values
                     try:
                         self._cursor.execute("INSERT INTO univariate_results VALUES (?, ?, ?, ?)",
-                                             (statsid, test, ipv, dpv))
+                                             (kmer_statsid, test, ipv, dpv))
                     except:
                         logger.error(f"Error storing {test} test results for transcript '{tx_name}', kmer {kmer}")
                         raise
             if "GMM_model" in res:
-                lpv = res.get("GMM_logit_pvalue")
-                apv = res.get("GMM_anova_pvalue")
                 try:
-                    self._cursor.execute("INSERT INTO gmm_results VALUES (?, ?, ?, ?, ?)",
-                                         (statsid, res["GMM_model"]["model"].n_components,
-                                          res["GMM_model"]["cluster_counts"], lpv, apv))
+                    self._cursor.execute("INSERT INTO gmm_stats VALUES (?, ?, ?, ?)",
+                                         (kmer_statsid,
+                                          res["GMM_model"]["model"].covariance_type,
+                                          res["GMM_model"]["model"].n_components,
+                                          res["GMM_model"]["cluster_counts"]))
                 except:
-                    logger.error(f"Error storing GMM results for transcript '{tx_name}', kmer {kmer}")
+                    logger.error(f"Error storing GMM stats for transcript '{tx_name}', kmer {kmer}")
                     raise
+                gmm_statsid = self._cursor.lastrowid
+                # store results of logit and/or ANOVA test on GMM components:
+                test_stats = {"logit": "coef", "anova": "delta_logit"}
+                for test, stat in test_stats.items():
+                    if f"GMM_{test}_pvalue" in res:
+                        try:
+                            self._cursor.execute("INSERT INTO gmm_results VALUES (?, ?, ?, ?)",
+                                                 (gmm_statsid, test,
+                                                  res[f"GMM_{test}_pvalue"],
+                                                  res[f"GMM_{test}_model"][stat]))
+                        except:
+                            logger.error(f"Error storing GMM {test} results for transcript '{tx_name}', kmer {kmer}")
+                            raise
             self._connection.commit()
+
 
     def store_whitelist(self, whitelist):
         if not self._connection:
