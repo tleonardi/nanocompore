@@ -205,21 +205,21 @@ def gmm_test(data, random_state, anova=True, logit=False, verbose=True, allow_wa
         if anova:
             aov_results = gmm_anova_test(counters, sample_condition_labels, condition_labels, gmm_ncomponents, allow_warnings)
         else:
-            aov_results=None
+            aov_results = None
 
         if logit:
             logit_results = gmm_logit_test(Y, y_pred, sample_condition_labels, condition_labels)
         else:
-            logit_results=None
+            logit_results = None
 
     elif gmm_ncomponents == 1:
-        aov_results = {'pvalue': np.nan, 'delta_logit': np.nan, 'table': "NC", 'cluster_counts': "NC"}
-        logit_results = {'pvalue': np.nan, 'coef': "NC", 'model': "NC"}
-        cluster_counts = "NC"
+        aov_results = {'pvalue': np.nan, 'delta_logit': np.nan, 'table': None, 'cluster_counts': None}
+        logit_results = {'pvalue': np.nan, 'coef': None, 'model': None}
+        cluster_counts = None
     else:
-        raise NanocomporeError("GMM models with n_component>2 are not supported")
+        raise NanocomporeError("GMM models with n_component > 2 are not supported")
 
-    return({'anova':aov_results, 'logit': logit_results, 'gmm':{'model': gmm_mod, 'cluster_counts': cluster_counts}})
+    return({'anova': aov_results, 'logit': logit_results, 'gmm': {'model': gmm_mod, 'cluster_counts': cluster_counts}})
 
 
 def fit_best_gmm(X, random_state, max_components=2, cv_types=['spherical', 'tied', 'diag', 'full']):
@@ -243,23 +243,23 @@ def fit_best_gmm(X, random_state, max_components=2, cv_types=['spherical', 'tied
 
 
 def gmm_anova_test(counters, sample_condition_labels, condition_labels, gmm_ncomponents, allow_warnings=False):
-    labels= []
+    labels = []
     logr = []
-    for sample,counter in counters.items():
+    for sample, counter in counters.items():
         # Save the condition label the corresponds to the current sample
         labels.append(sample_condition_labels[sample])
         # The Counter dictionaries in counters are not ordered
         # The following line enforces the order and adds 1 to avoid empty clusters
-        ordered_counter = [ counter[i]+1 for i in range(gmm_ncomponents)]
+        ordered_counter = [counter[i] + 1 for i in range(gmm_ncomponents)]
         total = sum(ordered_counter)
-        normalised_ordered_counter = [ i/total for i in ordered_counter ]
+        normalised_ordered_counter = [i / total for i in ordered_counter]
         # Loop through ordered_counter and divide each value by the first
-        logr.append(np.log(normalised_ordered_counter[0]/(1-normalised_ordered_counter[0])))
+        logr.append(np.log(normalised_ordered_counter[0] / (1 - normalised_ordered_counter[0])))
     logr = np.around(np.array(logr), decimals=9)
-    logr_s1 = [logr[i] for i,l in enumerate(labels) if l==condition_labels[0]]
-    logr_s2 = [logr[i] for i,l in enumerate(labels) if l==condition_labels[1]]
+    logr_s1 = [logr[i] for i, l in enumerate(labels) if l == condition_labels[0]]
+    logr_s2 = [logr[i] for i, l in enumerate(labels) if l == condition_labels[1]]
     # If the SS for either array is 0, skip the anova test
-    if sum_of_squares(logr_s1-np.mean(logr_s1)) == 0 and sum_of_squares(logr_s2-np.mean(logr_s2)) == 0:
+    if sum_of_squares(logr_s1-np.mean(logr_s1)) == 0 and sum_of_squares(logr_s2 - np.mean(logr_s2)) == 0:
         if not allow_warnings:
             raise NanocomporeError("While doing the Anova test we found a sample with within variance = 0. Use --allow_warnings to ignore.")
         else:
@@ -282,7 +282,7 @@ def gmm_anova_test(counters, sample_condition_labels, condition_labels, gmm_ncom
     if aov_pvalue == 0:
         raise NanocomporeError("The Anova test returned a p-value of 0. This is most likely an error somewhere")
     # Calculate the delta log odds ratio, i.e. the difference of the means of the log odds ratios between the two conditions
-    aov_delta_logit=float(np.mean(logr_s1)-np.mean(logr_s2))
+    aov_delta_logit = float(np.mean(logr_s1) - np.mean(logr_s2))
     aov_results = {'pvalue': aov_pvalue, 'delta_logit': aov_delta_logit, 'table': aov_table, 'log_ratios':logr}
     return(aov_results)
 
@@ -300,7 +300,7 @@ def gmm_logit_test(Y, y_pred, sample_condition_labels, condition_labels):
             logit_mod=logit.fit(disp=0)
             logit_pvalue, logit_coef = logit_mod.pvalues[1], logit_mod.params[1]
         except ConvergenceWarning:
-            logit_mod, logit_pvalue, logit_coef = "NC", 1, "NC"
+            logit_mod, logit_pvalue, logit_coef = None, 1, None
     if logit_pvalue == 0:
         logit_pvalue = np.finfo(np.float).tiny
     logit_results = {'pvalue': logit_pvalue, 'coef': logit_coef, 'model': logit_mod}
@@ -338,22 +338,23 @@ def cross_corr_matrix(pvalues_vector, context=2):
     """ Calculate the cross correlation matrix of the
         pvalues for a given context.
     """
-    if len(pvalues_vector)<(context*3)+3:
+    if len(pvalues_vector) < (context * 3) + 3:
         raise NanocomporeError("Not enough p-values for a context of order %s"%context)
 
     pvalues_vector = np.array([ i if not np.isnan(i) else 1 for i in pvalues_vector ])
-    if any(pvalues_vector==0) or any(np.isinf(pvalues_vector)) or any(pvalues_vector>1):
+    if any(pvalues_vector == 0) or any(np.isinf(pvalues_vector)) or any(pvalues_vector > 1):
         raise NanocomporeError("At least one p-value is invalid")
 
-    matrix=[]
-    s=pvalues_vector.size
-    if all(p==1 for p in pvalues_vector):
-        return(np.ones((context*2+1, context*2+1)))
+    matrix = []
+    s = pvalues_vector.size
+    if all(p == 1 for p in pvalues_vector):
+        return(np.ones((context * 2 + 1, context * 2 + 1)))
 
-    for i in range(-context,context+1):
-        row=[]
-        for j in range(-context,context+1):
-            row.append(np.corrcoef((np.roll(pvalues_vector,i)[context:s-context]), (np.roll(pvalues_vector,j)[context:s-context]))[0][1])
+    for i in range(-context, context + 1):
+        row = []
+        for j in range(-context , context + 1):
+            row.append(np.corrcoef((np.roll(pvalues_vector, i)[context:s - context]),
+                                   (np.roll(pvalues_vector, j)[context:s - context]))[0][1])
         matrix.append(row)
     return(np.array(matrix))
 
@@ -374,32 +375,32 @@ def combine_pvalues_hou(pvalues, weights, cor_mat):
         raise NanocomporeError("Can't combine pvalues is pvalues and weights are not the same length.")
     if( cor_mat.shape[0] != cor_mat.shape[1] or cor_mat.shape[0] != len(pvalues)):
         raise NanocomporeError("The correlation matrix needs to be squared, with each dimension equal to the length of the pvalued vector.")
-    if all(p==1 for p in pvalues):
+    if all(p == 1 for p in pvalues):
         return 1
-    if any((p==0 or np.isinf(p) or p>1) for p in pvalues):
+    if any((p == 0 or np.isinf(p) or p > 1) for p in pvalues):
         raise NanocomporeError("At least one p-value is invalid")
 
     # Covariance estimation as in Kost and McDermott (eq:8)
     # https://doi.org/10.1016/S0167-7152(02)00310-3
     cov = lambda r: (3.263*r)+(0.710*r**2)+(0.027*r**3)
-    k=len(pvalues)
-    cov_sum=np.float64(0)
-    sw_sum=np.float64(0)
-    w_sum=np.float64(0)
-    tau=np.float64(0)
+    k = len(pvalues)
+    cov_sum = np.float64(0)
+    sw_sum = np.float64(0)
+    w_sum = np.float64(0)
+    tau = np.float64(0)
     for i in range(k):
-        for j in range(i+1,k):
-            cov_sum += weights[i]*weights[j]*cov(cor_mat[i][j])
+        for j in range(i + 1, k):
+            cov_sum += weights[i] * weights[j] * cov(cor_mat[i][j])
         sw_sum += weights[i]**2
         w_sum += weights[i]
         # Calculate the weighted Fisher's combination statistic
-        tau += weights[i] * (-2*np.log(pvalues[i]))
+        tau += weights[i] * (-2 * np.log(pvalues[i]))
     # Correction factor
-    c = (2*sw_sum+cov_sum) / (2*w_sum)
+    c = (2 * sw_sum + cov_sum) / (2 * w_sum)
     # Degrees of freedom
-    f = (4*w_sum**2) / (2*sw_sum+cov_sum)
+    f = (4 * w_sum**2) / (2 * sw_sum + cov_sum)
     # chi2.sf is the same as 1-chi2.cdf but is more accurate
-    combined_p_value = chi2.sf(tau/c,f)
+    combined_p_value = chi2.sf(tau/c, f)
     # Return a very small number if pvalue = 0
     if combined_p_value == 0:
         combined_p_value = np.finfo(np.float).tiny
@@ -408,8 +409,8 @@ def combine_pvalues_hou(pvalues, weights, cor_mat):
 
 def harmonic_series(sequence_context):
     weights = []
-    for i in range(-sequence_context, sequence_context+1):
-        weights.append(1/(abs(i)+1))
+    for i in range(-sequence_context, sequence_context + 1):
+        weights.append(1 / (abs(i) + 1))
     return weights
 
 
@@ -418,7 +419,7 @@ def sum_of_squares(x):
     Square each element of the input array and return the sum
     """
     x = np.atleast_1d(x)
-    return np.sum(x*x)
+    return np.sum(x * x)
 
 
 def has_low_coverage(pos_dict, min_coverage):
