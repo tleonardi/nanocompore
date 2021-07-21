@@ -19,7 +19,7 @@ from pyfaidx import Fasta
 from nanocompore.common import *
 from nanocompore.DataStore import *
 from nanocompore.Whitelist import Whitelist
-from nanocompore.TxComp import txCompare
+from nanocompore.TxComp import TxComp
 from nanocompore.SampCompDB import SampCompDB
 import nanocompore as pkg
 
@@ -47,9 +47,9 @@ class SampComp(object):
                  univariate_test:str = "KS", # or: "MW", "ST"
                  fit_gmm:bool = True,
                  gmm_test:str = "logit", # or: "anova"
-                 allow_warnings:bool = False,
+                 allow_anova_warnings:bool = False,
                  sequence_context:int = 0,
-                 sequence_context_weights:str = "uniform",
+                 sequence_context_weighting:str = "uniform",
                  min_coverage:int = 30,
                  min_ref_length:int = 100,
                  downsample_high_coverage:int = 5000,
@@ -85,12 +85,12 @@ class SampComp(object):
             Fit a Gaussian mixture model (GMM) to the intensity/dwell-time distribution?
         * gmm_test
             Method to compare samples based on the GMM ('logit' or 'anova'), or empty for no comparison.
-        * allow_warnings
+        * allow_anova_warnings
             If True runtime warnings during the ANOVA tests don't raise an error.
         * sequence_context
             Extend statistical analysis to contiguous adjacent bases if available.
-        * sequence_context_weights
-            type of weights to used for combining p-values. {uniform,harmonic}
+        * sequence_context_weighting
+            type of weighting to used for combining p-values. {uniform,harmonic}
         * min_coverage
             minimal read coverage required in all sample.
         * min_ref_length
@@ -141,9 +141,9 @@ class SampComp(object):
             raise NanocomporeError("Whitelist is not valid")
 
         self.__output_db_path = output_db_path
+        self.__db_args = {"with_gmm": fit_gmm, "with_sequence_context": (sequence_context > 0)}
         db_create_mode = DBCreateMode.OVERWRITE if overwrite else DBCreateMode.CREATE_MAYBE
-        db = DataStore_SampComp(output_db_path, db_create_mode, with_gmm=fit_gmm,
-                                with_sequence_context=(sequence_context > 0))
+        db = DataStore_SampComp(output_db_path, db_create_mode, **self.__db_args)
         with db:
             db.store_whitelist(whitelist)
         # TODO: move this to '__call__'?
@@ -158,12 +158,6 @@ class SampComp(object):
         self.__sample_dict = sample_dict
         self.__fasta_fn = fasta_fn
         self.__whitelist = whitelist
-        self.__univariate_test = univariate_test
-        self.__fit_gmm = fit_gmm
-        self.__gmm_test = gmm_test
-        self.__allow_warnings = allow_warnings
-        self.__sequence_context = sequence_context
-        self.__sequence_context_weights = sequence_context_weights
         self.__nthreads = nthreads - 2
         self.__progress = progress
 
@@ -171,6 +165,20 @@ class SampComp(object):
         self.__n_samples = 0
         for samples in sample_dict.values():
             self.__n_samples += len(samples)
+
+        # If statistical tests are requested, initialise the "TxComp" object:
+        if univariate_test or fit_gmm:
+            random_state = np.random.RandomState(seed=42)
+            self.__tx_compare = TxComp(random_state,
+                                       univariate_test=univariate_test,
+                                       fit_gmm=fit_gmm,
+                                       gmm_test=gmm_test,
+                                       sequence_context=sequence_context,
+                                       sequence_context_weighting=sequence_context_weighting,
+                                       min_coverage=self.__min_coverage,
+                                       allow_anova_warnings=allow_anova_warnings)
+        else:
+            self.__tx_compare = None
 
 
     def __call__(self):
@@ -258,18 +266,9 @@ class SampComp(object):
 
         logger.debug(f"Data loaded for transcript: {tx_id}")
         test_results = {}
-        if univariate_test or fit_gmm:
-            random_state = np.random.RandomState(seed=42)
-            test_results = txCompare(tx_id,
-                                     kmer_data,
-                                     random_state=random_state,
-                                     univariate_test=self.__univariate_test,
-                                     fit_gmm=self.__fit_gmm,
-                                     gmm_test=self.__gmm_test,
-                                     sequence_context=self.__sequence_context,
-                                     sequence_context_weights=self.__sequence_context_weights,
-                                     min_coverage= self.__min_coverage,
-                                     allow_warnings=self.__allow_warnings)
+        if self.__tx_compare:
+            test_results = self.__tx_compare(tx_id, kmer_data)
+            # TODO: check "gmm_anova_failed" state of TxComp object
 
         # Remove 'default_factory' functions from 'kmer_data' to enable pickle/multiprocessing
         kmer_data.default_factory = None
@@ -339,10 +338,8 @@ class SampComp(object):
         n_tx = 0
         try:
             # Database was already created earlier to store the whitelist!
-            db = DataStore_SampComp(self.__output_db_path, DBCreateMode.MUST_EXIST,
-                                    with_gmm=self.__fit_gmm,
-                                    with_sequence_context=(self.__sequence_context > 0))
-            with  as db:
+            db = DataStore_SampComp(self.__output_db_path, DBCreateMode.MUST_EXIST, **self.__db_args)
+            with db:
                 # Iterate over the counter queue and process items until all poison pills are found
                 for _ in range(self.__nthreads):
                     for ref_id, kmer_data, test_results in iter(out_q.get, None):
