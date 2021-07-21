@@ -22,7 +22,7 @@ class DBCreateMode(Enum):
 class DataStore(object):
     """Store Nanocompore data in an SQLite database - base class"""
 
-    create_tables_queries = {} # table name -> SQL query (to be filled by derived classes)
+    table_defs = {} # table name -> column definitions (to be filled by derived classes)
 
     def __init__(self,
                  db_path:str,
@@ -33,10 +33,13 @@ class DataStore(object):
         self._cursor = None
 
     def _init_db(self):
-        if self.create_tables_queries:
+        if self.table_defs:
             logger.debug("Setting up database tables")
             try:
-                for table, query in self.create_tables_queries.items():
+                for table, column_defs in self.table_defs.items():
+                    if type(column_defs) is not str: # list/tuple expected
+                        column_defs = ", ".join(column_defs)
+                    query = f"CREATE TABLE IF NOT EXISTS {table} ({column_defs})"
                     self._cursor.execute(query)
                 self._connection.commit()
             except:
@@ -82,62 +85,54 @@ class DataStore(object):
 class DataStore_EventAlign(DataStore):
     """Store Nanocompore data in an SQLite database - subclass for Eventalign_collapse results"""
 
-    create_reads_query = ("CREATE TABLE IF NOT EXISTS reads ("
-                          "id INTEGER NOT NULL PRIMARY KEY,"
-                          "name VARCHAR NOT NULL UNIQUE,"
-                          "sampleid INTEGER NOT NULL,"
-                          "transcriptid VARCHAR NOT NULL,"
-                          "refstart INT NOT NULL,"
-                          "refend INT NOT NULL,"
-                          "numevents INT NOT NULL,"
-                          "numsignals INT NOT NULL,"
-                          "dwelltime REAL NOT NULL,"
-                          "kmers INT NOT NULL,"
-                          "missing_kmers INT NOT NULL,"
-                          "NNNNN_kmers INT NOT NULL,"
-                          "mismatch_kmers INT NOT NULL,"
-                          "valid_kmers INT NOT NULL,"
-                          "FOREIGN KEY(sampleid) REFERENCES samples(id)"
-                          "FOREIGN KEY(transcriptid) REFERENCES transcripts(id)"
-                          ")"
-                          )
+    # "reads" table:
+    table_def_reads = ["id INTEGER NOT NULL PRIMARY KEY",
+                       "name VARCHAR NOT NULL UNIQUE",
+                       "sampleid INTEGER NOT NULL",
+                       "transcriptid VARCHAR NOT NULL",
+                       "refstart INT NOT NULL",
+                       "refend INT NOT NULL",
+                       "numevents INT NOT NULL",
+                       "numsignals INT NOT NULL",
+                       "dwelltime REAL NOT NULL",
+                       "kmers INT NOT NULL",
+                       "missing_kmers INT NOT NULL",
+                       "NNNNN_kmers INT NOT NULL",
+                       "mismatch_kmers INT NOT NULL",
+                       "valid_kmers INT NOT NULL",
+                       "FOREIGN KEY(sampleid) REFERENCES samples(id)",
+                       "FOREIGN KEY(transcriptid) REFERENCES transcripts(id)"]
 
-    create_kmers_query = ("CREATE TABLE IF NOT EXISTS kmers ("
-                          "id INTEGER NOT NULL PRIMARY KEY,"
-                          "readid INTEGER NOT NULL,"
-                          "position INTEGER NOT NULL,"
-                          "sequence INTEGER NOT NULL,"
-                          "num_events INTEGER NOT NULL,"
-                          "num_signals INTEGER NOT NULL,"
-                          "status VARCHAR NOT NULL,"
-                          "dwell_time REAL NOT NULL,"
-                          "NNNNN_dwell_time REAL NOT NULL,"
-                          "mismatch_dwell_time REAL NOT NULL,"
-                          "median REAL NOT NULL,"
-                          "mad REAL NOT NULL,"
-                          "FOREIGN KEY(readid) REFERENCES reads(id)"
-                          ")"
-                          )
+    # "kmers" table:
+    table_def_kmers = ["id INTEGER NOT NULL PRIMARY KEY",
+                       "readid INTEGER NOT NULL",
+                       "position INTEGER NOT NULL",
+                       "sequence INTEGER NOT NULL",
+                       "num_events INTEGER NOT NULL",
+                       "num_signals INTEGER NOT NULL",
+                       "status VARCHAR NOT NULL",
+                       "dwell_time REAL NOT NULL",
+                       "NNNNN_dwell_time REAL NOT NULL",
+                       "mismatch_dwell_time REAL NOT NULL",
+                       "median REAL NOT NULL",
+                       "mad REAL NOT NULL",
+                       "FOREIGN KEY(readid) REFERENCES reads(id)"]
     # TODO: 'sequence' is stored redundantly - move it to a separate table
     # TODO: encode 'status' as int to save space (foreign key referencing a table with all possible statuses)
 
-    create_samples_query = ("CREATE TABLE IF NOT EXISTS samples ("
-                            "id INTEGER NOT NULL PRIMARY KEY,"
-                            "name VARCHAR NOT NULL UNIQUE,"
-                            "condition VARCHAR"
-                            ")"
-                            )
+    # "samples" table:
+    table_def_samples = ["id INTEGER NOT NULL PRIMARY KEY",
+                         "name VARCHAR NOT NULL UNIQUE",
+                         "condition VARCHAR"]
 
-    create_transcripts_query = ("CREATE TABLE IF NOT EXISTS transcripts ("
-                                "id INTEGER NOT NULL PRIMARY KEY,"
-                                "name VARCHAR NOT NULL UNIQUE"
-                                ")"
-                                )
+    # "transcripts" table:
+    table_def_transcripts = ["id INTEGER NOT NULL PRIMARY KEY",
+                             "name VARCHAR NOT NULL UNIQUE"]
 
-    create_tables_queries = {"reads": create_reads_query,
-                             "kmers": create_kmers_query,
-                             "samples": create_samples_query,
-                             "transcripts": create_transcripts_query}
+    table_defs = {"reads": table_def_reads,
+                  "kmers": table_def_kmers,
+                  "samples": table_def_samples,
+                  "transcripts": table_def_transcripts}
 
     def store_read(self, read):
         """
@@ -285,63 +280,57 @@ class DataStore_EventAlign(DataStore):
 class DataStore_SampComp(DataStore):
     """Store Nanocompore data in an SQLite database - subclass for SampComp results"""
 
+    # "parameters" table:
+    table_def_parameters = ["univariate_test VARCHAR CHECK (univariate_test in ('ST', 'MW', 'KS'))",
+                            "gmm_covariance_type VARCHAR",
+                            "gmm_test VARCHAR CHECK (gmm_test in ('anova', 'logit'))"]
     # TODO: add more parameters
-    create_parameters_query = ("CREATA TABLE IF NOT EXISTS parameters ("
-                               "univariate_test VARCHAR CHECK (univariate_test in ('ST', 'MW', 'KS')),"
-                               "gmm_covariance_type VARCHAR,"
-                               "gmm_test VARCHAR CHECK (gmm_test in ('anova', 'logit'))"
-                               ")")
 
-    create_transcripts_query = ("CREATE TABLE IF NOT EXISTS transcripts ("
-                                "id INTEGER NOT NULL PRIMARY KEY,"
-                                "name VARCHAR NOT NULL UNIQUE"
-                                ")")
+    # "transcripts" table:
+    table_def_transcripts = ["id INTEGER NOT NULL PRIMARY KEY",
+                             "name VARCHAR NOT NULL UNIQUE"]
 
-    create_whitelist_query = ("CREATE TABLE IF NOT EXISTS whitelist ("
-                              "transcriptid INTEGER NOT NULL,"
-                              "readid INTEGER NOT NULL UNIQUE,"
-                              "FOREIGN KEY (transcriptid) REFERENCES transcripts(id)"
-                              # "readid" is foreign key for "reads" table in EventAlign DB
-                              ")")
+    # "whitelist" table:
+    table_def_whitelist = ["transcriptid INTEGER NOT NULL",
+                           "readid INTEGER NOT NULL UNIQUE", # foreign key for "reads" table in EventAlign DB
+                           "FOREIGN KEY (transcriptid) REFERENCES transcripts(id)"]
 
     # TODO: add columns for adjusted p-values in tables below?
-    create_kmer_stats_query = ("CREATE TABLE IF NOT EXISTS kmer_stats ("
-                               "id INTEGER NOT NULL PRIMARY KEY,"
-                               "transcriptid INTEGER NOT NULL,"
-                               "kmer INTEGER NOT NULL,"
-                               "c1_mean_intensity REAL,"
-                               "c2_mean_intensity REAL,"
-                               "c1_median_intensity REAL,"
-                               "c2_median_intensity REAL,"
-                               "c1_sd_intensity REAL,"
-                               "c2_sd_intensity REAL,"
-                               "c1_mean_dwell REAL,"
-                               "c2_mean_dwell REAL,"
-                               "c1_median_dwell REAL,"
-                               "c2_median_dwell REAL,"
-                               "c1_sd_dwell REAL,"
-                               "c2_sd_dwell REAL,"
-                               "intensity_pvalue REAL,"
-                               "dwell_pvalue REAL,"
-                               "UNIQUE (transcriptid, kmer),"
-                               "FOREIGN KEY (transcriptid) REFERENCES transcripts(id)"
-                               ")")
+    # "kmer_stats" table:
+    table_def_kmer_stats = ["id INTEGER NOT NULL PRIMARY KEY",
+                            "transcriptid INTEGER NOT NULL",
+                            "kmer INTEGER NOT NULL",
+                            "c1_mean_intensity REAL",
+                            "c2_mean_intensity REAL",
+                            "c1_median_intensity REAL",
+                            "c2_median_intensity REAL",
+                            "c1_sd_intensity REAL",
+                            "c2_sd_intensity REAL",
+                            "c1_mean_dwell REAL",
+                            "c2_mean_dwell REAL",
+                            "c1_median_dwell REAL",
+                            "c2_median_dwell REAL",
+                            "c1_sd_dwell REAL",
+                            "c2_sd_dwell REAL",
+                            "intensity_pvalue REAL",
+                            "dwell_pvalue REAL",
+                            "UNIQUE (transcriptid, kmer)",
+                            "FOREIGN KEY (transcriptid) REFERENCES transcripts(id)"]
     # TODO: are "c1" and "c2" (conditions) properly defined?
 
-    create_gmm_stats_query = ("CREATE TABLE IF NOT EXISTS gmm_stats ("
-                              "kmer_statsid INTEGER NOT NULL UNIQUE,"
-                              "n_components INTEGER NOT NULL,"
-                              "cluster_counts VARCHAR,"
-                              "test_stat REAL,"
-                              "test_pvalue REAL,"
-                              "FOREIGN KEY (kmer_statsid) REFERENCES kmer_stats(id)"
-                              ")")
+    # "gmm_stats" table:
+    table_def_gmm_stats = ["kmer_statsid INTEGER NOT NULL UNIQUE",
+                           "n_components INTEGER NOT NULL",
+                           "cluster_counts VARCHAR",
+                           "test_stat REAL",
+                           "test_pvalue REAL",
+                           "FOREIGN KEY (kmer_statsid) REFERENCES kmer_stats(id)"]
 
-    create_tables_queries = {"parameters": create_parameters_query,
-                             "transcripts": create_transcripts_query,
-                             "whitelist": create_whitelist_query,
-                             "kmer_stats": create_kmer_stats_query,
-                             "gmm_stats": create_gmm_stats_query}
+    table_defs = {"parameters": table_def_parameters,
+                  "transcripts": table_def_transcripts,
+                  "whitelist": table_def_whitelist,
+                  "kmer_stats": table_def_kmer_stats,
+                  "gmm_stats": table_def_gmm_stats}
 
     def __insert_transcript_get_id(self, tx_name):
         try:
