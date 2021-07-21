@@ -32,10 +32,11 @@ os.environ['OPENBLAS_NUM_THREADS'] = '1'
 
 #~~~~~~~~~~~~~~MAIN CLASS~~~~~~~~~~~~~~#
 class SampComp(object):
-    """ Init analysis and check args"""
+    """Init analysis and check args"""
 
     #~~~~~~~~~~~~~~FUNDAMENTAL METHODS~~~~~~~~~~~~~~#
 
+    # TODO: use enums for univariate and gmm test parameters?
     def __init__(self,
                  input_db_path:str,
                  output_db_path:str,
@@ -43,9 +44,9 @@ class SampComp(object):
                  fasta_fn:str = "",
                  overwrite:bool = False,
                  whitelist:Whitelist = None,
-                 comparison_methods:list = ["GMM", "KS"],
-                 logit:bool = True,
-                 anova:bool = False,
+                 univariate_test:str = "KS", # or: "MW", "ST"
+                 fit_gmm:bool = True,
+                 gmm_test:str = "logit", # or: "anova"
                  allow_warnings:bool = False,
                  sequence_context:int = 0,
                  sequence_context_weights:str = "uniform",
@@ -78,15 +79,16 @@ class SampComp(object):
         * whitelist
             Whitelist object previously generated with nanocompore Whitelist.
             If not given, will be automatically generated.
-        * comparison_methods
-            Statistical method to compare the two samples (mann_whitney or MW, kolmogorov_smirnov or KS, student_t or ST, gaussian_mixture_model or GMM).
-            This can be a list or a comma separated string. {MW,KS,ST,GMM}
-        * logit
-            Force logistic regression even if we have less than 2 replicates in any condition.
+        * univariate_test
+            Statistical test to compare the two samples ('MW' for Mann-Whitney, 'KS' for Kolmogorov-Smirnov or 'ST' for Student's t), or empty for no test.
+        * fit_gmm
+            Fit a Gaussian mixture model (GMM) to the intensity/dwell-time distribution?
+        * gmm_test
+            Method to compare samples based on the GMM ('logit' or 'anova'), or empty for no comparison.
         * allow_warnings
             If True runtime warnings during the ANOVA tests don't raise an error.
         * sequence_context
-            Extend statistical analysis to contigous adjacent base if available.
+            Extend statistical analysis to contiguous adjacent bases if available.
         * sequence_context_weights
             type of weights to used for combining p-values. {uniform,harmonic}
         * min_coverage
@@ -120,21 +122,10 @@ class SampComp(object):
             raise NanocomporeError("The minimum number of threads is 3")
 
         # Parse comparison methods
-        if comparison_methods:
-            if type(comparison_methods) == str:
-                comparison_methods = comparison_methods.split(",")
-            for i, method in enumerate(comparison_methods):
-                method = method.upper()
-                if method in ["MANN_WHITNEY", "MW"]:
-                    comparison_methods[i] = "MW"
-                elif method in ["KOLMOGOROV_SMIRNOV", "KS"]:
-                    comparison_methods[i] = "KS"
-                elif method in ["STUDENT_T", "ST"]:
-                    comparison_methods[i] = "ST"
-                elif method in ["GAUSSIAN_MIXTURE_MODEL", "GMM"]:
-                    comparison_methods[i] = "GMM"
-                else:
-                    raise NanocomporeError("Invalid comparison method {}".format(method))
+        if univariate_test and (univariate_test not in ["MW", "KS", "ST"]):
+            raise NanocomporeError(f"Invalid univariate test {univariate_test}")
+        if fit_gmm and gmm_test and (gmm_test not in ["logit", "anova"]):
+            raise NanocomporeError(f"Invalid GMM-based test {gmm_test}")
 
         if not whitelist:
             whitelist = Whitelist(input_db_path,
@@ -165,9 +156,9 @@ class SampComp(object):
         self.__sample_dict = sample_dict
         self.__fasta_fn = fasta_fn
         self.__whitelist = whitelist
-        self.__comparison_methods = comparison_methods
-        self.__logit = logit
-        self.__anova = anova
+        self.__univariate_test = univariate_test
+        self.__fit_gmm = fit_gmm
+        self.__gmm_test = gmm_test
         self.__allow_warnings = allow_warnings
         self.__sequence_context = sequence_context
         self.__sequence_context_weights = sequence_context_weights
@@ -265,18 +256,18 @@ class SampComp(object):
 
         logger.debug(f"Data loaded for transcript: {tx_id}")
         test_results = {}
-        if self.__comparison_methods:
+        if univariate_test or fit_gmm:
             random_state = np.random.RandomState(seed=42)
             test_results = txCompare(tx_id,
                                      kmer_data,
                                      random_state=random_state,
-                                     methods=self.__comparison_methods,
+                                     univariate_test=self.__univariate_test,
+                                     fit_gmm=self.__fit_gmm,
+                                     gmm_test=self.__gmm_test,
                                      sequence_context=self.__sequence_context,
                                      sequence_context_weights=self.__sequence_context_weights,
                                      min_coverage= self.__min_coverage,
-                                     allow_warnings=self.__allow_warnings,
-                                     logit=self.__logit,
-                                     anova=self.__anova)
+                                     allow_warnings=self.__allow_warnings)
 
         # Remove 'default_factory' functions from 'kmer_data' to enable pickle/multiprocessing
         kmer_data.default_factory = None
