@@ -295,7 +295,6 @@ class DataStore_SampComp(DataStore):
                            "readid INTEGER NOT NULL UNIQUE", # foreign key for "reads" table in EventAlign DB
                            "FOREIGN KEY (transcriptid) REFERENCES transcripts(id)"]
 
-    # TODO: add columns for adjusted p-values in tables below?
     # "kmer_stats" table:
     table_def_kmer_stats = ["id INTEGER NOT NULL PRIMARY KEY",
                             "transcriptid INTEGER NOT NULL",
@@ -314,6 +313,8 @@ class DataStore_SampComp(DataStore):
                             "c2_sd_dwell REAL",
                             "intensity_pvalue REAL",
                             "dwell_pvalue REAL",
+                            "adj_intensity_pvalue REAL",
+                            "adj_dwell_pvalue REAL",
                             "UNIQUE (transcriptid, kmer)",
                             "FOREIGN KEY (transcriptid) REFERENCES transcripts(id)"]
     # TODO: are "c1" and "c2" (conditions) properly defined?
@@ -324,13 +325,34 @@ class DataStore_SampComp(DataStore):
                            "cluster_counts VARCHAR",
                            "test_stat REAL",
                            "test_pvalue REAL",
+                           "adj_test_pvalue REAL",
                            "FOREIGN KEY (kmer_statsid) REFERENCES kmer_stats(id)"]
 
     table_defs = {"parameters": table_def_parameters,
                   "transcripts": table_def_transcripts,
                   "whitelist": table_def_whitelist,
-                  "kmer_stats": table_def_kmer_stats,
-                  "gmm_stats": table_def_gmm_stats}
+                  "kmer_stats": table_def_kmer_stats}
+    # table "gmm_stats" is only added when needed (see "__init__")
+
+    def __init__(self,
+                 db_path:str,
+                 create_mode=DBCreateMode.MUST_EXIST,
+                 with_gmm=True,
+                 with_sequence_context=False):
+        super().__init__(db_path, create_mode)
+        self.__with_gmm = with_gmm
+        self.__with_sequence_context = with_sequence_context
+        if with_gmm:
+            table_defs["gmm_stats"] = table_def_gmm_stats
+        if with_sequence_context: # add additional columns for context p-values
+            table_defs["kmer_stats"] += ["intensity_pvalue_context REAL",
+                                         "dwell_pvalue_context REAL",
+                                         "adj_intensity_pvalue_context REAL",
+                                         "adj_dwell_pvalue_context REAL"]
+            if with_gmm:
+                table_defs["gmm_stats"] += ["test_pvalue_context REAL",
+                                            "adj_test_pvalue_context REAL"]
+
 
     def __insert_transcript_get_id(self, tx_name):
         try:
@@ -354,22 +376,25 @@ class DataStore_SampComp(DataStore):
         for kmer, res in test_results.items():
             values = [tx_id, kmer]
             values += res["shift_stats"].values()
-            values.append(res.get("intensity_pvalue"))
-            values.append(res.get("dwell_pvalue"))
+            # insert 'None' (NULL) into adj. p-value columns:
+            values += [res.get("intensity_pvalue"), res.get("dwell_pvalue"), None, None]
+            if self.__with_sequence_context:
+                values += [res.get("intensity_pvalue_context"), res.get("dwell_pvalue_context"), None, None]
             try:
                 self._cursor.execute("INSERT INTO kmer_stats VALUES (NULL" + ", ?" * len(values) + ")", values)
             except:
                 logger.error(f"Error storing statistics for transcript '{tx_name}', kmer {kmer}")
                 raise
             kmer_statsid = self._cursor.lastrowid
-            if "gmm_model" in res:
+            if self.__with_gmm:
+                # insert 'None' (NULL) into adj. p-value columns:
+                values = [kmer_statsid, res["gmm_model"].n_components, res["gmm_cluster_counts"],
+                          res["gmm_test_stat"], res["gmm_pvalue"], None]
+                if self.__with_sequence_context:
+                    values += [res["gmm_pvalue_context"], None]
+                qmarks = ", ".join(["?"] * len(values))
                 try:
-                    self._cursor.execute("INSERT INTO gmm_stats VALUES (?, ?, ?, ?)",
-                                         (kmer_statsid,
-                                          res["gmm_model"].n_components,
-                                          res["gmm_cluster_counts"],
-                                          res["gmm_test_stat"],
-                                          res["gmm_pvalue"]))
+                    self._cursor.execute(f"INSERT INTO gmm_stats VALUES ({qmarks})", values)
                 except:
                     logger.error(f"Error storing GMM stats for transcript '{tx_name}', kmer {kmer}")
                     raise

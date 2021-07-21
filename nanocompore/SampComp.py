@@ -28,7 +28,7 @@ os.environ["MKL_NUM_THREADS"] = "1"
 os.environ["MKL_THREADING_LAYER"] = "sequential"
 os.environ["NUMEXPR_NUM_THREADS"] = "1"
 os.environ["OMP_NUM_THREADS"] = "1"
-os.environ['OPENBLAS_NUM_THREADS'] = '1'
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
 
 #~~~~~~~~~~~~~~MAIN CLASS~~~~~~~~~~~~~~#
 class SampComp(object):
@@ -142,7 +142,9 @@ class SampComp(object):
 
         self.__output_db_path = output_db_path
         db_create_mode = DBCreateMode.OVERWRITE if overwrite else DBCreateMode.CREATE_MAYBE
-        with DataStore_SampComp(self.__output_db_path, db_create_mode) as db:
+        db = DataStore_SampComp(output_db_path, db_create_mode, with_gmm=fit_gmm,
+                                with_sequence_context=(sequence_context > 0))
+        with db:
             db.store_whitelist(whitelist)
         # TODO: move this to '__call__'?
 
@@ -337,7 +339,10 @@ class SampComp(object):
         n_tx = 0
         try:
             # Database was already created earlier to store the whitelist!
-            with DataStore_SampComp(self.__output_db_path, DBCreateMode.MUST_EXIST) as db:
+            db = DataStore_SampComp(self.__output_db_path, DBCreateMode.MUST_EXIST,
+                                    with_gmm=self.__fit_gmm,
+                                    with_sequence_context=(self.__sequence_context > 0))
+            with  as db:
                 # Iterate over the counter queue and process items until all poison pills are found
                 for _ in range(self.__nthreads):
                     for ref_id, kmer_data, test_results in iter(out_q.get, None):
