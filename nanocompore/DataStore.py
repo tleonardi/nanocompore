@@ -343,15 +343,15 @@ class DataStore_SampComp(DataStore):
         self.__with_gmm = with_gmm
         self.__with_sequence_context = with_sequence_context
         if with_gmm:
-            table_defs["gmm_stats"] = table_def_gmm_stats
+            self.table_defs["gmm_stats"] = self.table_def_gmm_stats
         if with_sequence_context: # add additional columns for context p-values
-            table_defs["kmer_stats"] += ["intensity_pvalue_context REAL",
-                                         "dwell_pvalue_context REAL",
-                                         "adj_intensity_pvalue_context REAL",
-                                         "adj_dwell_pvalue_context REAL"]
+            self.table_defs["kmer_stats"] += ["intensity_pvalue_context REAL",
+                                              "dwell_pvalue_context REAL",
+                                              "adj_intensity_pvalue_context REAL",
+                                              "adj_dwell_pvalue_context REAL"]
             if with_gmm:
-                table_defs["gmm_stats"] += ["test_pvalue_context REAL",
-                                            "adj_test_pvalue_context REAL"]
+                self.table_defs["gmm_stats"] += ["test_pvalue_context REAL",
+                                                 "adj_test_pvalue_context REAL"]
 
 
     def __insert_transcript_get_id(self, tx_name):
