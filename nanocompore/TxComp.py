@@ -30,11 +30,11 @@ def txCompare(ref_id,
               sequence_context=0,
               min_coverage=20,
               ref=None,
-              sequence_context_weights="uniform",
+              sequence_context_weights="uniform", # or: "harmonic"
               allow_warnings=False):
     logger.debug("TxCompare")
 
-    if sequence_context_weights != "uniform" and sequence_context_weights != "harmonic":
+    if sequence_context_weights not in ["uniform", "harmonic"]:
         raise NanocomporeError("Invalid sequence_context_weights (uniform or harmonic)")
 
     n_lowcov = 0
@@ -104,9 +104,7 @@ def txCompare(ref_id,
         if fit_gmm and gmm_test:
             combine_adjacent_pvalues(results, "gmm_pvalue", sequence_context, weights)
 
-    params = {}
-
-    return (results, params)
+    return results
 
 
 def combine_adjacent_pvalues(results, pvalue_key, sequence_context, weights):
