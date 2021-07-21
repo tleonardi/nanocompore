@@ -345,13 +345,20 @@ class DataStore_SampComp(DataStore):
         if with_gmm:
             self.table_defs["gmm_stats"] = self.table_def_gmm_stats
         if with_sequence_context: # add additional columns for context p-values
-            self.table_defs["kmer_stats"] += ["intensity_pvalue_context REAL",
+            # column definitions must go before table constraints!
+            constraints = self.table_defs["kmer_stats"][-2:]
+            self.table_defs["kmer_stats"] = (self.table_defs["kmer_stats"][:-2] +
+                                             ["intensity_pvalue_context REAL",
                                               "dwell_pvalue_context REAL",
                                               "adj_intensity_pvalue_context REAL",
-                                              "adj_dwell_pvalue_context REAL"]
+                                              "adj_dwell_pvalue_context REAL"] +
+                                             constraints)
             if with_gmm:
-                self.table_defs["gmm_stats"] += ["test_pvalue_context REAL",
-                                                 "adj_test_pvalue_context REAL"]
+                constraints = self.table_defs["gmm_stats"][-1:]
+                self.table_defs["gmm_stats"] = (self.table_defs["gmm_stats"][:-1] +
+                                                ["test_pvalue_context REAL",
+                                                 "adj_test_pvalue_context REAL"] +
+                                                constraints)
 
 
     def __insert_transcript_get_id(self, tx_name):
@@ -388,10 +395,10 @@ class DataStore_SampComp(DataStore):
             kmer_statsid = self._cursor.lastrowid
             if self.__with_gmm:
                 # insert 'None' (NULL) into adj. p-value columns:
-                values = [kmer_statsid, res["gmm_model"].n_components, res["gmm_cluster_counts"],
-                          res["gmm_test_stat"], res["gmm_pvalue"], None]
+                values = [kmer_statsid, res["gmm_model"].n_components, res.get("gmm_cluster_counts"),
+                          res.get("gmm_test_stat"), res.get("gmm_pvalue"), None]
                 if self.__with_sequence_context:
-                    values += [res["gmm_pvalue_context"], None]
+                    values += [res.get("gmm_pvalue_context"), None]
                 qmarks = ", ".join(["?"] * len(values))
                 try:
                     self._cursor.execute(f"INSERT INTO gmm_stats VALUES ({qmarks})", values)

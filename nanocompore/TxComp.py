@@ -41,7 +41,7 @@ class TxComp(object):
         if sequence_context > 0:
             if sequence_context_weighting == "harmonic":
                 # Generate weights as a symmetrical harmonic series
-                self.__sequence_context_weights = harmonic_series(self.__sequence_context)
+                self.__sequence_context_weights = self.__harmonic_series()
             elif sequence_context_weighting == "uniform":
                 self.__sequence_context_weights = [1] * (2 * self.__sequence_context + 1)
             else:
@@ -128,23 +128,24 @@ class TxComp(object):
         # Collect pvalue list for test
         pval_list = []
         for res_dict in results.values():
+            # TODO: avoid 'None'/'np.nan' checks below by checking and replacing here?
             pval_list.append(res_dict.get(pvalue_key))
-            # Compute cross correlation matrix
-            corr_matrix = cross_corr_matrix(pval_list)
+        # Compute cross correlation matrix
+        corr_matrix = self.__cross_corr_matrix(pval_list)
 
         logger.debug("Combine adjacent position pvalues with Hou's method position by position")
-        combined_label = f"{pvalue_key}_context_{sequence_context}"
+        combined_label = f"{pvalue_key}_context"
         # Iterate over each position in previously generated result dictionary
         for mid_pos, res_dict in results.items():
             # If the mid p-value is NaN, also set the context p-value to NaN
-            if np.isnan(res_dict[pvalue_key]):
+            if (res_dict[pvalue_key] is None) or np.isnan(res_dict[pvalue_key]):
                 results[mid_pos][combined_label] = np.nan
                 continue
             ## Otherwise collect adjacent p-values and combine them:
             pval_list = []
             for pos in range(mid_pos - self.__sequence_context, mid_pos + self.__sequence_context + 1):
                 # If any of the positions is missing or any of the p-values in the context is NaN, consider it 1
-                if (pos not in results) or np.isnan(results[pos][pvalue_key]):
+                if (pos not in results) or (results[pos][pvalue_key] is None) or np.isnan(results[pos][pvalue_key]):
                     pval_list.append(1)
                 else: # just extract the corresponding pvalue
                     pval_list.append(results[pos][pvalue_key])
@@ -345,7 +346,7 @@ class TxComp(object):
         if len(pvalues_vector) < (context * 3) + 3:
             raise NanocomporeError(f"Not enough p-values for a context of {context}")
 
-        pvalues_vector = np.array([i if not np.isnan(i) else 1 for i in pvalues_vector])
+        pvalues_vector = np.array([i if (i is not None) and not np.isnan(i) else 1 for i in pvalues_vector])
         if any(pvalues_vector == 0) or any(np.isinf(pvalues_vector)) or any(pvalues_vector > 1):
             raise NanocomporeError("At least one p-value is invalid")
 
