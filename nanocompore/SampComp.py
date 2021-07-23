@@ -14,6 +14,7 @@ from loguru import logger
 from tqdm import tqdm
 import numpy as np
 from pyfaidx import Fasta
+from statsmodels.stats.multitest import multipletests
 
 # Local package
 from nanocompore.common import *
@@ -179,6 +180,10 @@ class SampComp(object):
                                        allow_anova_warnings=allow_anova_warnings)
         else:
             self.__tx_compare = None
+        ## used to adjust p-values:
+        self.__univariate_test = univariate_test
+        self.__gmm_test = gmm_test if fit_gmm else ""
+        self.__sequence_context = (sequence_context > 0)
 
 
     def __call__(self):
@@ -226,6 +231,14 @@ class SampComp(object):
             except:
                 logger.error("An error occured while trying to kill processes\n")
             raise E
+
+        # Adjust p-values for multiple testing:
+        if self.__univariate_test or self.__gmm_test:
+            logger.info("Running multiple testing correction")
+            self.__adjust_pvalues()
+            # context-based p-values are not independent tests, so adjust them separately:
+            if self.__sequence_context:
+                self.__adjust_pvalues(sequence_context=True)
 
 
     def process_transcript(self, tx_id, whitelist_reads):
@@ -355,52 +368,54 @@ class SampComp(object):
             error_q.put(None)
 
 
-    def __write_output(self, out_q, error_q):
-        # Get results out of the out queue and write in shelve
-        pvalue_tests = set()
-        ref_id_list = []
-        n_tx = n_pos = 0
-        try:
-            with shelve.open(self.__db_fn, flag='n') as db, \
-                 tqdm(total=len(self.__whitelist), unit=" Processed References",
-                      disable=not self.__progress) as pbar:
-                # Iterate over the counter queue and process items until all poison pills are found
-                for _ in range(self.__nthreads):
-                    for ref_id, kmer_data, test_results in iter(out_q.get, None):
-                        ref_id_list.append(ref_id)
-                        logger.debug("Writer thread writing %s"%ref_id)
-                        # Get pvalue fields available in analysed data
-                        for res_dict in test_results.values():
-                            for res in res_dict.keys():
-                                if "pvalue" in res:
-                                    n_pos += 1
-                                    pvalue_tests.add(res)
-                        # Write results in a shelve db
-                        db[ref_id] = (kmer_data, test_results)
-                        pbar.update(1)
-                        n_tx += 1
-
-                # Write list of refid
-                db["__ref_id_list"] = ref_id_list
-
-                # Write metadata
-                db["__metadata"] = {
-                    "package_name": pkg.__version__,
-                    "package_version": pkg.__name__,
-                    "timestamp": str(datetime.datetime.now()),
-                    "comparison_methods": self.__comparison_methods,
-                    "pvalue_tests": sorted(list(pvalue_tests)),
-                    "sequence_context": self.__sequence_context,
-                    "min_coverage": self.__min_coverage,
-                    "n_samples": self.__n_samples}
-
-        # Manage exceptions and add error trackback to error queue
-        except Exception:
-            logger.error("Error in Writer")
-            error_q.put(traceback.format_exc())
-
-        finally:
-            logger.debug(f"Wrote {n_tx} transcripts, {n_pos} valid positions")
-            logger.info(f"All done. Transcripts processed: {n_tx}")
-            # Kill error queue with poison pill
-            error_q.put(None)
+    # TODO: move this to 'DataStore_SampComp'?
+    def __adjust_pvalues(self, method="fdr_bh", sequence_context=False):
+        """Perform multiple testing correction of p-values and update database"""
+        db = DataStore_SampComp(self.__output_db_path, DBCreateMode.MUST_EXIST, **self.__db_args)
+        with db:
+            pvalues = []
+            index = []
+            # for "context-averaged" p-values, add a suffix to the column names:
+            col_suffix = "_context" if sequence_context else ""
+            if self.__univariate_test:
+                query = f"SELECT id, intensity_pvalue{col_suffix}, dwell_pvalue{col_suffix} FROM kmer_stats"
+                try:
+                    for row in db.cursor.execute(query):
+                        for pv_col in ["intensity_pvalue", "dwell_pvalue"]:
+                            pv_col += col_suffix
+                            pv = row[pv_col]
+                            # "multipletests" doesn't handle NaN values well, so skip those:
+                            if (pv is not None) and not np.isnan(pv):
+                                pvalues.append(pv)
+                                index.append({"table": "kmer_stats", "id_col": "id",
+                                              "id": row["id"], "pv_col": pv_col})
+                except:
+                    logger.error("Error reading p-values from table 'kmer_stats'")
+                    raise
+            if self.__gmm_test:
+                pv_col = "test_pvalue" + col_suffix
+                query = f"SELECT kmer_statsid, {pv_col} FROM gmm_stats WHERE {pv_col} IS NOT NULL"
+                try:
+                    for row in db.cursor.execute(query):
+                        pv = row[pv_col]
+                        # "multipletests" doesn't handle NaN values well, so skip those:
+                        if not np.isnan(pv): # 'None' (NULL) values have been excluded in the query
+                            pvalues.append(pv)
+                            index.append({"table": "gmm_stats", "id_col": "kmer_statsid",
+                                          "id": row["kmer_statsid"], "pv_col": pv_col})
+                except:
+                    logger.error("Error reading p-values from table 'gmm_stats'")
+                    raise
+            logger.debug(f"Number of p-values for multiple testing correction: {len(pvalues)}")
+            if not pvalues:
+                return
+            adjusted = multipletests(pvalues, method=method)[1]
+            assert len(pvalues) == len(adjusted)
+            # sqlite module can't handle numpy float64 values, so convert to floats using "tolist":
+            for ind, adj_pv in zip(index, adjusted.tolist()):
+                query = "UPDATE {table} SET adj_{pv_col} = ? WHERE {id_col} = {id}".format_map(ind)
+                try:
+                    db.cursor.execute(query, (adj_pv, ))
+                except:
+                    logger.error("Error updating adjusted p-value for ID {id} in table '{table}'".format_map(ind))
+                    raise
