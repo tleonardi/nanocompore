@@ -197,33 +197,3 @@ class PostProcess(object):
                 # write output data:
                 fp.write("\t".join(str(x) for x in out_dict.values()) + "\n")
                 first_row = False
-
-
-    def save_shift_stats(self, output_fn=None):
-        """
-        Save the mean, median and sd intensity and dwell time for each condition and for each position.
-        This can be used to evaluate the intensity of the shift for significant positions.
-        * output_fn
-            Path to file where to write the data. If None, data is returned to the standard output.
-        """
-        if output_fn is None:
-            fp = sys.stdout
-        elif isinstance(output_fn, str):
-            try:
-                fp = open(output_fn, "w")
-            except:
-                raise NanocomporeError("Error opening output file %s" % output_fn)
-        else:
-            raise NanocomporeError("output_fn needs to be a string or None")
-
-        headers = ['c1_mean_intensity', 'c2_mean_intensity', 'c1_median_intensity', 'c2_median_intensity', 'c1_sd_intensity', 'c2_sd_intensity', 'c1_mean_dwell', 'c2_mean_dwell', 'c1_median_dwell', 'c2_median_dwell', 'c1_sd_dwell', 'c2_sd_dwell']
-        fp.write('\t'.join([ str(i) for i in ["ref_id", "pos"]+headers ])+'\n')
-        for tx, refpos in self:
-            for pos, refpos_list in enumerate(refpos):
-                if "txComp" in refpos_list:
-                    ss = refpos_list['txComp']['shift_stats']
-                    if list(ss.keys()) != headers:
-                        raise NanocomporeError("Mismatch in shift_stats headers")
-                    line = [tx, pos, *ss.values()]
-                    fp.write('\t'.join([ str(i) for i in line ])+'\n')
-        fp.close()
