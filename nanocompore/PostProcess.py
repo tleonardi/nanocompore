@@ -5,14 +5,17 @@
 from loguru import logger
 
 # Third party
-from statsmodels.stats.multitest import multipletests
+# ...
 
+# Local package
+from nanocompore.common import *
+from nanocompore.DataStore import DataStore_EventAlign, DataStore_SampComp
 
 #~~~~~~~~~~~~~~MAIN CLASS~~~~~~~~~~~~~~#
 class PostProcess(object):
     """Helper class for post-processing `SampComp` results"""
 
-    def __init___(self, sampcomp_db_path:str, eventalign_db_path:str, bed_path:str=None):
+    def __init__(self, sampcomp_db_path:str, eventalign_db_path:str, bed_path:str=None):
         self._sampcomp_db_path = sampcomp_db_path
         self._eventalign_db_path = eventalign_db_path
         self._bed_path = bed_path
@@ -147,85 +150,53 @@ class PostProcess(object):
         else:
             raise NanocomporeError("output_fn needs to be a string or None")
 
-        shift_stat_columns = []
-        if include_shift_stats:
-            shift_stat_columns = ["c1_mean_intensity", "c2_mean_intensity",
-                                  "c1_median_intensity", "c2_median_intensity",
-                                  "c1_sd_intensity", "c2_sd_intensity",
-                                  "c1_mean_dwell", "c2_mean_dwell",
-                                  "c1_median_dwell", "c2_median_dwell",
-                                  "c1_sd_dwell", "c2_sd_dwell"]
-
         with DataStore_SampComp(self._sampcomp_db_path) as sc_db, \
              DataStore_EventAlign(self._eventalign_db_path) as ea_db:
-            # Which statistical tests were performed?
-            query = "SELECT DISTINCT test FROM univariate_results"
-            univar_tests = [row["test"] for row in sc_db.cursor.execute(query)]
-            query = "SELECT DISTINCT test FROM gmm_results"
-            gmm_tests = [row["test"] for row in sc_db.cursor.execute(query)]
-            # Generate headers
-            headers = ['pos', 'chr', 'genomicPos', 'ref_id', 'strand', 'ref_kmer']
-            for test in sorted(univar_tests):
-                headers += [f"{test}_dwell_pvalue", f"{test}_intensity_pvalue"]
-            if gmm_tests:
-                # TODO: what if GMM was fitted, but no test were performed?
-                headers += ["GMM_cov_type", "GMM_n_clust", "cluster_counts"]
-                if "logit" in gmm_tests:
-                    headers += ["GMM_logit_pvalue", "Logit_LOR"]
-                if "anova" in gmm_tests:
-                    headers += ["GMM_anova_pvalue", "Anova_delta_logit"]
-            # Write headers to file
-            fp.write('\t'.join([str(i) for i in headers]) + '\n')
-
-            # Merge kmer information with transcript name:
-            columns = ["kmer_stats.id", "transcriptid", "kmer AS pos", "name AS ref_id"] + shift_stat_columns
-            columns = ", ".join(columns)
-            query = f"SELECT {columns} FROM kmer_stats LEFT JOIN transcripts ON transcriptid = transcripts.id ORDER BY transcriptid, kmer"
+            # do we have GMM results?
+            query = "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'gmm_stats'"
+            sc_db.cursor.execute(query)
+            with_gmm = sc_db.cursor.fetchone() is not None
+            query = "SELECT * FROM kmer_stats LEFT JOIN transcripts ON transcriptid = transcripts.id"
+            if with_gmm:
+                query += " LEFT JOIN gmm_stats ON kmer_stats.id = gmm_stats.kmer_statsid"
+            query += " ORDER BY transcriptid, kmer"
+            first_row = True
+            shift_stat_columns = []
+            univariate_pvalue_columns = []
+            gmm_pvalue_columns = []
             for row in sc_db.cursor.execute(query):
-                db_data = dict(row)
-                # Get p-values etc.:
-                id = db_data["id"]
-                if univar_tests:
-                    query = f"SELECT test, intensity_pvalue, dwell_pvalue FROM univariate_results WHERE kmer_statsid = {id}"
-                    for row2 in sc_db.cursor.execute(query):
-                        test = row2["test"]
-                        db_data[test + "_intensity_pvalue"] = row2["intensity_pvalue"]
-                        db_data[test + "_dwell_pvalue"] = row2["dwell_pvalue"]
-                if gmm_tests:
-                    query = f"SELECT test, test_pvalue, test_stat FROM gmm_results WHERE gmm_statsid = {id}"
-                    for row2 in sc_db.cursor.execute(query):
-                        test = row2["test"]
-                        db_data[test + "_intensity_pvalue"] = row2["intensity_pvalue"]
-                        db_data[test + "_dwell_pvalue"] = row2["dwell_pvalue"]
+                # retrieve k-mer sequence:
+                ea_query = "SELECT sequence FROM kmers LEFT JOIN reads ON readid = reads.id WHERE transcriptid = ? AND position = ? LIMIT 1"
+                ea_db.cursor.execute(ea_query, (row["transcriptid"], row["kmer"]))
+                seq = ea_db.cursor.fetchone()[0]
+                out_dict = {"transcript": row["name"],
+                            "position": row["kmer"],
+                            "sequence": seq}
+                # TODO: add chromosome, genomic pos., strand information (from where?)
+                if first_row: # check which columns we have (do this only once)
+                    univariate_pvalue_columns = [col for col in row.keys()
+                                                 if ("intensity_pvalue" in col) or ("dwell_pvalue" in col)]
+                    if include_shift_stats:
+                        shift_stat_columns = [col for col in row.keys() if col.startswith(("c1_", "c2_"))]
+                    if with_gmm:
+                        gmm_pvalue_columns = [col for col in row.keys() if "test_pvalue" in col]
 
+                for col in shift_stat_columns:
+                    out_dict[col] = row[col]
+                for col in univariate_pvalue_columns:
+                    out_dict[col] = row[col]
+                if with_gmm:
+                    out_dict["GMM_n_components"] = row["n_components"]
+                    out_dict["GMM_cluster_counts"] = row["cluster_counts"]
+                    out_dict["GMM_test_stat"] = row["test_stat"]
+                    for col in gmm_pvalue_columns:
+                        out_dict[col.replace("test", "GMM", 1)] = row[col]
 
-
-            # TODO: where does chromosome and genomic pos. information come from?
-
-
-        # We loop over the IDs so that ref_pos_list can be prefetched for each transcript
-        for cur_id in self.ref_id_list:
-            cur_ref_pos_list = self[cur_id]
-            for record in self.results[self.results.ref_id == cur_id ].itertuples():
-                if "GMM" in self._metadata["comparison_methods"]:
-                    record_txComp = cur_ref_pos_list[record.pos]['txComp']
-                line = []
-                for f in headers:
-                    if f in record._fields:
-                        line.append(getattr(record, f))
-                    elif f == "GMM_cov_type":
-                        line.append(record_txComp['GMM_model']['model'].covariance_type)
-                    elif f == "GMM_n_clust":
-                        line.append(record_txComp['GMM_model']['model'].n_components)
-                    elif f == "cluster_counts":
-                        line.append(record_txComp['GMM_model']['cluster_counts'])
-                    elif f == "Anova_delta_logit":
-                        line.append(record_txComp['GMM_anova_model']['delta_logit'])
-                    elif f == "Logit_LOR":
-                        line.append(record_txComp['GMM_logit_model']['coef'])
-                    else: line.append("NA")
-                fp.write('\t'.join([ str(i) for i in line ])+'\n')
-        fp.close()
+                if first_row: # write header line
+                    fp.write("\t".join(out_dict.keys()) + "\n")
+                # write output data:
+                fp.write("\t".join(str(x) for x in out_dict.values()) + "\n")
+                first_row = False
 
 
     def save_shift_stats(self, output_fn=None):
@@ -256,25 +227,3 @@ class PostProcess(object):
                     line = [tx, pos, *ss.values()]
                     fp.write('\t'.join([ str(i) for i in line ])+'\n')
         fp.close()
-
-
-    @staticmethod
-    def __multipletests_filter_nan(pvalues, method="fdr_bh"):
-        """
-        Performs p-value correction for multiple hypothesis testing
-        using the method specified. The pvalues list can contain
-        np.nan values, which are ignored during p-value correction.
-        test: input=[0.1, 0.01, np.nan, 0.01, 0.5, 0.4, 0.01, 0.001, np.nan, np.nan, 0.01, np.nan]
-        out: array([0.13333333, 0.016     ,        nan, 0.016     , 0.5       ,
-        0.45714286, 0.016     , 0.008     ,        nan,        nan,
-        0.016     ,        nan])
-        """
-        if all([np.isnan(p) for p in pvalues]):
-            return pvalues
-
-        pvalues_no_nan = [p for p in pvalues if not np.isnan(p)]
-        corrected_p_values = multipletests(pvalues_no_nan, method=method)[1]
-        for i, p in enumerate(pvalues):
-            if np.isnan(p):
-                corrected_p_values = np.insert(corrected_p_values, i, np.nan, axis=0)
-        return(corrected_p_values)
