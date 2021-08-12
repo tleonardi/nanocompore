@@ -37,28 +37,22 @@ class Eventalign_collapse ():
     def __init__(self,
                  eventalign_fn:str,
                  sample_name:str,
-                 outpath:str="./",
-                 outprefix:str="out",
-                 write_db:bool = True,
+                 output_db_path:str,
                  overwrite:bool = False,
                  n_lines:int=None,
                  nthreads:int = 3,
                  progress:bool = False):
+        # TODO: is 'overwrite' a useful option, as data from multiple samples needs to be accumulated in the same DB?
         """
         Collapse the nanopolish eventalign events at kmer level
         * eventalign_fn
             Path to a nanopolish eventalign tsv output file, or a list of file, or a regex (can be gzipped)
         * sample_name
             The name of the sample being processed
-        * outpath
-            Path to the output folder (will be created if it does exist yet)
-        * outprefix
-            text outprefix for all the files generated
-        * write_db
-            Write output to database? (Otherwise to TSV file.)
+        * output_db_path
+            Path to the output (database) file
         * overwrite
-            If the output directory already exists, the standard behaviour is to raise an error to prevent overwriting existing data
-            This option ignore the error and overwrite data if they have the same outpath and outprefix.
+            Overwrite an existing output file?
         * n_lines
             Maximum number of read to parse.
         * nthreads
@@ -77,10 +71,9 @@ class Eventalign_collapse ():
 
         # Save args to self values
         self.__sample_name = sample_name
-        self.__outpath = outpath
-        self.__outprefix = outprefix
-        self.__write_db = write_db
         self.__eventalign_fn = eventalign_fn
+        self.__output_db_path = output_db_path
+        self.__overwrite = overwrite
         self.__n_lines = n_lines
         self.__nthreads = nthreads - 2 # subtract 1 for reading and 1 for writing
         self.__progress = progress
@@ -106,11 +99,8 @@ class Eventalign_collapse ():
         ps_list.append (mp.Process (target=self.__split_reads, args=(in_q, error_q)))
         for i in range (self.__nthreads):
             ps_list.append (mp.Process (target=self.__process_read, args=(in_q, out_q, error_q)))
-        if self.__write_db:
-            ps_list.append (mp.Process (target=self.__write_output_to_db, args=(out_q, error_q)))
-            # TODO: Check that sample_name does not exist already in DB
-        else:
-            ps_list.append(mp.Process(target=self.__write_output, args=(out_q, error_q)))
+        # TODO: Check that sample_name does not exist already in DB
+        ps_list.append(mp.Process(target=self.__write_output, args=(out_q, error_q)))
 
         # Start processes and monitor error queue
         try:
@@ -143,7 +133,7 @@ class Eventalign_collapse ():
 
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~PRIVATE METHODS~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
-    def __split_reads (self, in_q, error_q):
+    def __split_reads(self, in_q, error_q):
         """
         Mono-threaded reader
         """
@@ -198,7 +188,7 @@ class Eventalign_collapse ():
             logger.debug("Parsed Reads:{} Events:{}".format(n_reads, n_events))
 
 
-    def __process_read (self, in_q, out_q, error_q):
+    def __process_read(self, in_q, out_q, error_q):
         """
         Multi-threaded workers collapsing events at kmer level
         """
@@ -236,18 +226,18 @@ class Eventalign_collapse ():
             out_q.put(None)
 
 
-    def __write_output_to_db(self, out_q, error_q):
+    def __write_output(self, out_q, error_q):
         """
-        Mono-threaded Writer
+        Single-threaded writer
         """
         logger.debug("Start writing output to DB")
 
-        pr = profile.Profile()
-        pr.enable()
+        # pr = profile.Profile()
+        # pr.enable()
         n_reads = 0
-        db_path = os.path.join(self.__outpath, self.__outprefix+"_nanocompore.db")
+        db_create_mode = DBCreateMode.OVERWRITE if self.__overwrite else DBCreateMode.CREATE_MAYBE
         try:
-            with DataStore_EventAlign(self.__db_path, DBCreateMode.CREATE_MAYBE) as datastore, \
+            with DataStore_EventAlign(self.__output_db_path, db_create_mode) as datastore, \
                  tqdm (unit=" reads") as pbar:
                 # Iterate over out queue until nthread poison pills are found
                 for _ in range (self.__nthreads):
@@ -263,83 +253,13 @@ class Eventalign_collapse ():
             logger.info ("Output reads written:{}".format(n_reads))
             # Kill error queue with poison pill
             error_q.put(None)
-            pr.disable()
-            pr.dump_stats("prof")
+            # pr.disable()
+            # pr.dump_stats("prof")
 
-
-    def __write_output(self, out_q, error_q):
-        """
-        Mono-threaded Writer
-        """
-        logger.debug("Start writing output files")
-
-        byte_offset = n_reads = n_kmers = 0
-
-        # Init variables for index files
-        idx_fn = os.path.join(self.__outpath, self.__outprefix+"_eventalign_collapse.tsv.idx")
-        data_fn = os.path.join(self.__outpath, self.__outprefix+"_eventalign_collapse.tsv")
-
-        try:
-            # Open output files and tqdm progress bar
-            with open (data_fn, "w") as data_fp, open (idx_fn, "w") as idx_fp, tqdm (unit=" reads", disable=not self.__progress) as pbar:
-
-                # Iterate over out queue until nthread poison pills are found
-                for _ in range (self.__nthreads):
-                    for read in iter (out_q.get, None):
-                        read_res_d = read.get_read_results()
-                        kmer_res_l = read.get_kmer_results()
-                        n_reads+=1
-
-                        # Define file header from first read and first kmer
-                        if byte_offset == 0:
-                            idx_header_list = list(read_res_d.keys())+["byte_offset","byte_len"]
-                            idx_header_str = "\t".join(idx_header_list)
-                            data_header_list = list(kmer_res_l[0].keys())
-                            data_header_str = "\t".join(data_header_list)
-
-                            # Write index file header
-                            idx_fp.write ("{}\n".format(idx_header_str))
-
-                        # Write data file header
-                        byte_len = 0
-                        header_str = "#{}\t{}\n{}\n".format(read_res_d["read_id"], read_res_d["ref_id"], data_header_str)
-                        data_fp.write(header_str)
-                        byte_len+=len(header_str)
-
-                        # Write kmer data matching data field order
-                        for kmer in kmer_res_l:
-                            n_kmers += 1
-                            data_str = "\t".join([str(kmer[f]) for f in data_header_list]) + "\n"
-                            data_fp.write(data_str)
-                            byte_len += len(data_str)
-
-                        # Add byte
-                        read_res_d["byte_offset"] = byte_offset
-                        read_res_d["byte_len"] = byte_len-1
-                        idx_str = "\t".join([str(read_res_d[f]) for f in idx_header_list])
-                        idx_fp.write("{}\n".format(idx_str))
-
-                        # Update pbar
-                        byte_offset += byte_len
-                        pbar.update(1)
-
-                # Flag last line
-                data_fp.write ("#\n")
-
-        # Manage exceptions and add error trackback to error queue
-        except Exception:
-            logger.error("Error in Writer")
-            error_q.put (NanocomporeError(traceback.format_exc()))
-
-        finally:
-            logger.debug("Written Reads:{} Kmers:{}".format(n_reads, n_kmers))
-            logger.info ("Output reads written:{}".format(n_reads))
-            # Kill error queue with poison pill
-            error_q.put(None)
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~HELPER CLASSES~~~~~~~~~~~~~~~~~~~~~~~~~~#
 
-class Read ():
+class Read:
     """Helper class representing a single read"""
 
     def __init__ (self, read_id, ref_id, sample_name):
@@ -413,7 +333,7 @@ class Read ():
         l = [kmer.get_results() for kmer in self.kmer_l]
         return l
 
-class Kmer ():
+class Kmer:
     """Helper class representing a single kmer"""
 
     def __init__ (self):
