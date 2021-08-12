@@ -333,7 +333,7 @@ class SampComp(object):
 
                 # Add the current read details to queue
                 logger.debug(f"Adding '{ref_id}' to out_q")
-                out_q.put((ref_id, results["kmer_data"], results["test_results"]))
+                out_q.put((ref_id, results["test_results"]))
 
         # Manage exceptions and add error trackback to error queue
         except Exception as e:
@@ -355,7 +355,7 @@ class SampComp(object):
             with db:
                 # Iterate over the counter queue and process items until all poison pills are found
                 for _ in range(self.__nthreads):
-                    for ref_id, kmer_data, test_results in iter(out_q.get, None):
+                    for ref_id, test_results in iter(out_q.get, None):
                         logger.debug("Writer thread storing transcript %s" % ref_id)
                         db.store_test_results(ref_id, test_results)
                         n_tx += 1
