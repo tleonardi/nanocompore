@@ -28,14 +28,11 @@ class NanocomporeWarning (Warning):
 
 #~~~~~~~~~~~~~~FUNCTIONS~~~~~~~~~~~~~~#
 
-def build_eventalign_fn_dict(file_list1, file_list2, label1, label2):
+def build_sample_dict(sample_list1, sample_list2, label1, label2):
     """
-    Build the eventalign_fn_dict from file lists and labels
+    Build dictionary with sample information from sample lists and condition labels
     """
-    d = OrderedDict()
-    d[label1] = {"{}_{}".format(label1, i): v for i, v in enumerate(file_list1.split(","),1)}
-    d[label2] = {"{}_{}".format(label2, i): v for i, v in enumerate(file_list2.split(","),1)}
-    return d
+    return {label1: sample_list1.split(","), label2: sample_list2.split(",")}
 
 def check_sample_dict(sample_dict):
     # Check general structure
@@ -46,7 +43,7 @@ def check_sample_dict(sample_dict):
     for condition, samples in sample_dict.items():
         if type(samples) is not list:
             raise NanocomporeError(f"Expected a list of sample names for condition '{condition}'. "
-                                   "Got a '{type(sample_dict)}'.")
+                                   "Got a '{type(samples)}'.")
         if not samples:
             raise NanocomporeError(f"Empty sample list for condition '{condition}'.")
         if len(samples) == 1:
