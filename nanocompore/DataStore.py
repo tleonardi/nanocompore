@@ -261,6 +261,7 @@ class DataStore_EventAlign(DataStore):
                 raise NanocomporeError(f"Sample '{sample}' not present in database")
         return db_samples
 
+    # TODO: is this function never used?
     def store_sample_info(self, sample_dict):
         if not self._connection:
             raise NanocomporeError("Database connection not yet opened")
