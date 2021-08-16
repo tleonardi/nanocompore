@@ -28,7 +28,7 @@ os.environ["NUMEXPR_NUM_THREADS"] = "1"
 os.environ["OMP_NUM_THREADS"] = "1"
 os.environ['OPENBLAS_NUM_THREADS'] = '1'
 
-log_level_dict = {"debug":"DEBUG", "info":"INFO", "warning":"WARNING"}
+log_level_dict = {"debug": "DEBUG", "info": "INFO", "warning": "WARNING"}
 #logger.remove()
 
 #~~~~~~~~~~~~~~MAIN CLASS~~~~~~~~~~~~~~#

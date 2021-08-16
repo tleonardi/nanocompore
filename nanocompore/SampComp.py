@@ -81,7 +81,7 @@ class SampComp(object):
             Whitelist object previously generated with nanocompore Whitelist.
             If not given, will be automatically generated.
         * univariate_test
-            Statistical test to compare the two samples ('MW' for Mann-Whitney, 'KS' for Kolmogorov-Smirnov or 'ST' for Student's t), or empty for no test.
+            Statistical test to compare the two conditions ('MW' for Mann-Whitney, 'KS' for Kolmogorov-Smirnov or 'ST' for Student's t), or empty for no test.
         * fit_gmm
             Fit a Gaussian mixture model (GMM) to the intensity/dwell-time distribution?
         * gmm_test
