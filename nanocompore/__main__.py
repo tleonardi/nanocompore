@@ -19,6 +19,7 @@ from nanocompore import __description__ as package_description
 from nanocompore.SampComp import SampComp
 from nanocompore.SimReads import SimReads
 from nanocompore.Eventalign_collapse import Eventalign_collapse
+from nanocompore.PostProcess import PostProcess
 from nanocompore.common import *
 
 #~~~~~~~~~~~~~~MAIN PARSER ENTRY POINT~~~~~~~~~~~~~~#
@@ -258,8 +259,12 @@ def sampcomp_main(args):
     s()
 
     # Save all reports
+    report_path = args.report
+    if args.outdir:
+        report_path = os.path.normpath(os.path.join(args.outdir, report_path))
+
     p = PostProcess(outpath, args.input, args.bed)
-    p.save_report(args.report) # TODO: update "save_all()" and call that instead
+    p.save_report(report_path) # TODO: update "save_all()" and call that instead
 
 
 def simreads_main(args):
