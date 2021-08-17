@@ -32,7 +32,7 @@ def main():
         description=textwrap.dedent("""
             nanocompore implements the following subcommands\n
             \t* eventalign_collapse : Collapse the nanopolish eventalign output at kmer level and compute kmer-level statistics\n
-            \t* sampcomp : Compare 2 samples and find significant signal differences\n
+            \t* sampcomp : Compare samples from two conditions and find significant signal differences\n
             \t* simreads : Simulate reads as a NanopolishComp-like file from a FASTA file and a built-in model"""))
     subparsers.required = True
 
@@ -41,7 +41,7 @@ def main():
         description=textwrap.dedent("""
         Collapse the nanopolish eventalign output at kmer level and compute kmer-level statistics
         * Minimal example:
-            nanocompore eventalign_collapse -i nanopolish_eventalign.tsv -s T1 -o eventalign_collapse.db\n"""))
+            nanocompore eventalign_collapse -i nanopolish_eventalign.tsv -s T1"""))
     parser_ec.set_defaults(func=eventalign_collapse_main)
 
     parser_ec_in = parser_ec.add_argument_group("Input options")
@@ -65,10 +65,8 @@ def main():
     parser_sc = subparsers.add_parser('sampcomp', formatter_class=argparse.RawDescriptionHelpFormatter,
         description=textwrap.dedent("""
             Compare 2 samples and find significant signal differences\n
-            * Minimal example with file_list arguments\n
-                nanocompore sampcomp -1 C1,C2 -2 T1,T2 -f ref.fa -o results
-            * Minimal example with sample YAML file\n
-                nanocompore sampcomp -y samples.yaml -f ref -o results"""))
+            * Minimal example:\n
+                nanocompore sampcomp -i eventalign_collapse.db -1 C1,C2 -2 T1,T2 -f ref.fa"""))
     parser_sc.set_defaults(func=sampcomp_main)
 
     # TODO: YAML input option still needed?
@@ -259,6 +257,9 @@ def sampcomp_main(args):
     s()
 
     # Save all reports
+    if not args.report:
+        return
+
     report_path = args.report
     if args.outdir:
         report_path = os.path.normpath(os.path.join(args.outdir, report_path))
