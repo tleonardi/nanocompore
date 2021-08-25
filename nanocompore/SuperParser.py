@@ -20,18 +20,20 @@ class SuperParser ():
         change_colnames={},
         cast_colnames={}):
         """
-        Open a parser for field delimited file and return an iterator yield lines as namedtuples
-        Transparently parse gziped and multiple file with the same header
+        Open a parser for field-delimited files and return an iterator yielding lines as namedtuples
+        Transparently parse gzipped files and multiple files with the same header
         * fn
             Path to a field delimited file or a list of files or a regex or a mix of everything (Can be gzipped)
         * select_colnames
-            List of column names to use parse and return
+            List of column names to parse and return
         * sep
             field separator
         * comment
             skip any line starting with this string
+        * change_colnames
+            Dict with mapping (from: to) for changing column names
         * cast_colnames
-            Dict corresponding to fields (based on colnames) to cast in a given python type
+            Dict corresponding to fields (based on colnames) to cast into a given python type
         """
 
         # Init logger and counter
@@ -43,7 +45,7 @@ class SuperParser ():
         self._n_lines = n_lines
 
         # Input file opening
-        self.f_list = self._open_files (fn)
+        self.f_list = self._open_files(fn)
 
         # Define colnames based on file header. It needs to be the same for all the files to parse
         fn, fp = self.f_list[0]
@@ -88,16 +90,16 @@ class SuperParser ():
 
     #~~~~~~~~~~~~~~MAGIC AND PROPERTY METHODS~~~~~~~~~~~~~~#
 
-    def __len__ (self):
+    def __len__(self):
         size = 0
         for fn, fp in self.f_list:
             size+= int(os.path.getsize(fn))
         return size-self._header_len
 
-    def __enter__ (self):
+    def __enter__(self):
         return self
 
-    def close (self):
+    def close(self):
         for i, j in self.counter.most_common():
             logger.debug("{}: {}".format(i, j))
         for fn, fp in self.f_list:
@@ -110,26 +112,26 @@ class SuperParser ():
     def __exit__(self, exception_type, exception_val, trace):
         self.close()
 
-    def __iter__ (self):
+    def __iter__(self):
         # Iterate over files
         for fn, fp in self.f_list:
             logger.debug("Starting to parse file {}".format(fn))
             # Iterate over line in file
             for line in fp:
-                self.counter["Lines Parsed"]+=1
+                self.counter["Lines Parsed"] += 1
 
                 if self._comment and line.startswith(self._comment):
-                    self.counter["Comment lines skipped"]+=1
+                    self.counter["Comment lines skipped"] += 1
                     continue
                 try:
                     line = self._parse_line(line)
-                    self.counter["Lines successfully parsed"]+=1
+                    self.counter["Lines successfully parsed"] += 1
                     yield line
                     # early stopping condition
                     if self._n_lines and self.counter["Lines successfully parsed"] == self._n_lines:
                         return
                 except (SuperParserError, TypeError) as E:
-                    self.counter["Malformed or Invalid Lines"]+=1
+                    self.counter["Malformed or Invalid Lines"] += 1
                     logger.debug(E)
                     logger.debug("File {}: Invalid line {}".format(fn, line))
             logger.debug("End of file: {}".format(fn))
@@ -137,12 +139,12 @@ class SuperParser ():
 
     #~~~~~~~~~~~~~~PRIVATE METHODS~~~~~~~~~~~~~~#
 
-    def _get_first_line_header (self, fp):
+    def _get_first_line_header(self, fp):
         header_line = next(fp)
         header_list = header_line.rstrip().split(self._sep)
         return header_list
 
-    def _parse_line (self, line):
+    def _parse_line(self, line):
 
         # Split line
         line = line.rstrip().split(self._sep)
@@ -167,12 +169,12 @@ class SuperParser ():
         # Return parsed line as a dict
         return line_d
 
-    def _open_files (self, fn_list):
+    def _open_files(self, fn_list):
         """Transparently open files, lists, regex, gzipped or not"""
         f_list = []
 
         # Standard input
-        if fn_list is 0:
+        if fn_list == 0:
             fn = "stdin"
             fp = open(0)
             return [(fn,fp)]
@@ -184,7 +186,7 @@ class SuperParser ():
         if isinstance(fn_list, (list, tuple, set)):
             for fn_regex in fn_list:
                 for fn in iglob(fn_regex):
-                    self.counter["Input files"]+=1
+                    self.counter["Input files"] += 1
                     if fn.endswith(".gz"):
                         logger.debug("Opening file {} in gzip mode".format(fn))
                         fp = gzip.open(fn, "rt")
@@ -192,9 +194,7 @@ class SuperParser ():
                         logger.debug("Opening file {} in normal mode".format(fn))
                         fp = open(fn, "r")
                     f_list.append((fn,fp))
-
             return f_list
-
         else:
             raise SuperParserError ("Invalid file type")
 
