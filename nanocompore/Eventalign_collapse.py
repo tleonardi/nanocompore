@@ -80,7 +80,7 @@ class Eventalign_collapse ():
 
         # Input file field selection typing and renaming
         self.__select_colnames = ["contig", "read_name", "position", "reference_kmer", "model_kmer", "event_length", "samples"]
-        self.__change_colnames = {"contig":"ref_id" ,"position":"ref_pos", "read_name":"read_id", "samples":"sample_list", "event_length":"dwell_time"}
+        self.__change_colnames = {"contig": "ref_id", "position": "ref_pos", "read_name": "read_id", "samples": "sample_list", "event_length": "dwell_time"}
         self.__cast_colnames = {"ref_pos":int, "dwell_time":np.float32, "sample_list":lambda x: [float(i) for i in x.split(",")]}
 
 
@@ -143,38 +143,37 @@ class Eventalign_collapse ():
 
         try:
             # Open input file with superParser
+            # TODO: benchmark performance compared to csv.DictReader (std. lib.)
             with SuperParser(
                 fn = self.__eventalign_fn,
                 select_colnames = self.__select_colnames,
                 cast_colnames = self.__cast_colnames,
                 change_colnames = self.__change_colnames,
-                n_lines=self.__n_lines) as sp:
+                n_lines = self.__n_lines) as sp:
 
+                # First line/event - initialise
+                l = next(iter(sp))
+                # TODO: read ID should be unique, so no need to check transcript - correct?
+                cur_read_id = l["read_id"]
+                event_l = [l]
+                n_events = 1
+
+                # All following lines
                 for l in sp:
-                    n_events+=1
-
-                    # First event exception
-                    if n_events==1:
-                        cur_ref_id = l["ref_id"]
-                        cur_read_id = l["read_id"]
-                        event_l = [l]
-
-                    # Same read/ref group = just append to current event group
-                    elif l["ref_id"] == cur_ref_id and l["read_id"] == cur_read_id:
+                    n_events += 1
+                    # Same read = just append to current event group
+                    if l["read_id"] == cur_read_id:
                         event_l.append(l)
-
                     # If new read/ref group detected = enqueue previous event group and start new one
                     else:
-                        n_reads+=1
+                        n_reads += 1
                         in_q.put(event_l)
-
-                        cur_ref_id = l["ref_id"]
                         cur_read_id = l["read_id"]
                         event_l = [l]
 
-                # Last event line exception
+                # Last event/line
                 in_q.put(event_l)
-                n_reads+=1
+                n_reads += 1
 
         # Manage exceptions and add error trackback to error queue
         except Exception:
