@@ -5,7 +5,7 @@ import datetime
 import os
 import sqlite3
 import contextlib
-from itertools import zip_longest
+from itertools import zip_longest, product
 
 # Third party
 from loguru import logger
@@ -103,22 +103,33 @@ class DataStore_EventAlign(DataStore):
                        "FOREIGN KEY(sampleid) REFERENCES samples(id)",
                        "FOREIGN KEY(transcriptid) REFERENCES transcripts(id)"]
 
+    # "kmer_sequences" table:
+    table_def_kmer_seqs = ["id INTEGER NOT NULL PRIMARY KEY",
+                           "sequence VARCHAR NOT NULL UNIQUE"]
+
+    # "kmer_status" table:
+    table_def_kmer_status = ["id INTEGER NOT NULL PRIMARY KEY",
+                             "status VARCHAR NOT NULL UNIQUE"]
+
     # "kmers" table:
+    # TODO: is combination of "readid" and "position" unique per kmer?
+    # if so, use those as combined primary key (for access efficiency)?
     table_def_kmers = ["id INTEGER NOT NULL PRIMARY KEY",
                        "readid INTEGER NOT NULL",
                        "position INTEGER NOT NULL",
-                       "sequence INTEGER NOT NULL",
-                       "num_events INTEGER NOT NULL",
-                       "num_signals INTEGER NOT NULL",
-                       "status VARCHAR NOT NULL",
+                       "sequenceid INTEGER",
+                       # "sequence VARCHAR NOT NULL",
+                       # "num_events INTEGER NOT NULL",
+                       # "num_signals INTEGER NOT NULL",
+                       "statusid INTEGER NOT NULL",
                        "dwell_time REAL NOT NULL",
-                       "NNNNN_dwell_time REAL NOT NULL",
-                       "mismatch_dwell_time REAL NOT NULL",
+                       # "NNNNN_dwell_time REAL NOT NULL",
+                       # "mismatch_dwell_time REAL NOT NULL",
                        "median REAL NOT NULL",
                        "mad REAL NOT NULL",
-                       "FOREIGN KEY(readid) REFERENCES reads(id)"]
-    # TODO: 'sequence' is stored redundantly - move it to a separate table
-    # TODO: encode 'status' as int to save space (foreign key referencing a table with all possible statuses)
+                       "FOREIGN KEY(readid) REFERENCES reads(id)",
+                       "FOREIGN KEY(sequenceid) REFERENCES kmer_sequences(id)",
+                       "FOREIGN KEY(statusid) REFERENCES kmer_status(id)"]
 
     # "samples" table:
     table_def_samples = ["id INTEGER NOT NULL PRIMARY KEY",
@@ -130,9 +141,31 @@ class DataStore_EventAlign(DataStore):
                              "name VARCHAR NOT NULL UNIQUE"]
 
     table_defs = {"reads": table_def_reads,
+                  "kmer_sequences": table_def_kmer_seqs,
+                  "kmer_status": table_def_kmer_status,
                   "kmers": table_def_kmers,
                   "samples": table_def_samples,
                   "transcripts": table_def_transcripts}
+
+    status_mapping = {"valid": 0, "NNNNN": 1, "mismatch": 2}
+    sequence_mapping = {} # filled by "__init__"
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        ## set up mapping table for sequences:
+        self.sequence_mapping = {}
+        seq_prod = product(["A", "C", "G", "T"], repeat=5)
+        for i, seq in enumerate(seq_prod):
+            self.sequence_mapping["".join(seq)] = i
+
+    def _init_db(self):
+        super()._init_db()
+        ## fill "kmer_status" and "kmer_sequences" tables:
+        self._cursor.executemany("INSERT INTO kmer_status VALUES (?, ?)",
+                                 [(i, x) for x, i in self.status_mapping.items()])
+        self._cursor.executemany("INSERT INTO kmer_sequences VALUES (?, ?)",
+                                 [(i, x) for x, i in self.sequence_mapping.items()])
+        self._connection.commit()
 
     def store_read(self, read):
         """
@@ -168,10 +201,12 @@ class DataStore_EventAlign(DataStore):
         """
         res = kmer.get_results() # needed for 'median' and 'mad' values
         try:
-            self._cursor.execute("INSERT INTO kmers VALUES(NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                              (read_id, res["ref_pos"], res["ref_kmer"], res["num_events"],
-                               res["num_signals"], res["status"], res["dwell_time"],
-                               res["NNNNN_dwell_time"], res["mismatch_dwell_time"], res["median"], res["mad"]))
+            status_id = self.status_mapping[res["status"]]
+            # in case of unexpected kmer seq., this should give None (NULL in the DB):
+            seq_id = self.sequence_mapping.get(res["ref_kmer"])
+            self._cursor.execute("INSERT INTO kmers VALUES(NULL, ?, ?, ?, ?, ?, ?, ?)",
+                                 (read_id, res["ref_pos"], seq_id, status_id,
+                                  res["dwell_time"], res["median"], res["mad"]))
         except Exception:
             logger.error("Error inserting kmer into database")
             raise Exception
