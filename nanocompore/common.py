@@ -28,14 +28,40 @@ class NanocomporeWarning (Warning):
 
 #~~~~~~~~~~~~~~FUNCTIONS~~~~~~~~~~~~~~#
 
-def build_eventalign_fn_dict(file_list1, file_list2, label1, label2):
+def build_sample_dict(sample_list1, sample_list2, label1, label2):
     """
-    Build the eventalign_fn_dict from file lists and labels
+    Build dictionary with sample information from sample lists and condition labels
     """
-    d = OrderedDict()
-    d[label1] = {"{}_{}".format(label1, i): v for i, v in enumerate(file_list1.split(","),1)}
-    d[label2] = {"{}_{}".format(label2, i): v for i, v in enumerate(file_list2.split(","),1)}
-    return d
+    return {label1: sample_list1.split(","), label2: sample_list2.split(",")}
+
+def check_sample_dict(sample_dict):
+    # Check general structure
+    if type(sample_dict) not in (dict, OrderedDict):
+        raise NanocomporeError(f"Expected a dictionary. Got a '{type(sample_dict)}'.")
+    if len(sample_dict) != 2:
+        raise NanocomporeError(f"Expected two conditions. Found {len(sample_dict)}.")
+    for condition, samples in sample_dict.items():
+        if type(samples) is not list:
+            raise NanocomporeError(f"Expected a list of sample names for condition '{condition}'. "
+                                   "Got a '{type(samples)}'.")
+        if not samples:
+            raise NanocomporeError(f"Empty sample list for condition '{condition}'.")
+        if len(samples) == 1:
+            logger.warning(f"Only one replicate found for condition '{condition}'. "
+                           "This is not recommended. "
+                           "Statistics will be calculated using the logit method.")
+    # Check for duplicate sample names
+    for condition, samples in sample_dict.items():
+        if len(set(samples)) < len(samples):
+            raise NanocomporeError(f"Duplicate sample names for condition '{condition}'.")
+    all_samples = list(sample_dict.values()) # there must be two lists - already checked
+    if any([sample in all_samples[1] for sample in all_samples[0]]):
+        logger.warning("Found sample name shared between conditions. "
+                       "Prefixing all sample names with their condition.")
+        for condition, samples in sample_dict.items():
+            # can't modify 'samples' directly here!
+            sample_dict[condition] = [f"{condition}_{sample}" for sample in samples]
+
 
 def set_logger (log_level, log_fn=None):
     log_level = log_level.upper()
