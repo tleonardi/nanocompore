@@ -199,6 +199,7 @@ class Whitelist(object):
         min_ref_length,
         downsample_high_coverage):
         """Select ref_id with a minimal coverage in both sample + downsample if needed"""
+        # TODO: replace 'OrderedDict' with 'dict' for improved performance?
         valid_ref_reads = OrderedDict()
         c = Counter()
         with Fasta(self._fasta_fn) as fasta:
@@ -222,7 +223,7 @@ class Whitelist(object):
 
                     # If all valid add to new dict
                     logger.trace(f"ref_id {ref_id} has enough coverage in all samples: keeping it")
-                    valid_ref_reads [ref_id] = valid_dict
+                    valid_ref_reads[ref_id] = valid_dict
 
                     # Save extra info for debug
                     c["valid_ref_id"] += 1
