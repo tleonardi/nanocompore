@@ -57,7 +57,6 @@ class SampComp(object):
                  # exclude_ref_id:list = [],
                  nthreads:int = 3,
                  progress:bool = False):
-
         """
         Initialise a `SampComp` object and generate a whitelist of references with sufficient coverage for subsequent analysis.
         The retuned object can then be called to start the analysis.
@@ -446,3 +445,19 @@ class SampComp(object):
                 except:
                     logger.error("Error updating adjusted p-value for ID {id} in table '{table}'".format_map(ind))
                     raise
+
+
+    @staticmethod
+    def adjust_fdr(pvalues, n_tests=0):
+        n_tests = max(n_tests, len(pvalues))
+        if (len(pvalues) == 0) or (n_tests == 1):
+            return pvalues
+        # false discovery rate p-value adjustment (Benjamini-Hochberg method):
+        # see https://stackoverflow.com/a/33532498 - adapted for "n_tests"
+        # results have been checked against R function 'p.adjust(method="fdr")'
+        p = np.asfarray(pvalues)
+        by_descend = p.argsort()[::-1]
+        by_orig = by_descend.argsort()
+        steps = float(n_tests) / np.arange(len(p), 0, -1)
+        q = np.minimum(1, np.minimum.accumulate(steps * p[by_descend]))
+        return q[by_orig]
