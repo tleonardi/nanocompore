@@ -5,6 +5,7 @@
 import sys
 import os
 from collections import *
+from hashlib import md5
 import inspect
 import datetime
 
@@ -27,6 +28,12 @@ class NanocomporeWarning (Warning):
     pass
 
 #~~~~~~~~~~~~~~FUNCTIONS~~~~~~~~~~~~~~#
+
+def get_hash_bin(string, bins=100):
+    """Return a bin number computed from the given string"""
+    digest = md5(string.encode("utf-8")).digest()
+    return int.from_bytes(digest, "big") % bins
+
 
 def build_sample_dict(sample_list1, sample_list2, label1, label2):
     """
@@ -80,33 +87,33 @@ def log_init_state(loc):
         if type(j) in [int, float, complex, list, dict, str, bool, set, tuple]: # Avoid non standard types
             logger.debug("\t{}: {}".format(i,j))
 
-def mkdir (fn, exist_ok=False):
+def mkdir(fn, exist_ok=False):
     """ Create directory recursivelly. Raise IO error if path exist or if error at creation """
     try:
-        os.makedirs (fn, exist_ok=exist_ok)
+        os.makedirs(fn, exist_ok=exist_ok)
     except:
-        raise NanocomporeError ("Error creating output folder `{}`".format(fn))
+        raise NanocomporeError("Error creating output folder `{}`".format(fn))
 
-def access_file (fn, **kwargs):
+def access_file(fn, **kwargs):
     """ Check if the file is readable """
-    return os.path.isfile (fn) and os.access (fn, os.R_OK)
+    return os.path.isfile(fn) and os.access(fn, os.R_OK)
 
-def numeric_cast_list (l):
+def numeric_cast_list(l):
     """ Cast str values to integer or float from a list """
     l2 = []
     for v in l:
         l2.append(numeric_cast(v))
     return l2
 
-def numeric_cast_dict (keys, values):
+def numeric_cast_dict(keys, values):
     """ Cast str values to integer or float from a list """
     d = OrderedDict()
     for k, v in zip(keys, values):
         d[k] = numeric_cast(v)
     return d
 
-def numeric_cast (v):
-    if type(v)== str:
+def numeric_cast(v):
+    if type(v) is str:
         try:
             v = int(v)
         except ValueError:
@@ -116,23 +123,22 @@ def numeric_cast (v):
                 pass
     return v
 
-def counter_to_str (c):
-    """ Transform a counter dict to a tabulated str """
+def counter_to_str(c):
+    """Transform a counter dict to a tabulated str"""
     m = ""
     for i, j in c.most_common():
         m += "\t{}: {:,}".format(i, j)
     return m
 
-def all_values_in (required_val_list, all_val_list):
+def all_values_in(required_val_list, all_val_list):
     """Check that all values in required_val_list are found in all_val_list"""
     for v in required_val_list:
         if not v in all_val_list:
             return False
     return True
 
-def doc_func (func):
+def doc_func(func):
     """Parse the function description string"""
-
     docstr_list = []
     for l in inspect.getdoc(func).split("\n"):
         if l.startswith("*"):
@@ -142,7 +148,7 @@ def doc_func (func):
 
     return "\n".join(docstr_list)
 
-def make_arg_dict (func):
+def make_arg_dict(func):
     """Parse the arguments default value, type and doc"""
 
     # Init method for classes
@@ -167,7 +173,7 @@ def make_arg_dict (func):
 
         # Parse the docstring in a dict
         docstr_dict = OrderedDict()
-        lab=None
+        lab = None
         for l in inspect.getdoc(func).split("\n"):
             l = l.strip()
             if l:
@@ -183,7 +189,7 @@ def make_arg_dict (func):
                 d[name]["help"] = " ".join(docstr_dict[name])
         return d
 
-def arg_opt (func, arg, **kwargs):
+def arg_opt(func, arg, **kwargs):
     """Get options corresponding to argumant name and deal with special cases"""
     arg_dict = make_arg_dict(func)[arg]
 
@@ -208,7 +214,7 @@ def arg_opt (func, arg, **kwargs):
 
     return arg_dict
 
-def jhelp (f:"python function or method"):
+def jhelp(f:"python function or method"):
     """
     Display a Markdown pretty help message for functions and class methods (default __init__ is a class is passed)
     jhelp also display default values and type annotations if available.
@@ -228,20 +234,20 @@ def jhelp (f:"python function or method"):
     # Args doc
     for arg_name, arg_val in arg_doc.items():
         # Arg signature section
-        s+= "* **{}**".format(arg_name)
+        s += "* **{}**".format(arg_name)
         if "default" in arg_val:
-            s+= " (default: {})".format(arg_val["default"])
+            s += " (default: {})".format(arg_val["default"])
         if "required" in arg_val:
-            s+= " (required)"
+            s += " (required)"
         if "type" in arg_val:
             if type(list) == type:
-                s+= " [{}]".format(arg_val["type"].__name__)
+                s += " [{}]".format(arg_val["type"].__name__)
             else:
-                s+= " [{}]".format(arg_val["type"])
-        s+="\n\n"
+                s += " [{}]".format(arg_val["type"])
+        s += "\n\n"
         # Arg doc section
         if "help" in arg_val:
-            s+= "{}\n\n".format(arg_val["help"])
+            s += "{}\n\n".format(arg_val["help"])
 
     # Display in Jupyter
-    display (Markdown(s))
+    display(Markdown(s))

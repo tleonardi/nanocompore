@@ -19,7 +19,7 @@ from tqdm import tqdm
 # Local imports
 from nanocompore.common import *
 from nanocompore.SuperParser import SuperParser
-from nanocompore.DataStore import DataStore_EventAlign, DBCreateMode
+from nanocompore.DataStore import DataStore_master, DataStore_transcript, DBCreateMode
 
 # Disable multithreading for MKL and openBlas
 os.environ["MKL_NUM_THREADS"] = "1"
@@ -35,22 +35,28 @@ log_level_dict = {"debug": "DEBUG", "info": "INFO", "warning": "WARNING"}
 class Eventalign_collapse ():
 
     def __init__(self,
-                 eventalign_fn:str,
+                 eventalign_path:str,
                  sample_name:str,
-                 output_db_path:str,
+                 condition:str,
+                 output_dir:str,
+                 output_subdirs:int = 100,
                  overwrite:bool = False,
-                 n_lines:int=None,
+                 n_lines:int = None,
                  nthreads:int = 3,
                  progress:bool = False):
         # TODO: is 'overwrite' a useful option, as data from multiple samples needs to be accumulated in the same DB?
         """
         Collapse the nanopolish eventalign events at kmer level
-        * eventalign_fn
-            Path to a nanopolish eventalign tsv output file, or a list of file, or a regex (can be gzipped)
+        * eventalign_path
+            Path to a nanopolish eventalign tsv output file, or a list of files, or a regex (can be gzipped)
         * sample_name
             The name of the sample being processed
-        * output_db_path
-            Path to the output (database) file
+        * condition
+            Condition label of the sample
+        * output_dir
+            Path to the output directory
+        * output_subdirs
+            Distribute output files into this many subdirectories
         * overwrite
             Overwrite an existing output file?
         * n_lines
@@ -70,24 +76,34 @@ class Eventalign_collapse ():
             raise NanocomporeError("Minimal required number of threads >=3")
 
         # Save args to self values
-        self.__sample_name = sample_name
-        self.__eventalign_fn = eventalign_fn
-        self.__output_db_path = output_db_path
-        self.__overwrite = overwrite
-        self.__n_lines = n_lines
-        self.__nthreads = nthreads - 2 # subtract 1 for reading and 1 for writing
-        self.__progress = progress
+        self._eventalign_path = eventalign_path
+        self._sample_name = sample_name
+        self._condition = condition
+        self._output_dir = output_dir
+        self._output_subdirs = max(1, output_subdirs)
+        self._overwrite = overwrite
+        self._n_lines = n_lines
+        self._nthreads = nthreads - 2 # subtract 1 for reading and 1 for writing
+        self._progress = progress
 
         # Input file field selection typing and renaming
-        self.__select_colnames = ["contig", "read_name", "position", "reference_kmer", "model_kmer", "event_length", "samples"]
-        self.__change_colnames = {"contig": "ref_id", "position": "ref_pos", "read_name": "read_id", "samples": "sample_list", "event_length": "dwell_time"}
-        self.__cast_colnames = {"ref_pos":int, "dwell_time":np.float32, "sample_list":lambda x: [float(i) for i in x.split(",")]}
+        self._select_colnames = ["contig", "read_name", "position", "reference_kmer", "model_kmer", "event_length", "samples"]
+        self._change_colnames = {"contig": "ref_id", "position": "ref_pos", "read_name": "read_id", "samples": "sample_list", "event_length": "dwell_time"}
+        self._cast_colnames = {"ref_pos":int, "dwell_time":np.float32, "sample_list":lambda x: [float(i) for i in x.split(",")]}
 
 
     def __call__(self):
         """
         Run the analysis
         """
+        logger.info("Creating output subdirectories")
+        for i in range(self._output_subdirs):
+            subdir = os.path.normpath(os.path.join(self._output_dir, str(i)))
+            if self._overwrite and os.path.exists(subdir):
+                # TODO: what if 'subdir' is a file, not a directory?
+                shutil.rmtree(subdir)
+            os.makedirs(subdir, exist_ok=True)
+
         logger.info("Starting data processing")
         # Init Multiprocessing variables
         in_q = mp.Queue(maxsize = 100)
@@ -96,9 +112,9 @@ class Eventalign_collapse ():
 
         # Define processes
         ps_list = []
-        ps_list.append (mp.Process (target=self.__split_reads, args=(in_q, error_q)))
-        for i in range (self.__nthreads):
-            ps_list.append (mp.Process (target=self.__process_read, args=(in_q, out_q, error_q)))
+        ps_list.append(mp.Process(target=self.__split_reads, args=(in_q, error_q)))
+        for i in range (self._nthreads):
+            ps_list.append(mp.Process(target=self.__process_read, args=(in_q, out_q, error_q)))
         # TODO: Check that sample_name does not exist already in DB
         ps_list.append(mp.Process(target=self.__write_output, args=(out_q, error_q)))
 
@@ -145,11 +161,11 @@ class Eventalign_collapse ():
             # Open input file with superParser
             # TODO: benchmark performance compared to csv.DictReader (std. lib.)
             with SuperParser(
-                fn = self.__eventalign_fn,
-                select_colnames = self.__select_colnames,
-                cast_colnames = self.__cast_colnames,
-                change_colnames = self.__change_colnames,
-                n_lines = self.__n_lines) as sp:
+                fn = self._eventalign_path,
+                select_colnames = self._select_colnames,
+                cast_colnames = self._cast_colnames,
+                change_colnames = self._change_colnames,
+                n_lines = self._n_lines) as sp:
 
                 # First line/event - initialise
                 l = next(iter(sp))
@@ -182,7 +198,7 @@ class Eventalign_collapse ():
 
         # Deal poison pills
         finally:
-            for i in range (self.__nthreads):
+            for i in range (self._nthreads):
                 in_q.put(None)
             logger.debug("Parsed Reads:{} Events:{}".format(n_reads, n_events))
 
@@ -200,19 +216,20 @@ class Eventalign_collapse ():
 
                 # Create an empty Read object and fill it with event lines
                 # events aggregation at kmer level is managed withon the object
-                read = Read (read_id=events_l[0]["read_id"], ref_id=events_l[0]["ref_id"], sample_name=self.__sample_name)
+                read = Read(read_id=events_l[0]["read_id"], ref_id=events_l[0]["ref_id"],
+                            sample_name=self._sample_name)
                 for event_d in events_l:
                     read.add_event(event_d)
-                    n_events+=1
+                    n_events += 1
 
                 # If at least one valid event found collect results at read and kmer level
                 if read.n_events > 1:
                     read_res_d = read.get_read_results()
                     kmer_res_l = read.get_kmer_results()
                     out_q.put(read)
-                    n_reads+=1
-                    n_kmers+= len(kmer_res_l)
-                    n_signals+= read.n_signals
+                    n_reads += 1
+                    n_kmers += len(kmer_res_l)
+                    n_signals += read.n_signals
 
         # Manage exceptions and add error trackback to error queue
         except Exception:
@@ -234,15 +251,26 @@ class Eventalign_collapse ():
         # pr = profile.Profile()
         # pr.enable()
         n_reads = 0
-        db_create_mode = DBCreateMode.OVERWRITE if self.__overwrite else DBCreateMode.CREATE_MAYBE
+        db_create_mode = DBCreateMode.OVERWRITE if self._overwrite else DBCreateMode.CREATE_MAYBE
+        master_db_path = os.path.join(self._output_dir, "eventalign_collapse.db")
         try:
-            with DataStore_EventAlign(self.__output_db_path, db_create_mode) as datastore, \
-                 tqdm (unit=" reads") as pbar:
+            with DataStore_master(master_db_path, db_create_mode) as master, tqdm(unit=" reads") as pbar:
+                sample_id = master.store_sample(self._sample_name, self._condition)
                 # Iterate over out queue until nthread poison pills are found
-                for _ in range (self.__nthreads):
-                    for read in iter (out_q.get, None):
+                for _ in range(self._nthreads):
+                    for read in iter(out_q.get, None):
                         n_reads += 1
-                        datastore.store_read(read)
+                        # Which database file to use? - depends on transcript:
+                        accession = read.ref_id
+                        # To distribute transcripts evenly over subdirectories, use (part of) the hash value:
+                        # Don't use built-in 'hash' function!
+                        # Values are salted using a random seed, so not reproducible between Python runs!
+                        subdir = str(get_hash_bin(accession, self._output_subdirs))
+                        tx_id = master.store_transcript(accession, subdir)
+                        # TODO: what if accession contains characters that aren't allowed in paths?
+                        db_path = os.path.join(self._output_dir, subdir, accession + ".db")
+                        with DataStore_transcript(db_path, accession, tx_id, DBCreateMode.CREATE_MAYBE) as db:
+                            db.store_read(read, sample_id)
                         pbar.update(1)
         except Exception:
             logger.error("Error adding read to DB")

@@ -23,6 +23,8 @@ class DataStore(object):
     """Store Nanocompore data in an SQLite database - base class"""
 
     table_defs = {} # table name -> column definitions (to be filled by derived classes)
+    status_mapping = {"valid": 0, "NNNNN": 1, "mismatch": 2}
+    sequence_mapping = {} # filled by "__init__"
 
     def __init__(self,
                  db_path:str,
@@ -31,20 +33,27 @@ class DataStore(object):
         self._create_mode = create_mode
         self._connection = None
         self._cursor = None
+        self.sequence_mapping = {}
+        seq_prod = product(["A", "C", "G", "T"], repeat=5)
+        for i, seq in enumerate(seq_prod):
+            self.sequence_mapping["".join(seq)] = i
+
+    def _create_tables(self, table_defs):
+        try:
+            for table, column_defs in table_defs.items():
+                if type(column_defs) is not str: # list/tuple expected
+                    column_defs = ", ".join(column_defs)
+                query = f"CREATE TABLE IF NOT EXISTS {table} ({column_defs})"
+                self._cursor.execute(query)
+            self._connection.commit()
+        except:
+            logger.error(f"Error creating database table '{table}'")
+            raise
 
     def _init_db(self):
         if self.table_defs:
             logger.debug("Setting up database tables")
-            try:
-                for table, column_defs in self.table_defs.items():
-                    if type(column_defs) is not str: # list/tuple expected
-                        column_defs = ", ".join(column_defs)
-                    query = f"CREATE TABLE IF NOT EXISTS {table} ({column_defs})"
-                    self._cursor.execute(query)
-                self._connection.commit()
-            except:
-                logger.error(f"Error creating database table '{table}'")
-                raise
+            self._create_tables(self.table_defs)
 
     def __enter__(self):
         init_db = False
@@ -82,26 +91,10 @@ class DataStore(object):
         return self._cursor
 
 
-class DataStore_EventAlign(DataStore):
-    """Store Nanocompore data in an SQLite database - subclass for Eventalign_collapse results"""
+class DataStore_master(DataStore):
+    """Store Nanocompore data in an SQLite database - master database"""
 
-    # "reads" table:
-    table_def_reads = ["id INTEGER NOT NULL PRIMARY KEY",
-                       "name VARCHAR NOT NULL UNIQUE",
-                       "sampleid INTEGER NOT NULL",
-                       "transcriptid VARCHAR NOT NULL",
-                       "refstart INT NOT NULL",
-                       "refend INT NOT NULL",
-                       "numevents INT NOT NULL",
-                       "numsignals INT NOT NULL",
-                       "dwelltime REAL NOT NULL",
-                       "kmers INT NOT NULL",
-                       "missing_kmers INT NOT NULL",
-                       "NNNNN_kmers INT NOT NULL",
-                       "mismatch_kmers INT NOT NULL",
-                       "valid_kmers INT NOT NULL",
-                       "FOREIGN KEY(sampleid) REFERENCES samples(id)",
-                       "FOREIGN KEY(transcriptid) REFERENCES transcripts(id)"]
+    # TODO: add "parameters" table and store parameters
 
     # "kmer_sequences" table:
     table_def_kmer_seqs = ["id INTEGER NOT NULL PRIMARY KEY",
@@ -111,52 +104,20 @@ class DataStore_EventAlign(DataStore):
     table_def_kmer_status = ["id INTEGER NOT NULL PRIMARY KEY",
                              "status VARCHAR NOT NULL UNIQUE"]
 
-    # "kmers" table:
-    # TODO: is combination of "readid" and "position" unique per kmer?
-    # if so, use those as combined primary key (for access efficiency)?
-    table_def_kmers = ["id INTEGER NOT NULL PRIMARY KEY",
-                       "readid INTEGER NOT NULL",
-                       "position INTEGER NOT NULL",
-                       "sequenceid INTEGER",
-                       # "sequence VARCHAR NOT NULL",
-                       # "num_events INTEGER NOT NULL",
-                       # "num_signals INTEGER NOT NULL",
-                       "statusid INTEGER NOT NULL",
-                       "dwell_time REAL NOT NULL",
-                       # "NNNNN_dwell_time REAL NOT NULL",
-                       # "mismatch_dwell_time REAL NOT NULL",
-                       "median REAL NOT NULL",
-                       "mad REAL NOT NULL",
-                       "FOREIGN KEY(readid) REFERENCES reads(id)",
-                       "FOREIGN KEY(sequenceid) REFERENCES kmer_sequences(id)",
-                       "FOREIGN KEY(statusid) REFERENCES kmer_status(id)"]
-
     # "samples" table:
     table_def_samples = ["id INTEGER NOT NULL PRIMARY KEY",
                          "name VARCHAR NOT NULL UNIQUE",
-                         "condition VARCHAR"]
+                         "condition VARCHAR NOT NULL CHECK (condition != '')"]
 
     # "transcripts" table:
     table_def_transcripts = ["id INTEGER NOT NULL PRIMARY KEY",
-                             "name VARCHAR NOT NULL UNIQUE"]
+                             "name VARCHAR NOT NULL UNIQUE",
+                             "subdir VARCHAR NOT NULL"]
 
-    table_defs = {"reads": table_def_reads,
-                  "kmer_sequences": table_def_kmer_seqs,
+    table_defs = {"kmer_sequences": table_def_kmer_seqs,
                   "kmer_status": table_def_kmer_status,
-                  "kmers": table_def_kmers,
                   "samples": table_def_samples,
                   "transcripts": table_def_transcripts}
-
-    status_mapping = {"valid": 0, "NNNNN": 1, "mismatch": 2}
-    sequence_mapping = {} # filled by "__init__"
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        ## set up mapping table for sequences:
-        self.sequence_mapping = {}
-        seq_prod = product(["A", "C", "G", "T"], repeat=5)
-        for i, seq in enumerate(seq_prod):
-            self.sequence_mapping["".join(seq)] = i
 
     def _init_db(self):
         super()._init_db()
@@ -167,17 +128,227 @@ class DataStore_EventAlign(DataStore):
                                  [(i, x) for x, i in self.sequence_mapping.items()])
         self._connection.commit()
 
-    def store_read(self, read):
+    def store_sample(self, sample_name, condition):
+        """Store a new sample in the database"""
+        try:
+            self._cursor.execute("INSERT INTO samples VALUES(NULL, ?, ?)",
+                                 (sample_name, condition))
+            self._connection.commit()
+            return self._cursor.lastrowid
+        except Exception:
+            logger.error("Error inserting sample into database")
+            raise Exception
+
+    def store_transcript(self, name, subdir=""):
+        """Store a transcript in the database (if not already stored)"""
+        try:
+            self._cursor.execute("SELECT id FROM transcripts WHERE name = ?", [name])
+            if (row := self._cursor.fetchone()) is not None:
+                return row["id"]
+            self._cursor.execute("INSERT INTO transcripts VALUES (NULL, ?, ?)", (name, subdir))
+            self._connection.commit()
+            # TODO: if there could be multiple writing threads, "INSERT OR IGNORE"
+            # query should go before "SELECT"
+            return self._cursor.lastrowid
+        except:
+            logger.error(f"Failed to insert transcript '{name}'")
+            raise
+
+    def get_sample_info(self):
+        if not self._connection:
+            raise NanocomporeError("Database connection not yet opened")
+        db_samples = {}
+        try:
+            self._cursor.execute("SELECT * FROM samples ORDER BY id")
+            for row in self._cursor:
+                db_samples.setdefault(row["condition"], []).append((row["id"], row["name"]))
+        except:
+            logger.error("Error reading sample information from database")
+            raise
+        return db_samples
+
+    def init_test_results(self, univariate_test=True, gmm_test=True,
+                          sequence_context=False, drop_old=True):
+        if not univariate_test and not gmm_test: # no test results to store
+            return
+        if not self._connection:
+            raise NanocomporeError("Database connection not yet opened")
+        # store settings that impact database schema:
+        self._univariate_test = univariate_test
+        self._gmm_test = gmm_test
+        self._sequence_context = sequence_context
+        table_def = ["transcriptid INTEGER NOT NULL",
+                     "kmer_pos INTEGER NOT NULL"]
+        # add more table columns as necessary:
+        if univariate_test:
+            try:
+                self._cursor.execute("ALTER TABLE transcripts ADD COLUMN n_univariate_tests INTEGER")
+            except sqlite3.OperationalError as error:
+                if error.args[0].startswith("duplicate column name:"):
+                    # column exists from previous round of processing - reset values:
+                    self._cursor.execute("UPDATE transcripts SET n_univariate_tests = NULL")
+                else:
+                    logger.error("Error adding column to 'transcripts' table")
+                    raise
+            except:
+                logger.error("Error adding column to 'transcripts' table")
+                raise
+            table_def += ["intensity_pvalue REAL", "dwell_pvalue REAL"]
+            if sequence_context:
+                table_def += ["intensity_pvalue_context REAL", "dwell_pvalue_context REAL"]
+        if gmm_test:
+            try:
+                self._cursor.execute("ALTER TABLE transcripts ADD COLUMN n_gmm_tests INTEGER")
+            except sqlite3.OperationalError as error:
+                if error.args[0].startswith("duplicate column name:"):
+                    # column exists from previous round of processing - reset values:
+                    self._cursor.execute("UPDATE transcripts SET n_gmm_tests = NULL")
+                else:
+                    logger.error("Error adding column to 'transcripts' table")
+                    raise
+            except:
+                logger.error("Error adding column to 'transcripts' table")
+                raise
+            table_def.append("gmm_pvalue REAL")
+            if sequence_context:
+                table_def.append("gmm_pvalue_context REAL")
+        table_def.append("FOREIGN KEY(transcriptid) REFERENCES transcripts(id)")
+        table_def = ", ".join(table_def)
+        try:
+            if drop_old: # remove previous results if any exist
+                self._cursor.execute("DROP TABLE IF EXISTS test_results")
+            self._cursor.execute(f"CREATE TABLE IF NOT EXISTS test_results ({table_def})")
+        except:
+            logger.error("Error creating 'test_results' table")
+            raise
+        self._connection.commit()
+
+    def store_test_results(self, tx_id, results):
+        if not self._connection:
+            raise NanocomporeError("Database connection not yet opened")
+        # store number of tests performed (for multiple testing correction):
+        assign = []
+        if self._univariate_test:
+            assign.append("n_univariate_tests = %d" % results["n_univariate_tests"])
+        if self._gmm_test:
+            assign.append("n_gmm_tests = %d" % results["n_gmm_tests"])
+        assign = ", ".join(assign)
+        sql = f"UPDATE transcripts SET {assign} WHERE id = {tx_id}"
+        try:
+            self._cursor.execute(sql)
+            self._connection.commit()
+        except:
+            logger.error(f"Error updating test counts for transcript {tx_id}")
+            raise
+        # store kmers with significant test results:
+        for kmer, res in results["test_results"].items():
+            values = [tx_id, kmer]
+            if self._univariate_test:
+                values += [res["intensity_pvalue"], res["dwell_pvalue"]]
+                if self._sequence_context:
+                    values += [res["intensity_pvalue_context"], res["dwell_pvalue_context"]]
+            if self._gmm_test:
+                values.append(res["gmm_pvalue"])
+                if self._sequence_context:
+                    values.append(res["gmm_pvalue_context"])
+            qmarks = ", ".join(["?"] * len(values))
+            try:
+                self._cursor.execute(f"INSERT INTO test_results VALUES ({qmarks})", values)
+            except:
+                logger.error(f"Error storing statistics for kmer {kmer}")
+                raise
+        self._connection.commit()
+
+
+class DataStore_transcript(DataStore):
+    """Store Nanocompore data in an SQLite database - single-transcript database"""
+
+    # "transcript" table (information is also stored in master DB):
+    table_def_transcript = ["id INTEGER NOT NULL PRIMARY KEY",
+                            "name VARCHAR NOT NULL UNIQUE"]
+    # TODO: store transcript sequence here instead of kmer seqs. in "kmers" table?
+
+    # "reads" table:
+    table_def_reads = ["id INTEGER NOT NULL PRIMARY KEY",
+                       "name VARCHAR NOT NULL UNIQUE",
+                       "sampleid INTEGER NOT NULL", # references 'samples(id)' in master DB
+                       "refstart INT NOT NULL",
+                       "refend INT NOT NULL",
+                       "numevents INT NOT NULL",
+                       "numsignals INT NOT NULL",
+                       "dwelltime REAL NOT NULL",
+                       "kmers INT NOT NULL",
+                       "missing_kmers INT NOT NULL",
+                       "NNNNN_kmers INT NOT NULL",
+                       "mismatch_kmers INT NOT NULL",
+                       "valid_kmers INT NOT NULL"]
+
+    # "kmers" table:
+    # TODO: is combination of "readid" and "position" unique per kmer?
+    # if so, use those as combined primary key (for access efficiency)?
+    table_def_kmers = ["id INTEGER NOT NULL PRIMARY KEY",
+                       "readid INTEGER NOT NULL",
+                       "position INTEGER NOT NULL",
+                       "sequenceid INTEGER", # references 'kmer_sequences(id)' in master DB
+                       # "sequence VARCHAR NOT NULL",
+                       # "num_events INTEGER NOT NULL",
+                       # "num_signals INTEGER NOT NULL",
+                       "statusid INTEGER NOT NULL", # references 'kmer_status(id)' in master DB
+                       "dwell_time REAL NOT NULL",
+                       # "NNNNN_dwell_time REAL NOT NULL",
+                       # "mismatch_dwell_time REAL NOT NULL",
+                       "median REAL NOT NULL",
+                       "mad REAL NOT NULL",
+                       "FOREIGN KEY(readid) REFERENCES reads(id)"]
+
+    # "kmer_stats" table:
+    table_def_kmer_stats = ["kmer_pos INTEGER NOT NULL PRIMARY KEY",
+                            "c1_mean_intensity REAL",
+                            "c2_mean_intensity REAL",
+                            "c1_median_intensity REAL",
+                            "c2_median_intensity REAL",
+                            "c1_sd_intensity REAL",
+                            "c2_sd_intensity REAL",
+                            "c1_mean_dwell REAL",
+                            "c2_mean_dwell REAL",
+                            "c1_median_dwell REAL",
+                            "c2_median_dwell REAL",
+                            "c1_sd_dwell REAL",
+                            "c2_sd_dwell REAL",
+                            "intensity_pvalue REAL",
+                            "dwell_pvalue REAL"]
+    # TODO: are "c1" and "c2" (conditions) properly defined?
+
+    # "gmm_stats" table:
+    table_def_gmm_stats = ["kmer_pos INTEGER NOT NULL PRIMARY KEY",
+                           "cluster_counts VARCHAR",
+                           "test_stat REAL",
+                           "test_pvalue REAL",
+                           "FOREIGN KEY (kmer_pos) REFERENCES kmer_stats(kmer_pos)"]
+
+    table_defs = {"reads": table_def_reads,
+                  "kmers": table_def_kmers,
+                  "transcript": table_def_transcript}
+    # "..._stats" tables are added later
+
+    def __init__(self, db_path:str, tx_name:str, tx_id:int, create_mode=DBCreateMode.MUST_EXIST):
+        self.tx_name = tx_name
+        self.tx_id = tx_id
+        super().__init__(db_path, create_mode)
+
+    def _init_db(self):
+        super()._init_db()
+        self._cursor.execute("INSERT INTO transcript VALUES (?, ?)", (self.tx_id, self.tx_name))
+        self._connection.commit()
+
+    def store_read(self, read, sample_id):
         """
-        Insert data corresponding to a read into the DB.
+        Insert data corresponding to a new read into the DB.
         Args:
-            read (Read): an instance of class Read that contains read-level data.
-        Returns:
-            Bool: returns True is read added successfully.
+            read (Read): an instance of class Read that contains read-level data, incl. kmer data.
+            sample_id: DB ID of the sample to which the read belongs
         """
-        tx_id = self.get_transcript_id_by_name(read.ref_id, create_if_not_exists=True)
-        sample_id = self.get_sample_id_by_name(read.sample_name, create_if_not_exists=True)
-        values = (read.read_id, sample_id, tx_id, read.ref_start, read.ref_end,
+        values = (read.read_id, sample_id, read.ref_start, read.ref_end,
                   read.n_events, read.n_signals, read.dwell_time) + tuple(read.kmers_status.values())
         try:
             self._cursor.execute("INSERT INTO reads VALUES(NULL" + ", ?" * len(values) + ")",
@@ -188,11 +359,10 @@ class DataStore_EventAlign(DataStore):
             raise Exception
 
         for kmer in read.kmer_l:
-            self.__store_kmer(kmer=kmer, read_id=read_id)
+            self._store_kmer(kmer=kmer, read_id=read_id)
         self._connection.commit()
-        # TODO check for success and return true/false
 
-    def __store_kmer(self, kmer, read_id):
+    def _store_kmer(self, kmer, read_id):
         """
         Insert data corresponding to a kmer into the DB.
         Args:
@@ -211,252 +381,50 @@ class DataStore_EventAlign(DataStore):
             logger.error("Error inserting kmer into database")
             raise Exception
 
-    def get_transcript_id_by_name(self, tx_name, create_if_not_exists=False):
-        # TODO: This function should cache results
-        if create_if_not_exists:
-            query = ("INSERT INTO transcripts(id, name) "
-                     f"SELECT NULL,'{tx_name}' "
-                     " WHERE NOT EXISTS ( "
-                     "  SELECT 1"
-                     "  FROM transcripts"
-                     f"  WHERE name = '{tx_name}' "
-                     ");"
-                     )
-            try:
-                self._cursor.execute(query)
-            except Exception:
-                logger.error("Error while inserting transcript into the database")
-                raise Exception
-
-        query = f"SELECT id from transcripts WHERE name = '{tx_name}'"
-        try:
-            self._cursor.execute(query)
-            record = self._cursor.fetchone()
-            self._connection.commit()
-        except Exception:
-            logger.error("Error while selecting transcript ID from the database")
-            raise Exception
-        if record is not None:
-            return record[0]
-        else:
-            return None
-
-    def get_sample_id_by_name(self, sample_name, create_if_not_exists=False):
-        # TODO: This function should cache results
-        if create_if_not_exists:
-            query = ("INSERT INTO samples(id, name) "
-                     f"SELECT NULL,'{sample_name}' "
-                     " WHERE NOT EXISTS ( "
-                     "  SELECT 1"
-                     "  FROM samples "
-                     f"  WHERE name = '{sample_name}' "
-                     ");"
-                     )
-            try:
-                self._cursor.execute(query)
-            except Exception:
-                logger.error("Error while inserting sample into the database")
-                raise Exception
-
-        query = f"SELECT id from samples WHERE name = '{sample_name}'"
-        try:
-            self._cursor.execute(query)
-            record = self._cursor.fetchone()
-            self._connection.commit()
-        except Exception:
-            logger.error("Error while selecting sample ID from the database")
-            raise Exception
-        if record is not None:
-            return record[0]
-        else:
-            return None
-
-    def get_samples(self, sample_dict=None):
+    def create_stats_tables(self, with_gmm=True, with_sequence_context=False, drop_old=True):
         if not self._connection:
             raise NanocomporeError("Database connection not yet opened")
-        expected_samples = []
-        if sample_dict: # query only relevant samples
-            for samples in sample_dict.values():
-                expected_samples += samples
-            if not expected_samples:
-                raise NanocomporeError("No sample names in 'sample_dict'")
-            where = " WHERE name IN ('%s')" % "', '".join(expected_samples)
-        else:
-            where = ""
-        db_samples = {}
-        try:
-            self._cursor.execute("SELECT * FROM samples" + where)
-            for row in self._cursor:
-                db_samples[row["id"]] = row["name"]
-        except Exception:
-            logger.error("Error reading sample names from database")
-            raise Exception
-        for sample in expected_samples: # check that requested samples are in DB
-            if sample not in db_samples.values():
-                raise NanocomporeError(f"Sample '{sample}' not present in database")
-        return db_samples
-
-    # TODO: is this function never used?
-    def store_sample_info(self, sample_dict):
-        if not self._connection:
-            raise NanocomporeError("Database connection not yet opened")
-        # query: insert sample; if it exists, update condition if that's missing
-        query = "INSERT INTO samples(id, name, condition) VALUES (NULL, ?, ?) " \
-            "ON CONFLICT(name) DO UPDATE SET condition = excluded.condition " \
-            "WHERE condition IS NULL"
-        for condition, samples in sample_dict.items():
-            try:
-                self._cursor.executemany(query, [(condition, sample) for sample in samples])
-            except:
-                logger.error(f"Error storing sample information for condition '{condition}'")
-                raise
-        self._connection.commit()
-
-
-class DataStore_SampComp(DataStore):
-    """Store Nanocompore data in an SQLite database - subclass for SampComp results"""
-
-    # "parameters" table:
-    table_def_parameters = ["univariate_test VARCHAR CHECK (univariate_test in ('ST', 'MW', 'KS'))",
-                            "gmm_covariance_type VARCHAR",
-                            "gmm_test VARCHAR CHECK (gmm_test in ('anova', 'logit'))"]
-    # TODO: add more parameters
-
-    # "transcripts" table:
-    table_def_transcripts = ["id INTEGER NOT NULL PRIMARY KEY",
-                             "name VARCHAR NOT NULL UNIQUE"]
-
-    # "whitelist" table:
-    table_def_whitelist = ["transcriptid INTEGER NOT NULL",
-                           "readid INTEGER NOT NULL UNIQUE", # foreign key for "reads" table in EventAlign DB
-                           "FOREIGN KEY (transcriptid) REFERENCES transcripts(id)"]
-
-    # "kmer_stats" table:
-    table_def_kmer_stats = ["id INTEGER NOT NULL PRIMARY KEY",
-                            "transcriptid INTEGER NOT NULL",
-                            "kmer INTEGER NOT NULL",
-                            "c1_mean_intensity REAL",
-                            "c2_mean_intensity REAL",
-                            "c1_median_intensity REAL",
-                            "c2_median_intensity REAL",
-                            "c1_sd_intensity REAL",
-                            "c2_sd_intensity REAL",
-                            "c1_mean_dwell REAL",
-                            "c2_mean_dwell REAL",
-                            "c1_median_dwell REAL",
-                            "c2_median_dwell REAL",
-                            "c1_sd_dwell REAL",
-                            "c2_sd_dwell REAL",
-                            "intensity_pvalue REAL",
-                            "dwell_pvalue REAL",
-                            "adj_intensity_pvalue REAL",
-                            "adj_dwell_pvalue REAL",
-                            "UNIQUE (transcriptid, kmer)",
-                            "FOREIGN KEY (transcriptid) REFERENCES transcripts(id)"]
-    # TODO: are "c1" and "c2" (conditions) properly defined?
-
-    # "gmm_stats" table:
-    table_def_gmm_stats = ["kmer_statsid INTEGER NOT NULL UNIQUE",
-                           "n_components INTEGER NOT NULL",
-                           "cluster_counts VARCHAR",
-                           "test_stat REAL",
-                           "test_pvalue REAL",
-                           "adj_test_pvalue REAL",
-                           "FOREIGN KEY (kmer_statsid) REFERENCES kmer_stats(id)"]
-
-    table_defs = {"parameters": table_def_parameters,
-                  "transcripts": table_def_transcripts,
-                  "whitelist": table_def_whitelist,
-                  "kmer_stats": table_def_kmer_stats}
-    # table "gmm_stats" is only added when needed (see "__init__")
-
-    def __init__(self,
-                 db_path:str,
-                 create_mode=DBCreateMode.MUST_EXIST,
-                 with_gmm=True,
-                 with_sequence_context=False):
-        super().__init__(db_path, create_mode)
-        self.__with_gmm = with_gmm
-        self.__with_sequence_context = with_sequence_context
+        self._with_gmm = with_gmm
+        self._with_sequence_context = with_sequence_context
+        table_defs = {"kmer_stats": self.table_def_kmer_stats}
         if with_gmm:
-            self.table_defs["gmm_stats"] = self.table_def_gmm_stats
+            table_defs["gmm_stats"] = self.table_def_gmm_stats
         if with_sequence_context: # add additional columns for context p-values
-            # column definitions must go before table constraints!
-            constraints = self.table_defs["kmer_stats"][-2:]
-            self.table_defs["kmer_stats"] = (self.table_defs["kmer_stats"][:-2] +
-                                             ["intensity_pvalue_context REAL",
-                                              "dwell_pvalue_context REAL",
-                                              "adj_intensity_pvalue_context REAL",
-                                              "adj_dwell_pvalue_context REAL"] +
-                                             constraints)
+            table_defs["kmer_stats"] += ["intensity_pvalue_context REAL",
+                                         "dwell_pvalue_context REAL"]
             if with_gmm:
-                constraints = self.table_defs["gmm_stats"][-1:]
-                self.table_defs["gmm_stats"] = (self.table_defs["gmm_stats"][:-1] +
-                                                ["test_pvalue_context REAL",
-                                                 "adj_test_pvalue_context REAL"] +
-                                                constraints)
+                # column definitions must go before table constraints!
+                constraint = table_defs["gmm_stats"].pop()
+                table_defs["gmm_stats"] += ["test_pvalue_context REAL", constraint]
+        if drop_old: # remove previous results if any exist
+            self._cursor.execute("DROP TABLE IF EXISTS gmm_stats")
+            self._cursor.execute("DROP TABLE IF EXISTS kmer_stats")
+        self._create_tables(table_defs)
 
-
-    def __insert_transcript_get_id(self, tx_name):
-        try:
-            self._cursor.execute("SELECT id FROM transcripts WHERE name = ?", [tx_name])
-            if (row := self._cursor.fetchone()) is not None:
-                return row["id"]
-            self._cursor.execute("INSERT INTO transcripts VALUES (NULL, ?)", [tx_name])
-            self._connection.commit()
-            # TODO: if there could be multiple writing threads, "INSERT OR IGNORE"
-            # query should go before "SELECT"
-            return self._cursor.lastrowid
-        except:
-            logger.error(f"Failed to insert/look up transcript '{tx_name}'")
-            raise
-
-
-    def store_test_results(self, tx_name, test_results):
+    def store_test_results(self, test_results):
         if not self._connection:
             raise NanocomporeError("Database connection not yet opened")
-        tx_id = self.__insert_transcript_get_id(tx_name)
         for kmer, res in test_results.items():
-            values = [tx_id, kmer]
+            values = [kmer]
             values += res["shift_stats"].values()
-            # insert 'None' (NULL) into adj. p-value columns:
-            values += [res.get("intensity_pvalue"), res.get("dwell_pvalue"), None, None]
-            if self.__with_sequence_context:
-                values += [res.get("intensity_pvalue_context"), res.get("dwell_pvalue_context"), None, None]
+            values += [res.get("intensity_pvalue"), res.get("dwell_pvalue")]
+            if self._with_sequence_context:
+                values += [res.get("intensity_pvalue_context"), res.get("dwell_pvalue_context")]
+            qmarks = ", ".join(["?"] * len(values))
             try:
-                self._cursor.execute("INSERT INTO kmer_stats VALUES (NULL" + ", ?" * len(values) + ")", values)
+                self._cursor.execute(f"INSERT INTO kmer_stats VALUES ({qmarks})", values)
             except:
-                logger.error(f"Error storing statistics for transcript '{tx_name}', kmer {kmer}")
+                logger.error(f"Error storing statistics for kmer {kmer}")
                 raise
-            kmer_statsid = self._cursor.lastrowid
-            if self.__with_gmm:
-                # insert 'None' (NULL) into adj. p-value columns:
-                values = [kmer_statsid, res["gmm_model"].n_components, res.get("gmm_cluster_counts"),
-                          res.get("gmm_test_stat"), res.get("gmm_pvalue"), None]
-                if self.__with_sequence_context:
-                    values += [res.get("gmm_pvalue_context"), None]
+            # write GMM results - skip uninformative GMMs with only one component:
+            if self._with_gmm and (res["gmm_model"].n_components > 1):
+                values = [kmer, res.get("gmm_cluster_counts"), res.get("gmm_test_stat"), res.get("gmm_pvalue")]
+                if self._with_sequence_context:
+                    values += [res.get("gmm_pvalue_context")]
                 qmarks = ", ".join(["?"] * len(values))
                 try:
                     self._cursor.execute(f"INSERT INTO gmm_stats VALUES ({qmarks})", values)
                 except:
-                    logger.error(f"Error storing GMM stats for transcript '{tx_name}', kmer {kmer}")
+                    logger.error(f"Error storing GMM stats for kmer {kmer}")
                     raise
             self._connection.commit()
-
-
-    def store_whitelist(self, whitelist):
-        if not self._connection:
-            raise NanocomporeError("Database connection not yet opened")
-        for tx_name, read_dict in whitelist:
-            try:
-                tx_id = self.__insert_transcript_get_id(tx_name)
-                for cond_reads in read_dict.values():
-                    for sample_reads in cond_reads.values():
-                        values = zip_longest([], sample_reads, fillvalue=tx_id)
-                        self._cursor.executemany("INSERT INTO whitelist VALUES (?, ?)", values)
-                        # TODO: store sample/condition information (again)?
-                        # it can be retrieved from "reads"/"samples" tables given "readid"
-                self._connection.commit()
-            except:
-                logger.error(f"Error storing whitelisted reads for transcript '{tx_name}'")
-                raise

@@ -25,6 +25,7 @@ class TxComp(object):
 
     def __init__(self,
                  random_state,
+                 db_samples:dict,
                  univariate_test:str,
                  fit_gmm:bool,
                  gmm_test:str,
@@ -32,40 +33,50 @@ class TxComp(object):
                  sequence_context_weighting:str="uniform", # or: "harmonic"
                  min_coverage:int=20,
                  allow_anova_warnings:bool=False):
-        self.__random_state = random_state
-        self.__univariate_test = univariate_test
-        self.__fit_gmm = fit_gmm
-        self.__gmm_test = gmm_test
-        self.__min_coverage = min_coverage
-        self.__sequence_context = sequence_context
+        self._random_state = random_state
+
+        if len(db_samples) != 2:
+            raise NanocomporeError(f"Expected two experimental conditions, found {len(db_samples)}: {', '.join(db_samples.keys())}")
+        # Store sample/condition broken down for processing below:
+        self._cond1, self._cond2 = tuple(db_samples.keys())
+        self._cond1_samples = [n for n, _ in db_samples[self._cond1]]
+        self._cond2_samples = [n for n, _ in db_samples[self._cond2]]
+
+        self._univariate_test = univariate_test
+        self._fit_gmm = fit_gmm
+        self._gmm_test = gmm_test
+        self._min_coverage = min_coverage
+        self._sequence_context = sequence_context
         if sequence_context > 0:
             if sequence_context_weighting == "harmonic":
                 # Generate weights as a symmetrical harmonic series
-                self.__sequence_context_weights = self.__harmonic_series()
+                self._sequence_context_weights = self.__harmonic_series()
             elif sequence_context_weighting == "uniform":
-                self.__sequence_context_weights = [1] * (2 * self.__sequence_context + 1)
+                self._sequence_context_weights = [1] * (2 * self._sequence_context + 1)
             else:
                 raise NanocomporeError("Invalid sequence context weighting ('uniform' or 'harmonic')")
-        self.__allow_anova_warnings = allow_anova_warnings
-        self.gmm_anova_failed = False
+        self._allow_anova_warnings = allow_anova_warnings
+
+        # Pre-select univariate test:
+        if self._univariate_test == "MW":
+            self._stat_test = lambda x, y: mannwhitneyu(x, y, alternative='two-sided')
+        elif self._univariate_test == "KS":
+            self._stat_test = ks_twosamp
+        elif self._univariate_test == "ST":
+            self._stat_test = lambda x, y: ttest_ind(x, y, equal_var=False)
+        elif not self._univariate_test:
+            self._stat_test = None
+        else:
+            raise NanocomporeError("Invalid univariate test name (MW, KS, ST)")
 
 
     def __call__(self, ref_id, kmer_data):
         """Perform comparisons for one transcript ('ref_id') given k-mer data"""
         logger.debug("TxComp()")
-
         n_lowcov = 0
-        # If we have less than 2 replicates in any condition skip anova and force logit method
-        # TODO: looking at the first kmer only may not be reliable - find a better way
-        if self.__fit_gmm and (self.__gmm_test == "anova") and \
-           not all([len(samples) > 1 for samples in next(iter(kmer_data.values())).values()]):
-            logger.warning("Not enough replicates for 'anova' GMM test. Switching to 'logit' test.")
-            self.__gmm_test = "logit"
-            self.gmm_anova_failed = True
-        else:
-            self.gmm_anova_failed = False
-
         results = {}
+        n_univariate_tests = 0
+        n_gmm_tests = 0
         for pos, pos_dict in kmer_data.items():
             logger.trace(f"Processing position {pos}")
             # Filter out low coverage positions
@@ -74,53 +85,51 @@ class TxComp(object):
                 n_lowcov += 1
                 continue
 
+            intensities = {k: v["intensity"] for k, v in pos_dict.items()}
+            dwell_times = {k: v["dwell"] for k, v in pos_dict.items()}
+
+            cond1_intensity = np.concatenate([intensities[rep] for rep in self._cond1_samples])
+            cond2_intensity = np.concatenate([intensities[rep] for rep in self._cond2_samples])
+            cond1_dwell = np.concatenate([dwell_times[rep] for rep in self._cond1_samples])
+            cond2_dwell = np.concatenate([dwell_times[rep] for rep in self._cond2_samples])
+
             # Perform stat tests
             res = {}
-            condition_labels = tuple(pos_dict.keys())
-            if len(condition_labels) != 2:
-                raise NanocomporeError("Need exactly two conditions for comparison")
-            condition1_intensity = np.concatenate([rep['intensity'] for rep in pos_dict[condition_labels[0]].values()])
-            condition2_intensity = np.concatenate([rep['intensity'] for rep in pos_dict[condition_labels[1]].values()])
-            condition1_dwell = np.concatenate([rep['dwell'] for rep in pos_dict[condition_labels[0]].values()])
-            condition2_dwell = np.concatenate([rep['dwell'] for rep in pos_dict[condition_labels[1]].values()])
+            if self._univariate_test:
+                logger.trace(f"Running {self._univariate_test} test on position {pos}")
+                res["intensity_pvalue"] = self.__univariate_test(cond1_intensity, cond2_intensity)
+                res["dwell_pvalue"] = self.__univariate_test(cond1_dwell, cond2_dwell)
+                n_univariate_tests += 2
 
-            if self.__univariate_test:
-                logger.trace(f"Running {self.__univariate_test} test on position {pos}")
-                try:
-                    pvalues = self.__nonparametric_test(condition1_intensity, condition2_intensity,
-                                                        condition1_dwell, condition2_dwell)
-                except:
-                    raise NanocomporeError(f"Error running {self.__univariate_test} test on transcript {ref_id}")
-                res["intensity_pvalue"] = pvalues[0]
-                res["dwell_pvalue"] = pvalues[1]
-
-            if self.__fit_gmm:
+            if self._fit_gmm:
                 logger.trace(f"Fitting GMM on position {pos}")
                 try:
-                    gmm_results = self.__gmm_fit(pos_dict)
+                    gmm_results = self.__gmm_fit(intensities, dwell_times)
                 except:
                     raise NanocomporeError(f"Error running GMM test on transcript {ref_id}")
                 for key, value in gmm_results.items():
                     res["gmm_" + key] = value
+                if gmm_results["pvalue"] is not None: # TODO: can this be 'nan'?
+                    n_gmm_tests += 1
 
             # Calculate shift statistics
             logger.trace(f"Calculatign shift stats for {pos}")
-            res["shift_stats"] = self.__shift_stats(condition1_intensity, condition2_intensity,
-                                                    condition1_dwell, condition2_dwell)
+            res["shift_stats"] = self.__shift_stats(cond1_intensity, cond2_intensity,
+                                                    cond1_dwell, cond2_dwell)
             # Save results in main
             logger.trace(f"Saving test results for {pos}")
             results[pos] = res
 
         logger.debug(f"Skipped {n_lowcov} positions because not present in all samples with sufficient coverage")
 
-        if self.__sequence_context > 0:
-            if self.__univariate_test:
+        if self._sequence_context > 0:
+            if self._univariate_test:
                 self.__combine_adjacent_pvalues(results, "intensity_pvalue")
                 self.__combine_adjacent_pvalues(results, "dwell_pvalue")
-            if self.__fit_gmm and self.__gmm_test:
+            if self._fit_gmm and self._gmm_test:
                 self.__combine_adjacent_pvalues(results, "gmm_pvalue")
 
-        return results
+        return (results, n_univariate_tests, n_gmm_tests)
 
 
     def __combine_adjacent_pvalues(self, results, pvalue_key):
@@ -137,13 +146,14 @@ class TxComp(object):
         combined_label = f"{pvalue_key}_context"
         # Iterate over each position in previously generated result dictionary
         for mid_pos, res_dict in results.items():
-            # If the mid p-value is NaN, also set the context p-value to NaN
-            if (res_dict[pvalue_key] is None) or np.isnan(res_dict[pvalue_key]):
-                results[mid_pos][combined_label] = np.nan
+            mid_pvalue = res_dict[pvalue_key]
+            # If the mid p-value is missing or NaN, also set the context p-value to missing/NaN
+            if (mid_pvalue is None) or np.isnan(mid_pvalue):
+                results[mid_pos][combined_label] = mid_pvalue
                 continue
-            ## Otherwise collect adjacent p-values and combine them:
+            # Otherwise collect adjacent p-values and combine them:
             pval_list = []
-            for pos in range(mid_pos - self.__sequence_context, mid_pos + self.__sequence_context + 1):
+            for pos in range(mid_pos - self._sequence_context, mid_pos + self._sequence_context + 1):
                 # If any of the positions is missing or any of the p-values in the context is NaN, consider it 1
                 if (pos not in results) or (results[pos][pvalue_key] is None) or np.isnan(results[pos][pvalue_key]):
                     pval_list.append(1)
@@ -153,54 +163,29 @@ class TxComp(object):
             results[mid_pos][combined_label] = self.__combine_pvalues_hou(pval_list, corr_matrix)
 
 
-    def __nonparametric_test(self, condition1_intensity, condition2_intensity,
-                             condition1_dwell, condition2_dwell):
-        if self.__univariate_test == "MW":
-            stat_test = lambda x, y: mannwhitneyu(x, y, alternative='two-sided')
-        elif self.__univariate_test == "KS":
-            stat_test = ks_twosamp
-        elif self.__univariate_test == "ST":
-            stat_test = lambda x, y: ttest_ind(x, y, equal_var=False)
-        else:
-            raise NanocomporeError("Invalid univariate test name (MW, KS, ST)")
-
-        pval_intensity = stat_test(condition1_intensity, condition2_intensity)[1]
-        if pval_intensity == 0:
-            pval_intensity = np.finfo(np.float).tiny
-
-        pval_dwell = stat_test(condition1_dwell, condition2_dwell)[1]
-        if pval_dwell == 0:
-            pval_dwell = np.finfo(np.float).tiny
-        return (pval_intensity, pval_dwell)
+    def __univariate_test(self, cond1_values, cond2_values):
+        pvalue = self._stat_test(cond1_values, cond2_values)[1]
+        if pvalue == 0:
+            return np.finfo(np.float).tiny
+        return pvalue
 
 
-    def __gmm_fit(self, data):
-        # Condition labels
-        condition_labels = tuple(data.keys())
-        # List of sample labels
-        sample_labels = list(data[condition_labels[0]].keys()) + list(data[condition_labels[1]].keys())
-
-        if len(sample_labels) != len(set(sample_labels)):
-            raise NanocomporeError("Sample labels have to be unique and it looks like some are not.")
-
-        # Dictionary Sample_label:Condition_label
-        sample_condition_labels = {sk:k for k,v in data.items() for sk in v.keys()}
-        if len(condition_labels) != 2:
-            raise NanocomporeError("GMM fitting only supports two conditions")
+    def __gmm_fit(self, intensities, dwell_times):
+        # Dictionary Sample_ID:Condition_label
+        sample_condition_labels = dict([(k, self._cond1) for k in self._cond1_samples] +
+                                       [(k, self._cond2) for k in self._cond2_samples])
 
         # Merge the intensities and dwell times of all samples in a single array
-        global_intensity = np.concatenate(([v['intensity'] for v in data[condition_labels[0]].values()] +
-                                           [v['intensity'] for v in data[condition_labels[1]].values()]), axis=None)
-        global_dwell = np.concatenate(([v['dwell'] for v in data[condition_labels[0]].values()] +
-                                       [v['dwell'] for v in data[condition_labels[1]].values()]), axis=None)
+        global_intensity = np.concatenate(list(intensities.values()))
+        global_dwell = np.concatenate(list(dwell_times.values()))
         global_dwell = np.log10(global_dwell)
 
         # Scale the intensity and dwell time arrays
         X = StandardScaler().fit_transform([(i, d) for i, d in zip(global_intensity, global_dwell)])
 
-        # Generate an array of sample labels
-        Y = [k for k, v in data[condition_labels[0]].items() for _ in v['intensity']] + \
-            [k for k, v in data[condition_labels[1]].items() for _ in v['intensity']]
+        # Generate an array of sample IDs
+        Y = np.concatenate((np.repeat(self._cond1_samples, [len(intensities[k]) for k in self._cond1_samples]),
+                            np.repeat(self._cond2_samples, [len(intensities[k]) for k in self._cond2_samples])))
 
         gmm_mod, gmm_type, gmm_ncomponents = self.__fit_best_gmm(X, max_components=2, cv_types=['full'])
 
@@ -209,14 +194,13 @@ class TxComp(object):
             y_pred = gmm_mod.predict(X)
             counters = dict()
             # Count how many reads in each cluster for each sample
-            for lab in sample_labels:
+            for lab in self._cond1_samples + self._cond2_samples:
                 counters[lab] = Counter(y_pred[[i == lab for i in Y]])
             cluster_counts = self.__count_reads_in_cluster(counters)
-            if self.__gmm_test == "anova":
-                pvalue, stat, details = self.__gmm_anova_test(counters, sample_condition_labels,
-                                                              condition_labels, gmm_ncomponents)
-            elif self.__gmm_test == "logit":
-                pvalue, stat, details = self.__gmm_logit_test(Y, y_pred, sample_condition_labels, condition_labels)
+            if self._gmm_test == "anova":
+                pvalue, stat, details = self.__gmm_anova_test(counters, sample_condition_labels, gmm_ncomponents)
+            elif self._gmm_test == "logit":
+                pvalue, stat, details = self.__gmm_logit_test(Y, y_pred, sample_condition_labels)
         else:
             pvalue = stat = details = cluster_counts = None
 
@@ -234,7 +218,7 @@ class TxComp(object):
             for n_components in n_components_range:
             # Fit a Gaussian mixture with EM
                 gmm = GaussianMixture(n_components=n_components, covariance_type=cv_type,
-                                      random_state=self.__random_state)
+                                      random_state=self._random_state)
                 gmm.fit(X)
                 bic.append(gmm.bic(X))
                 if bic[-1] < lowest_bic:
@@ -245,7 +229,7 @@ class TxComp(object):
         return (best_gmm, best_gmm_type, best_gmm_ncomponents)
 
 
-    def __gmm_anova_test(self, counters, sample_condition_labels, condition_labels, gmm_ncomponents):
+    def __gmm_anova_test(self, counters, sample_condition_labels, gmm_ncomponents):
         labels = []
         logr = []
         for sample, counter in counters.items():
@@ -259,11 +243,11 @@ class TxComp(object):
             # Loop through ordered_counter and divide each value by the first
             logr.append(np.log(normalised_ordered_counter[0] / (1 - normalised_ordered_counter[0])))
         logr = np.around(np.array(logr), decimals=9)
-        logr_s1 = [logr[i] for i, l in enumerate(labels) if l == condition_labels[0]]
-        logr_s2 = [logr[i] for i, l in enumerate(labels) if l == condition_labels[1]]
+        logr_s1 = [logr[i] for i, l in enumerate(labels) if l == self._cond1]
+        logr_s2 = [logr[i] for i, l in enumerate(labels) if l == self._cond2]
         # If the SS for either array is 0, skip the anova test
         if sum_of_squares(logr_s1 - np.mean(logr_s1)) == 0 and sum_of_squares(logr_s2 - np.mean(logr_s2)) == 0:
-            if not self.__allow_anova_warnings:
+            if not self._allow_anova_warnings:
                 raise NanocomporeError("While doing the Anova test we found a sample with within variance = 0. Use --allow_anova_warnings to ignore.")
             else:
                 aov_table = "Within variance is 0"
@@ -276,7 +260,7 @@ class TxComp(object):
                     aov_table = f_oneway(logr_s1, logr_s2)
                     aov_pvalue = aov_table.pvalue
                 except RuntimeWarning:
-                    if not self.__allow_anova_warnings:
+                    if not self._allow_anova_warnings:
                         raise NanocomporeError("While doing the Anova test a runtime warning was raised. Use --allow_anova_warnings to ignore.")
                     else:
                         warnings.filterwarnings('default')
@@ -290,14 +274,13 @@ class TxComp(object):
         return (aov_pvalue, aov_delta_logit, aov_details)
 
 
-    @staticmethod
-    def __gmm_logit_test(Y, y_pred, sample_condition_labels, condition_labels):
+    def __gmm_logit_test(self, Y, y_pred, sample_condition_labels):
         Y = [sample_condition_labels[i] for i in Y]
         y_pred = np.append(y_pred, [0, 0, 1, 1])
-        Y.extend([condition_labels[0], condition_labels[1], condition_labels[0], condition_labels[1]])
+        Y.extend([self._cond1, self._cond2, self._cond1, self._cond2])
         Y = pd.get_dummies(Y)
         Y['intercept'] = 1
-        logit = dm.Logit(y_pred, Y[['intercept', condition_labels[1]]])
+        logit = dm.Logit(y_pred, Y[['intercept', self._cond2]])
         with warnings.catch_warnings():
             warnings.filterwarnings('error')
             try:
@@ -342,7 +325,7 @@ class TxComp(object):
 
     def __cross_corr_matrix(self, pvalues_vector):
         """Calculate the cross correlation matrix of the pvalues for a given context."""
-        context = self.__sequence_context
+        context = self._sequence_context
         if len(pvalues_vector) < (context * 3) + 3:
             raise NanocomporeError(f"Not enough p-values for a context of {context}")
 
@@ -375,7 +358,7 @@ class TxComp(object):
             print(combine_pvalues([0.1,0.02,0.1,0.02,0.3], method='fisher')[1])
             print(hou([0.1,0.02,0.1,0.02,0.3], [1,1,1,1,1], np.zeros((5,5))))
         """
-        weights = self.__sequence_context_weights
+        weights = self._sequence_context_weights
         # TODO: are the following sanity checks necessary/useful?
         if len(pvalues) != len(weights):
             raise NanocomporeError("Can't combine pvalues if pvalues and weights are not the same length.")
@@ -415,7 +398,7 @@ class TxComp(object):
 
     def __harmonic_series(self):
         weights = []
-        for i in range(-self.__sequence_context, self.__sequence_context + 1):
+        for i in range(-self._sequence_context, self._sequence_context + 1):
             weights.append(1 / (abs(i) + 1))
         return weights
 
@@ -430,8 +413,7 @@ class TxComp(object):
 
 
     def __has_low_coverage(self, pos_dict):
-        for cond_dict in pos_dict.values():
-            for sample_val in cond_dict.values():
-                if sample_val["coverage"] < self.__min_coverage:
-                    return True
+        for sample_dict in pos_dict.values():
+            if sample_dict["coverage"] < self._min_coverage:
+                return True
         return False

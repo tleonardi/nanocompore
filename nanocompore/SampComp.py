@@ -39,12 +39,9 @@ class SampComp(object):
 
     # TODO: use enums for univariate and gmm test parameters?
     def __init__(self,
-                 input_db_path:str,
-                 output_db_path:str,
-                 sample_dict:dict,
+                 input_dir:str,
+                 master_db:str = "eventalign_collapse.db",
                  fasta_fn:str = "",
-                 overwrite:bool = False,
-                 whitelist:Whitelist = None,
                  univariate_test:str = "KS", # or: "MW", "ST"
                  fit_gmm:bool = True,
                  gmm_test:str = "logit", # or: "anova"
@@ -52,11 +49,12 @@ class SampComp(object):
                  sequence_context:int = 0,
                  sequence_context_weighting:str = "uniform",
                  min_coverage:int = 30,
-                 min_ref_length:int = 100,
+                 min_transcript_length:int = 100,
                  downsample_high_coverage:int = 5000,
                  max_invalid_kmers_freq:float = 0.1,
-                 select_ref_id:list = [],
-                 exclude_ref_id:list = [],
+                 significance_thresholds = {"gmm_pvalue": 0.01},
+                 # select_ref_id:list = [],
+                 # exclude_ref_id:list = [],
                  nthreads:int = 3,
                  progress:bool = False):
 
@@ -64,22 +62,13 @@ class SampComp(object):
         Initialise a `SampComp` object and generate a whitelist of references with sufficient coverage for subsequent analysis.
         The retuned object can then be called to start the analysis.
         Args:
-        * input_db_path
-            Path to the SQLite database file with event-aligned read/kmer data
-        * output_db_path
-            Path to the SQLite database file for storing results
-        * sample_dict
-            Dictionary containing lists of (unique) sample names, grouped by condition
-            Example: d = {"control": ["C1", "C2"], "treatment": ["T1", "T2"]}
+        * input_dir
+            Path to the directory containing input data ("eventalign_collapse" output)
+        * master_db
+            Filename of the master database
         * fasta_fn
             Path to a fasta file corresponding to the reference used for read alignment.
             Not needed if 'whitelist' argument is provided.
-        * overwrite
-            If the output database already exists, overwrite it with a new database?
-            By default, new data will be added to previous data.
-        * whitelist
-            Whitelist object previously generated with nanocompore Whitelist.
-            If not given, will be automatically generated.
         * univariate_test
             Statistical test to compare the two conditions ('MW' for Mann-Whitney, 'KS' for Kolmogorov-Smirnov or 'ST' for Student's t), or empty for no test.
         * fit_gmm
@@ -93,16 +82,16 @@ class SampComp(object):
         * sequence_context_weighting
             type of weighting to used for combining p-values. {uniform,harmonic}
         * min_coverage
-            minimal read coverage required in all sample.
-        * min_ref_length
+            minimal read coverage required in all samples.
+        * min_transcript_length
             minimal length of a reference transcript to be considered in the analysis
         * downsample_high_coverage
             For reference with higher coverage, downsample by randomly selecting reads.
         * max_invalid_kmers_freq
             maximum frequency of NNNNN, mismatching and missing kmers in reads.
-        * select_ref_id
+        * select_ref_id - TODO: implement
             if given, only reference ids in the list will be selected for the analysis.
-        * exclude_ref_id
+        * exclude_ref_id - TODO: implement
             if given, refid in the list will be excluded from the analysis.
         * nthreads
             Number of threads (two are used for reading and writing, all the others for parallel processing).
@@ -114,10 +103,6 @@ class SampComp(object):
         # Save init options in dict for later
         log_init_state(loc=locals())
 
-        # Check eventalign_dict file paths and labels
-        check_sample_dict(sample_dict)
-        logger.debug(sample_dict)
-
         # Check threads number
         if nthreads < 3:
             raise NanocomporeError("The minimum number of threads is 3")
@@ -128,62 +113,78 @@ class SampComp(object):
         if fit_gmm and gmm_test and (gmm_test not in ["logit", "anova"]):
             raise NanocomporeError(f"Invalid GMM-based test {gmm_test}")
 
-        if not whitelist:
-            whitelist = Whitelist(input_db_path,
-                                  sample_dict,
-                                  fasta_fn,
-                                  min_coverage = min_coverage,
-                                  min_ref_length = min_ref_length,
-                                  downsample_high_coverage = downsample_high_coverage,
-                                  max_invalid_kmers_freq = max_invalid_kmers_freq,
-                                  select_ref_id = select_ref_id,
-                                  exclude_ref_id = exclude_ref_id)
-        elif not isinstance(whitelist, Whitelist):
-            raise NanocomporeError("Whitelist is not valid")
+        # Test if Fasta can be opened
+        try:
+            with Fasta(fasta_fn):
+                self._fasta_fn = fasta_fn
+        except IOError:
+            raise NanocomporeError("The fasta file cannot be opened")
 
-        self.__output_db_path = output_db_path
-        self.__db_args = {"with_gmm": fit_gmm, "with_sequence_context": (sequence_context > 0)}
-        db_create_mode = DBCreateMode.OVERWRITE if overwrite else DBCreateMode.CREATE_MAYBE
-        db = DataStore_SampComp(output_db_path, db_create_mode, **self.__db_args)
-        with db:
-            db.store_whitelist(whitelist)
-        # TODO: move this to '__call__'?
+        self._min_transcript_length = min_transcript_length
+        self._min_coverage = min_coverage
+        self._max_invalid_kmers_freq = max_invalid_kmers_freq
 
-        # Set private args from whitelist args
-        self.__min_coverage = whitelist._Whitelist__min_coverage
-        self.__downsample_high_coverage = whitelist._Whitelist__downsample_high_coverage
-        self.__max_invalid_kmers_freq = whitelist._Whitelist__max_invalid_kmers_freq
+        # Prepare database query once
+        # TODO: move this to 'DataStore_transcript'?
+        subquery = "SELECT id AS reads_id, sampleid FROM reads WHERE pass_filter = 1"
+        if downsample_high_coverage: # choose reads with most valid kmers
+            subquery += f" ORDER BY valid_kmers DESC LIMIT {downsample_high_coverage}"
+        columns = "sampleid, position, sequenceid, statusid, dwell_time, median"
+        # select only valid kmers (status 0):
+        self._kmer_query = f"SELECT {columns} FROM kmers INNER JOIN ({subquery}) ON readid = reads_id WHERE statusid = 0"
 
         # Save private args
-        self.__input_db_path = input_db_path
-        self.__sample_dict = sample_dict
-        self.__fasta_fn = fasta_fn
-        self.__whitelist = whitelist
-        self.__nthreads = nthreads - 2
-        self.__progress = progress
+        self._input_dir = input_dir
+        self._master_db_path = os.path.join(input_dir, master_db)
+        self._nthreads = nthreads - 2
+        self._progress = progress
 
-        # Get number of samples
-        self.__n_samples = 0
-        for samples in sample_dict.values():
-            self.__n_samples += len(samples)
+        # parameters only needed for TxComp:
+        self._txcomp_params = {"sequence_context": sequence_context,
+                               "sequence_context_weighting": sequence_context_weighting,
+                               "allow_anova_warnings": allow_anova_warnings}
+
+        # used to update databases and to adjust p-values:
+        self._univariate_test = univariate_test
+        self._fit_gmm = fit_gmm
+        self._gmm_test = gmm_test if fit_gmm else ""
+        self._sequence_context = sequence_context > 0
+
+        # Cut-offs for filtering final results:
+        self._significance_thresholds = significance_thresholds
+
+        # Get sample IDs from database
+        with DataStore_master(self._master_db_path, DBCreateMode.MUST_EXIST) as db:
+            self._db_samples = db.get_sample_info()
+        if len(self._db_samples) != 2:
+            raise NanocomporeError(f"Expected two experimental conditions, found {len(self._db_samples)}: {', '.join(self._db_samples.keys())}")
+        # Generate lookup dict. for sample IDs -> conditions
+        self._condition_lookup = {}
+        for cond, samples in self._db_samples.items():
+            for sid, _ in samples:
+                self._condition_lookup[sid] = cond
+
+        # Initialise the "Whitelist" (filtering) object:
+        self._whitelist = Whitelist(self._db_samples,
+                                    self._min_coverage,
+                                    self._max_invalid_kmers_freq)
 
         # If statistical tests are requested, initialise the "TxComp" object:
-        if univariate_test or fit_gmm:
+        if self._univariate_test or self._fit_gmm:
+            # Need at least two samples per condition for ANOVA on GMM fit:
+            if (self._gmm_test == "anova") and not all([len(samples) > 1 for samples in self._db_samples.values()]):
+                logger.warning("Not enough replicates for 'anova' GMM test. Switching to 'logit' test.")
+                self._gmm_test = "logit"
             random_state = np.random.RandomState(seed=42)
-            self.__tx_compare = TxComp(random_state,
-                                       univariate_test=univariate_test,
-                                       fit_gmm=fit_gmm,
-                                       gmm_test=gmm_test,
-                                       sequence_context=sequence_context,
-                                       sequence_context_weighting=sequence_context_weighting,
-                                       min_coverage=self.__min_coverage,
-                                       allow_anova_warnings=allow_anova_warnings)
+            self._tx_compare = TxComp(random_state,
+                                      self._db_samples,
+                                      univariate_test=self._univariate_test,
+                                      fit_gmm=self._fit_gmm,
+                                      gmm_test=self._gmm_test,
+                                      min_coverage=self._min_coverage,
+                                      **self._txcomp_params)
         else:
-            self.__tx_compare = None
-        ## used to adjust p-values:
-        self.__univariate_test = univariate_test
-        self.__gmm_test = gmm_test if fit_gmm else ""
-        self.__sequence_context = (sequence_context > 0)
+            self._tx_compare = None
 
 
     def __call__(self):
@@ -198,9 +199,9 @@ class SampComp(object):
 
         # Define processes
         ps_list = []
-        ps_list.append(mp.Process(target=self.__list_refid, args=(in_q, error_q)))
-        for i in range(self.__nthreads):
-            ps_list.append(mp.Process(target=self.__process_references, args=(in_q, out_q, error_q)))
+        ps_list.append(mp.Process(target=self.__list_transcripts_check_length, args=(in_q, error_q)))
+        for i in range(self._nthreads):
+            ps_list.append(mp.Process(target=self.__process_transcripts, args=(in_q, out_q, error_q)))
         ps_list.append(mp.Process(target=self.__write_output_to_db, args=(out_q, error_q)))
 
         # Start processes and monitor error queue
@@ -233,116 +234,143 @@ class SampComp(object):
             raise E
 
         # Adjust p-values for multiple testing:
-        if self.__univariate_test or self.__gmm_test:
-            logger.info("Running multiple testing correction")
-            self.__adjust_pvalues()
-            # context-based p-values are not independent tests, so adjust them separately:
-            if self.__sequence_context:
-                self.__adjust_pvalues(sequence_context=True)
+        # if self._univariate_test or self._gmm_test:
+        #     logger.info("Running multiple testing correction")
+        #     self.__adjust_pvalues()
+        #     # context-based p-values are not independent tests, so adjust them separately:
+        #     if self._sequence_context:
+        #         self.__adjust_pvalues(sequence_context=True)
 
 
-    def process_transcript(self, tx_id, whitelist_reads):
-        """Process a transcript given filtered reads from Whitelist"""
-        logger.debug(f"Processing transcript: {tx_id}")
+    def process_transcript(self, tx_name, subdir):
+        """Process data from one transcript"""
+        logger.debug(f"Processing transcript: {tx_name}")
+
+        db_path = os.path.join(self._input_dir, subdir, tx_name + ".db")
+        if not os.path.exists(db_path):
+            logger.error(f"Transcript database not found: {db_path}")
+            # TODO: exception?
+            return None
+        tx_ok = self._whitelist(db_path)
+        if not tx_ok:
+            logger.debug("Coverage too low - skipping this transcript")
+            return None
 
         # Kmer data from whitelisted reads from all samples for this transcript
-        # Structure: kmer position -> condition -> sample -> data
-        kmer_data = defaultdict(lambda: {condition:
-                                    defaultdict(lambda: {"intensity": [],
-                                                    "dwell": [],
-                                                    "coverage": 0,
-                                                    "kmers_stats": {"valid": 0,
-                                                                    # "missing": 0, # TODO: needed?
-                                                                    "NNNNN": 0,
-                                                                    "mismatching": 0}})
-                                    for condition in self.__sample_dict})
-        n_reads = n_kmers = 0
+        # Structure: kmer position -> sample -> data
+        kmer_data = defaultdict(lambda: {sample_id: {"intensity": [],
+                                                "dwell": [],
+                                                "coverage": 0}
+                                    for sample_id in self._condition_lookup})
 
+        n_kmers = 0 # TODO: count number of reads? (adds overhead)
         # Read kmer data from database
-        with DataStore_EventAlign(self.__input_db_path) as db:
-            for cond_lab, sample_dict in whitelist_reads.items():
-                for sample_id, read_ids in sample_dict.items():
-                    if not read_ids: continue # TODO: error?
-                    n_reads += len(read_ids)
-                    values = ", ".join([str(read_id) for read_id in read_ids])
-                    query = f"SELECT * FROM kmers WHERE readid IN ({values})"
-                    for row in db.cursor.execute(query):
-                        n_kmers += 1
-                        pos = row["position"]
-                        # TODO: check that kmer seq. agrees with FASTA?
-                        data = kmer_data[pos][cond_lab][sample_id]
-                        data["intensity"].append(row["median"])
-                        data["dwell"].append(row["dwell_time"])
-                        data["coverage"] += 1
-                        status = row["status"]
-                        data["kmers_stats"][status] += 1
+        with DataStore_transcript(db_path, tx_name, subdir) as db:
+            for row in db.cursor.execute(self._kmer_query):
+                n_kmers += 1
+                sample_id = row["sampleid"]
+                pos = row["position"]
+                data = kmer_data[pos][sample_id]
+                data["intensity"].append(row["median"])
+                data["dwell"].append(row["dwell_time"])
+                data["coverage"] += 1
 
-        logger.debug(f"Data loaded for transcript: {tx_id}")
-        test_results = {}
-        if self.__tx_compare:
-            test_results = self.__tx_compare(tx_id, kmer_data)
+        logger.debug(f"Data loaded for transcript: {tx_name}")
+        if self._tx_compare:
+            test_results, n_univariate_tests, n_gmm_tests = self._tx_compare(tx_name, kmer_data)
             # TODO: check "gmm_anova_failed" state of TxComp object
+            # Write complete results to transcript database:
+            logger.debug("Writing test results to database")
+            with DataStore_transcript(db_path, tx_name, subdir) as db:
+                db.create_stats_tables(self._fit_gmm, self._sequence_context)
+                db.store_test_results(test_results)
+            # Keep only significant results for "master" database:
+            self.__filter_test_results(test_results)
+        else:
+            test_results = n_univariate_tests = n_gmm_tests = None
 
-        # Remove 'default_factory' functions from 'kmer_data' to enable pickle/multiprocessing
-        kmer_data.default_factory = None
-        for pos_dict in kmer_data.values():
-            for cond_dict in pos_dict.values():
-                cond_dict.default_factory = None
+        return {"test_results": test_results, "n_kmers": n_kmers,
+                "n_univariate_tests": n_univariate_tests, "n_gmm_tests": n_gmm_tests}
 
-        return {"kmer_data": kmer_data, "test_results": test_results,
-                "n_reads": n_reads, "n_kmers": n_kmers}
+
+    def __filter_test_results(self, test_results):
+        logger.debug("Filtering test results for significance")
+        to_remove = []
+        for pos, res in test_results.items():
+            # Keep a result if it meets any of the p-value thresholds; otherwise, remove
+            for pv_key, threshold in self._significance_thresholds.items():
+                pvalue = res.get(pv_key)
+                if (pvalue is not None) and (pvalue <= threshold):
+                    break
+            else: # belongs to the "for" loop!
+                to_remove.append(pos)
+        for pos in to_remove:
+            del test_results[pos]
 
 
     #~~~~~~~~~~~~~~PRIVATE MULTIPROCESSING METHOD~~~~~~~~~~~~~~#
-    def __list_refid(self, in_q, error_q):
-        """Add valid refid from whitelist to input queue to dispatch the data among the workers"""
-        n_tx = 0
-        try:
-            for ref_id, ref_dict in self.__whitelist:
-                logger.debug("Adding {} to in_q".format(ref_id))
-                in_q.put((ref_id, ref_dict))
-                n_tx += 1
 
+    def __list_transcripts_check_length(self, in_q, error_q):
+        """Add transcripts to input queue to dispatch the data among the workers"""
+        n_tx = 0
+        short_transcripts = [] # TODO: record short/skipped transcripts in the database?
+        pre_queue = []
+        try:
+            # DB query needs to finish before further processing, otherwise DB will be locked to updates!
+            with DataStore_master(self._master_db_path, DBCreateMode.MUST_EXIST) as db, \
+                 Fasta(self._fasta_fn) as fasta:
+                for row in db.cursor.execute("SELECT * FROM transcripts"):
+                    n_tx += 1
+                    accession = row["name"]
+                    if len(fasta[accession]) < self._min_transcript_length:
+                        logger.debug(f"Skipping short transcript '{accession}'")
+                        short_transcripts.append((row["id"], accession))
+                    else:
+                        logger.debug(f"Transcript '{accession}' will be added to processing queue")
+                        pre_queue.append((row["id"], accession, row["subdir"]))
+            for item in pre_queue:
+                in_q.put(item)
         # Manage exceptions and add error trackback to error queue
         except Exception:
             logger.debug("Error in Reader")
             error_q.put(traceback.format_exc())
-
         # Deal poison pills
         finally:
-            for i in range (self.__nthreads):
+            for i in range(self._nthreads):
                 in_q.put(None)
-            logger.debug("Parsed transcripts:{}".format(n_tx))
+            logger.debug(f"Found {n_tx} transcripts, skipped {len(short_transcripts)}.")
 
 
-    def __process_references(self, in_q, out_q, error_q):
+    def __process_transcripts(self, in_q, out_q, error_q):
         """
         Consume ref_id, agregate intensity and dwell time at position level and
         perform statistical analyses to find significantly different regions
         """
-        n_tx = n_reads = n_kmers = 0
+        n_tx = n_kmers = 0
         try:
             logger.debug("Worker thread started")
             # Process references in input queue
-            for ref_id, ref_dict in iter(in_q.get, None):
-                logger.debug(f"Worker thread processing new item from in_q: {ref_id}")
-                results = self.process_transcript(ref_id, ref_dict)
+            for id, tx_name, subdir in iter(in_q.get, None):
+                logger.debug(f"Worker thread processing new item from in_q: {tx_name}")
+                results = self.process_transcript(tx_name, subdir)
+                if not results:
+                    continue
                 n_tx += 1
-                n_reads += results["n_reads"]
+                # n_reads += results["n_reads"]
                 n_kmers += results["n_kmers"]
-
                 # Add the current read details to queue
-                logger.debug(f"Adding '{ref_id}' to out_q")
-                out_q.put((ref_id, results["test_results"]))
+                if results["test_results"]:
+                    logger.debug(f"Adding '{tx_name}' to out_q")
+                    out_q.put((id, tx_name, results))
 
-        # Manage exceptions and add error trackback to error queue
+        # Manage exceptions and add error traceback to error queue
         except Exception as e:
             logger.error("Error in Worker")
             error_q.put (NanocomporeError(traceback.format_exc()))
 
         # Deal poison pill and close file pointer
         finally:
-            logger.debug(f"Processed {n_tx} transcripts, {n_reads} reads, {n_kmers} kmers")
+            logger.debug(f"Processed {n_tx} transcripts, {n_kmers} kmers")
             logger.debug("Adding poison pill to out_q")
             out_q.put(None)
 
@@ -350,14 +378,13 @@ class SampComp(object):
     def __write_output_to_db(self, out_q, error_q):
         n_tx = 0
         try:
-            # Database was already created earlier to store the whitelist!
-            db = DataStore_SampComp(self.__output_db_path, DBCreateMode.MUST_EXIST, **self.__db_args)
-            with db:
+            with DataStore_master(self._master_db_path) as db:
+                db.init_test_results(bool(self._univariate_test), bool(self._gmm_test), self._sequence_context)
                 # Iterate over the counter queue and process items until all poison pills are found
-                for _ in range(self.__nthreads):
-                    for ref_id, test_results in iter(out_q.get, None):
-                        logger.debug("Writer thread storing transcript %s" % ref_id)
-                        db.store_test_results(ref_id, test_results)
+                for _ in range(self._nthreads):
+                    for id, tx_name, results in iter(out_q.get, None):
+                        logger.debug("Writer thread storing transcript %s" % tx_name)
+                        db.store_test_results(id, results)
                         n_tx += 1
         except Exception:
             logger.error("Error in writer thread")
@@ -371,13 +398,13 @@ class SampComp(object):
     # TODO: move this to 'DataStore_SampComp'?
     def __adjust_pvalues(self, method="fdr_bh", sequence_context=False):
         """Perform multiple testing correction of p-values and update database"""
-        db = DataStore_SampComp(self.__output_db_path, DBCreateMode.MUST_EXIST, **self.__db_args)
+        db = DataStore_master(self._master_db_path)
         with db:
             pvalues = []
             index = []
             # for "context-averaged" p-values, add a suffix to the column names:
             col_suffix = "_context" if sequence_context else ""
-            if self.__univariate_test:
+            if self._univariate_test:
                 query = f"SELECT id, intensity_pvalue{col_suffix}, dwell_pvalue{col_suffix} FROM kmer_stats"
                 try:
                     for row in db.cursor.execute(query):
@@ -392,7 +419,7 @@ class SampComp(object):
                 except:
                     logger.error("Error reading p-values from table 'kmer_stats'")
                     raise
-            if self.__gmm_test:
+            if self._gmm_test:
                 pv_col = "test_pvalue" + col_suffix
                 query = f"SELECT kmer_statsid, {pv_col} FROM gmm_stats WHERE {pv_col} IS NOT NULL"
                 try:
