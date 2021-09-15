@@ -90,6 +90,23 @@ class DataStore(object):
     def cursor(self):
         return self._cursor
 
+    def add_or_reset_column(self, table, col_name, col_def, reset_value=None):
+        """Try to add a column to a table. If the column already exists, reset its values."""
+        if not self._connection:
+            raise NanocomporeError("Database connection not yet opened")
+        try:
+            self._cursor.execute(f"ALTER TABLE {table} ADD COLUMN {col_name} {col_def}")
+        except sqlite3.OperationalError as error:
+            if error.args[0].startswith("duplicate column name:"):
+                self._cursor.execute(f"UPDATE {table} SET {col_name} = ?", (reset_value, ))
+            else:
+                logger.error("Error adding column '{col_name}' to table '{table}'")
+                raise
+        except:
+            logger.error("Error adding column '{col_name}' to table '{table}'")
+            raise
+        self._connection.commit()
+
 
 class DataStore_master(DataStore):
     """Store Nanocompore data in an SQLite database - master database"""
@@ -177,38 +194,17 @@ class DataStore_master(DataStore):
         self._univariate_test = univariate_test
         self._gmm_test = gmm_test
         self._sequence_context = sequence_context
+        # TODO: add "id" column?
         table_def = ["transcriptid INTEGER NOT NULL",
                      "kmer_pos INTEGER NOT NULL"]
         # add more table columns as necessary:
         if univariate_test:
-            try:
-                self._cursor.execute("ALTER TABLE transcripts ADD COLUMN n_univariate_tests INTEGER")
-            except sqlite3.OperationalError as error:
-                if error.args[0].startswith("duplicate column name:"):
-                    # column exists from previous round of processing - reset values:
-                    self._cursor.execute("UPDATE transcripts SET n_univariate_tests = NULL")
-                else:
-                    logger.error("Error adding column to 'transcripts' table")
-                    raise
-            except:
-                logger.error("Error adding column to 'transcripts' table")
-                raise
+            self.add_or_reset_column("transcripts", "n_univariate_tests", "INTEGER")
             table_def += ["intensity_pvalue REAL", "dwell_pvalue REAL"]
             if sequence_context:
                 table_def += ["intensity_pvalue_context REAL", "dwell_pvalue_context REAL"]
         if gmm_test:
-            try:
-                self._cursor.execute("ALTER TABLE transcripts ADD COLUMN n_gmm_tests INTEGER")
-            except sqlite3.OperationalError as error:
-                if error.args[0].startswith("duplicate column name:"):
-                    # column exists from previous round of processing - reset values:
-                    self._cursor.execute("UPDATE transcripts SET n_gmm_tests = NULL")
-                else:
-                    logger.error("Error adding column to 'transcripts' table")
-                    raise
-            except:
-                logger.error("Error adding column to 'transcripts' table")
-                raise
+            self.add_or_reset_column("transcripts", "n_gmm_tests", "INTEGER")
             table_def.append("gmm_pvalue REAL")
             if sequence_context:
                 table_def.append("gmm_pvalue_context REAL")

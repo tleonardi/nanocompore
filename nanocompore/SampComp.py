@@ -40,8 +40,8 @@ class SampComp(object):
     # TODO: use enums for univariate and gmm test parameters?
     def __init__(self,
                  input_dir:str,
+                 fasta_fn:str,
                  master_db:str = "eventalign_collapse.db",
-                 fasta_fn:str = "",
                  univariate_test:str = "KS", # or: "MW", "ST"
                  fit_gmm:bool = True,
                  gmm_test:str = "logit", # or: "anova"
@@ -63,11 +63,10 @@ class SampComp(object):
         Args:
         * input_dir
             Path to the directory containing input data ("eventalign_collapse" output)
-        * master_db
-            Filename of the master database
         * fasta_fn
             Path to a fasta file corresponding to the reference used for read alignment.
-            Not needed if 'whitelist' argument is provided.
+        * master_db
+            Filename of the master database
         * univariate_test
             Statistical test to compare the two conditions ('MW' for Mann-Whitney, 'KS' for Kolmogorov-Smirnov or 'ST' for Student's t), or empty for no test.
         * fit_gmm
@@ -395,60 +394,66 @@ class SampComp(object):
 
 
     # TODO: move this to 'DataStore_SampComp'?
-    def __adjust_pvalues(self, method="fdr_bh", sequence_context=False):
+    def adjust_pvalues(self, sequence_context=False):
         """Perform multiple testing correction of p-values and update database"""
-        db = DataStore_master(self._master_db_path)
-        with db:
+        if not self._univariate_test and not self._gmm_test:
+            return
+        pval_columns = ["rowid"] # TODO: use explicit "id" column once defined
+        ntest_columns = []
+        # for "context-averaged" p-values, add a suffix to the column names:
+        col_suffix = "_context" if sequence_context else ""
+        if self._univariate_test:
+            pval_columns += [f"intensity_pvalue{col_suffix}", f"dwell_pvalue{col_suffix}"]
+            ntest_columns.append("SUM(n_univariate_tests)")
+        if self._gmm_test:
+            pval_columns.append(f"gmm_pvalue{col_suffix}")
+            ntest_columns.append("SUM(n_gmm_tests)")
+        with DataStore_master(self._master_db_path) as db:
+            # prepare database for updates:
+            for col in pval_columns[1:]:
+                db.add_or_reset_column("test_results", f"adj_{col}", "REAL")
+            # get p-values from database:
             pvalues = []
             index = []
-            # for "context-averaged" p-values, add a suffix to the column names:
-            col_suffix = "_context" if sequence_context else ""
-            if self._univariate_test:
-                query = f"SELECT id, intensity_pvalue{col_suffix}, dwell_pvalue{col_suffix} FROM kmer_stats"
-                try:
-                    for row in db.cursor.execute(query):
-                        for pv_col in ["intensity_pvalue", "dwell_pvalue"]:
-                            pv_col += col_suffix
-                            pv = row[pv_col]
-                            # "multipletests" doesn't handle NaN values well, so skip those:
-                            if (pv is not None) and not np.isnan(pv):
-                                pvalues.append(pv)
-                                index.append({"table": "kmer_stats", "id_col": "id",
-                                              "id": row["id"], "pv_col": pv_col})
-                except:
-                    logger.error("Error reading p-values from table 'kmer_stats'")
-                    raise
-            if self._gmm_test:
-                pv_col = "test_pvalue" + col_suffix
-                query = f"SELECT kmer_statsid, {pv_col} FROM gmm_stats WHERE {pv_col} IS NOT NULL"
-                try:
-                    for row in db.cursor.execute(query):
+            columns = ", ".join(pval_columns)
+            try:
+                for row in db.cursor.execute(f"SELECT {columns} FROM test_results"):
+                    for pv_col in row.keys()[1:]:
                         pv = row[pv_col]
-                        # "multipletests" doesn't handle NaN values well, so skip those:
-                        if not np.isnan(pv): # 'None' (NULL) values have been excluded in the query
+                        # correction function doesn't handle NaN values, so skip those:
+                        if (pv is not None) and not np.isnan(pv):
                             pvalues.append(pv)
-                            index.append({"table": "gmm_stats", "id_col": "kmer_statsid",
-                                          "id": row["kmer_statsid"], "pv_col": pv_col})
-                except:
-                    logger.error("Error reading p-values from table 'gmm_stats'")
-                    raise
-            logger.debug(f"Number of p-values for multiple testing correction: {len(pvalues)}")
+                            index.append({"id": row["rowid"], "pv_col": pv_col})
+            except:
+                logger.error("Error reading p-values from table 'test_results'")
+                raise
+            logger.debug(f"Number of p-values to correct for multiple testing: {len(pvalues)}")
             if not pvalues:
                 return
-            adjusted = multipletests(pvalues, method=method)[1]
+            # get total number of tests:
+            columns = ", ".join(ntest_columns)
+            try:
+                row = db.cursor.execute(f"SELECT {columns} FROM transcripts").fetchone()
+                n_tests = sum(row)
+            except:
+                logger.error("Error reading number of statistical tests from table 'transcripts'")
+            logger.debug(f"Number of statistical tests performed: {n_tests}")
+            # perform multiple testing correction:
+            adjusted = self.fdr_adjust(pvalues, n_tests)
             assert len(pvalues) == len(adjusted)
+            # update database:
             # sqlite module can't handle numpy float64 values, so convert to floats using "tolist":
             for ind, adj_pv in zip(index, adjusted.tolist()):
-                query = "UPDATE {table} SET adj_{pv_col} = ? WHERE {id_col} = {id}".format_map(ind)
+                query = "UPDATE test_results SET adj_{pv_col} = ? WHERE rowid = {id}".format_map(ind)
                 try:
                     db.cursor.execute(query, (adj_pv, ))
                 except:
-                    logger.error("Error updating adjusted p-value for ID {id} in table '{table}'".format_map(ind))
+                    logger.error("Error updating adjusted p-value for ID {id}".format_map(ind))
                     raise
 
 
     @staticmethod
-    def adjust_fdr(pvalues, n_tests=0):
+    def fdr_adjust(pvalues, n_tests=0):
         n_tests = max(n_tests, len(pvalues))
         if (len(pvalues) == 0) or (n_tests == 1):
             return pvalues
