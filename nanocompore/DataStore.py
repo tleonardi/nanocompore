@@ -67,7 +67,7 @@ class DataStore(object):
         if self._create_mode == DBCreateMode.CREATE_MAYBE and not os.path.exists(self._db_path):
             init_db = True
         try:
-            logger.debug("Connecting to database")
+            logger.trace("Connecting to database")
             self._connection = sqlite3.connect(self._db_path)
             self._connection.row_factory = sqlite3.Row
             self._cursor = self._connection.cursor()
@@ -80,7 +80,7 @@ class DataStore(object):
 
     def __exit__(self, exc_type, exc_value, traceback):
         if self._connection:
-            logger.debug("Closing database connection")
+            logger.trace("Closing database connection")
             self._connection.commit()
             self._connection.close()
             self._connection = None
@@ -124,6 +124,7 @@ class DataStore_master(DataStore):
     # "samples" table:
     table_def_samples = ["id INTEGER NOT NULL PRIMARY KEY",
                          "name VARCHAR NOT NULL UNIQUE",
+                         "file VARCHAR NOT NULL UNIQUE",
                          "condition VARCHAR NOT NULL CHECK (condition != '')"]
 
     # "transcripts" table:
@@ -145,11 +146,11 @@ class DataStore_master(DataStore):
                                  [(i, x) for x, i in self.sequence_mapping.items()])
         self._connection.commit()
 
-    def store_sample(self, sample_name, condition):
+    def store_sample(self, sample_name, file_path, condition):
         """Store a new sample in the database"""
         try:
-            self._cursor.execute("INSERT INTO samples VALUES(NULL, ?, ?)",
-                                 (sample_name, condition))
+            self._cursor.execute("INSERT INTO samples VALUES(NULL, ?, ?, ?)",
+                                 (sample_name, file_path, condition))
             self._connection.commit()
             return self._cursor.lastrowid
         except Exception:
@@ -178,6 +179,7 @@ class DataStore_master(DataStore):
         try:
             self._cursor.execute("SELECT * FROM samples ORDER BY id")
             for row in self._cursor:
+                # TODO: include file in output?
                 db_samples.setdefault(row["condition"], []).append((row["id"], row["name"]))
         except:
             logger.error("Error reading sample information from database")
