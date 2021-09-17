@@ -11,7 +11,6 @@ import os
 
 # Third party
 from loguru import logger
-from tqdm import tqdm
 import numpy as np
 from pyfaidx import Fasta
 from statsmodels.stats.multitest import multipletests
@@ -22,7 +21,6 @@ from nanocompore.DataStore import *
 from nanocompore.Whitelist import Whitelist
 from nanocompore.TxComp import TxComp
 from nanocompore.SampCompDB import SampCompDB
-import nanocompore as pkg
 
 # Disable multithreading for MKL and openBlas
 os.environ["MKL_NUM_THREADS"] = "1"
@@ -41,7 +39,7 @@ class SampComp(object):
     def __init__(self,
                  input_dir:str,
                  fasta_fn:str,
-                 master_db:str = "eventalign_collapse.db",
+                 master_db:str = "nanocompore.db",
                  univariate_test:str = "KS", # or: "MW", "ST"
                  fit_gmm:bool = True,
                  gmm_test:str = "logit", # or: "anova"
@@ -55,8 +53,7 @@ class SampComp(object):
                  significance_thresholds = {"gmm_pvalue": 0.01},
                  # select_ref_id:list = [],
                  # exclude_ref_id:list = [],
-                 nthreads:int = 3,
-                 progress:bool = False):
+                 nthreads:int = 3):
         """
         Initialise a `SampComp` object and generate a whitelist of references with sufficient coverage for subsequent analysis.
         The retuned object can then be called to start the analysis.
@@ -93,8 +90,6 @@ class SampComp(object):
             if given, refid in the list will be excluded from the analysis.
         * nthreads
             Number of threads (two are used for reading and writing, all the others for parallel processing).
-        * progress
-            Display a progress bar during execution
         """
         logger.info("Checking and initialising SampComp")
 
@@ -135,7 +130,6 @@ class SampComp(object):
         self._input_dir = input_dir
         self._master_db_path = os.path.join(input_dir, master_db)
         self._nthreads = nthreads - 2
-        self._progress = progress
 
         # parameters only needed for TxComp:
         self._txcomp_params = {"sequence_context": sequence_context,
@@ -207,12 +201,10 @@ class SampComp(object):
             # Start all processes
             for ps in ps_list:
                 ps.start()
-
             # Monitor error queue
-            for tb in iter(error_q.get, None):
-                logger.trace("Error caught from error_q")
-                raise NanocomporeError(tb)
-
+            for trace in iter(error_q.get, None):
+                logger.error("Error caught from error_q")
+                raise NanocomporeError(trace)
             # Soft processes and queues stopping
             for ps in ps_list:
                 ps.join()
@@ -232,12 +224,12 @@ class SampComp(object):
             raise E
 
         # Adjust p-values for multiple testing:
-        # if self._univariate_test or self._gmm_test:
-        #     logger.info("Running multiple testing correction")
-        #     self.__adjust_pvalues()
-        #     # context-based p-values are not independent tests, so adjust them separately:
-        #     if self._sequence_context:
-        #         self.__adjust_pvalues(sequence_context=True)
+        if self._univariate_test or self._gmm_test:
+            logger.info("Running multiple testing correction")
+            self.__adjust_pvalues()
+            # context-based p-values are not independent tests, so adjust them separately:
+            if self._sequence_context:
+                self.__adjust_pvalues(sequence_context=True)
 
 
     def process_transcript(self, tx_name, subdir):
@@ -273,12 +265,12 @@ class SampComp(object):
                 data["dwell"].append(row["dwell_time"])
                 data["coverage"] += 1
 
-        logger.debug(f"Data loaded for transcript: {tx_name}")
+        logger.trace(f"Data loaded for transcript: {tx_name}")
         if self._tx_compare:
             test_results, n_univariate_tests, n_gmm_tests = self._tx_compare(tx_name, kmer_data)
             # TODO: check "gmm_anova_failed" state of TxComp object
             # Write complete results to transcript database:
-            logger.debug("Writing test results to database")
+            logger.trace("Writing test results to database")
             with DataStore_transcript(db_path, tx_name, subdir) as db:
                 db.create_stats_tables(self._fit_gmm, self._sequence_context)
                 db.store_test_results(test_results)
@@ -292,7 +284,7 @@ class SampComp(object):
 
 
     def __filter_test_results(self, test_results):
-        logger.debug("Filtering test results for significance")
+        logger.trace("Filtering test results for significance")
         to_remove = []
         for pos, res in test_results.items():
             # Keep a result if it meets any of the p-value thresholds; otherwise, remove
@@ -341,15 +333,15 @@ class SampComp(object):
 
     def __process_transcripts(self, in_q, out_q, error_q):
         """
-        Consume ref_id, agregate intensity and dwell time at position level and
+        Consume one transcript, aggregate intensity and dwell time at position level and
         perform statistical analyses to find significantly different regions
         """
         n_tx = n_kmers = 0
         try:
             logger.debug("Worker thread started")
             # Process references in input queue
-            for id, tx_name, subdir in iter(in_q.get, None):
-                logger.debug(f"Worker thread processing new item from in_q: {tx_name}")
+            for tx_id, tx_name, subdir in iter(in_q.get, None):
+                logger.trace(f"Worker thread processing new item from in_q: {tx_name}")
                 results = self.process_transcript(tx_name, subdir)
                 if not results:
                     continue
@@ -358,8 +350,8 @@ class SampComp(object):
                 n_kmers += results["n_kmers"]
                 # Add the current read details to queue
                 if results["test_results"]:
-                    logger.debug(f"Adding '{tx_name}' to out_q")
-                    out_q.put((id, tx_name, results))
+                    logger.trace(f"Adding '{tx_name}' to out_q")
+                    out_q.put((tx_id, tx_name, results))
 
         # Manage exceptions and add error traceback to error queue
         except Exception as e:
@@ -369,7 +361,7 @@ class SampComp(object):
         # Deal poison pill and close file pointer
         finally:
             logger.debug(f"Processed {n_tx} transcripts, {n_kmers} kmers")
-            logger.debug("Adding poison pill to out_q")
+            logger.trace("Adding poison pill to out_q")
             out_q.put(None)
 
 
@@ -378,11 +370,11 @@ class SampComp(object):
         try:
             with DataStore_master(self._master_db_path) as db:
                 db.init_test_results(bool(self._univariate_test), bool(self._gmm_test), self._sequence_context)
-                # Iterate over the counter queue and process items until all poison pills are found
+                # Iterate over the output queue and process items until all poison pills are found
                 for _ in range(self._nthreads):
-                    for id, tx_name, results in iter(out_q.get, None):
-                        logger.debug("Writer thread storing transcript %s" % tx_name)
-                        db.store_test_results(id, results)
+                    for tx_id, tx_name, results in iter(out_q.get, None):
+                        logger.trace(f"Writer thread storing transcript: {tx_name}")
+                        db.store_test_results(tx_id, results)
                         n_tx += 1
         except Exception:
             logger.error("Error in writer thread")
@@ -394,7 +386,7 @@ class SampComp(object):
 
 
     # TODO: move this to 'DataStore_SampComp'?
-    def adjust_pvalues(self, sequence_context=False):
+    def __adjust_pvalues(self, sequence_context=False):
         """Perform multiple testing correction of p-values and update database"""
         if not self._univariate_test and not self._gmm_test:
             return
