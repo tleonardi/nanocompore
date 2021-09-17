@@ -31,9 +31,14 @@ class NanocomporeWarning (Warning):
 
 def get_hash_bin(string, bins=100):
     """Return a bin number computed from the given string"""
+    # Don't use built-in 'hash' function!
+    # Values are salted using a random seed, so not reproducible between Python runs!
     digest = md5(string.encode("utf-8")).digest()
-    return int.from_bytes(digest, "big") % bins
-
+    digest = int.from_bytes(digest, "big") # convert to integer
+    if type(bins) is int:
+        return digest % bins
+    # allow multiple totals for efficiency:
+    return [digest % n for n in bins]
 
 def build_sample_dict(sample_list1, sample_list2, label1, label2):
     """
@@ -41,7 +46,7 @@ def build_sample_dict(sample_list1, sample_list2, label1, label2):
     """
     return {label1: sample_list1.split(","), label2: sample_list2.split(",")}
 
-def set_logger (log_level, log_fn=None):
+def set_logger(log_level, log_fn=None):
     log_level = log_level.upper()
     logger.remove()
     logger.add(sys.stderr, format="{time} {level} - {process.name} | {message}", enqueue=True, level=log_level)
