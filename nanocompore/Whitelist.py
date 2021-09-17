@@ -10,7 +10,6 @@ import sqlite3
 
 # Third party
 import numpy as np
-from tqdm import tqdm
 
 # Local package
 from nanocompore.common import *
@@ -79,14 +78,7 @@ class Whitelist(object):
         """Filter reads in a transcript database, return whether the transcript meets criteria"""
         with DataStore_transcript(db_path, "", 0) as db:
             # filter reads:
-            try:
-                db.cursor.execute("ALTER TABLE reads ADD COLUMN pass_filter INTEGER DEFAULT 0")
-            except sqlite3.OperationalError as error:
-                if error.args[0] == "duplicate column name: pass_filter":
-                    # column exists from previous round of filtering - reset values to 0:
-                    db.cursor.execute("UPDATE reads SET pass_filter = 0")
-                else:
-                    raise
+            db.add_or_reset_column("reads", "pass_filter", "INTEGER DEFAULT 0", 0)
             db.cursor.execute(self._update_query)
             # count reads that passed the filter:
             if self._min_coverage:
