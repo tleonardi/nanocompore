@@ -129,7 +129,7 @@ class SampComp(object):
         # Save private args
         self._input_dir = input_dir
         self._master_db_path = os.path.join(input_dir, master_db)
-        self._nthreads = nthreads - 2
+        self._nthreads = nthreads - 2 # subtract main thread and writer thread
 
         # parameters only needed for TxComp:
         self._txcomp_params = {"sequence_context": sequence_context,
@@ -185,16 +185,24 @@ class SampComp(object):
         """
         logger.info("Starting data processing")
         # Init Multiprocessing variables
-        in_q = mp.Queue(maxsize = 100)
+        in_q = mp.Queue()
         out_q = mp.Queue(maxsize = 100)
         error_q = mp.Queue()
-
         # Define processes
-        ps_list = []
-        ps_list.append(mp.Process(target=self.__list_transcripts_check_length, args=(in_q, out_q, error_q)))
-        for i in range(self._nthreads):
-            ps_list.append(mp.Process(target=self.__process_transcripts, args=(in_q, out_q, error_q)))
+        ps_list = [mp.Process(target=self.__process_transcripts, args=(in_q, out_q, error_q))
+                   for _ in range(self._nthreads)]
         ps_list.append(mp.Process(target=self.__write_output_to_db, args=(out_q, error_q)))
+
+        # enqueue transcripts for processing:
+        # DB query needs to finish before processing starts, otherwise master DB will be locked to updates!
+        with DataStore_master(self._master_db_path, DBCreateMode.MUST_EXIST) as db:
+            for row in db.cursor.execute("SELECT id, name, subdir FROM transcripts"):
+                n_tx += 1
+                in_q.put((row["id"], row["name"], row["subdir"]))
+        logger.info(f"{in_q.qsize()} transcripts scheduled for processing")
+        # Deal poison pills to signal end of input
+        for i in range(self._nthreads):
+            in_q.put(None)
 
         # Start processes and monitor error queue
         try:
@@ -298,41 +306,7 @@ class SampComp(object):
             del test_results[pos]
 
 
-    #~~~~~~~~~~~~~~PRIVATE MULTIPROCESSING METHOD~~~~~~~~~~~~~~#
-
-    def __list_transcripts_check_length(self, in_q, out_q, error_q):
-        """Add transcripts to input queue to dispatch the data among the workers"""
-        n_tx = n_short = 0
-        to_process = []
-        too_short = []
-        try:
-            # DB query needs to finish before further processing, otherwise DB will be locked to updates!
-            with DataStore_master(self._master_db_path, DBCreateMode.MUST_EXIST) as db, \
-                 Fasta(self._fasta_fn) as fasta:
-                for row in db.cursor.execute("SELECT * FROM transcripts"):
-                    n_tx += 1
-                    accession = row["name"]
-                    if len(fasta[accession]) < self._min_transcript_length:
-                        logger.debug(f"Skipping short transcript '{accession}'")
-                        too_short.append((row["id"], accession))
-                        n_short += 1
-                    else:
-                        logger.debug(f"Transcript '{accession}' will be added to processing queue")
-                        to_process.append((row["id"], accession, row["subdir"]))
-            for item in too_short: # enqueue directly for output (to record status in DB)
-                out_q.put(item + (1, None))
-            for item in to_process: # enqueue for processing
-                in_q.put(item)
-        # Manage exceptions and add error trackback to error queue
-        except Exception:
-            logger.debug("Error in Reader")
-            error_q.put(traceback.format_exc())
-        # Deal poison pills
-        finally:
-            for i in range(self._nthreads):
-                in_q.put(None)
-            logger.debug(f"Found {n_tx} transcripts, skipped {n_short} short transcripts.")
-
+    #~~~~~~~~~~~~~~PRIVATE MULTIPROCESSING METHODS~~~~~~~~~~~~~~#
 
     def __process_transcripts(self, in_q, out_q, error_q):
         """
@@ -342,23 +316,29 @@ class SampComp(object):
         n_tx = n_kmers = 0
         try:
             logger.debug("Worker thread started")
-            # Process references in input queue
-            for tx_id, tx_name, subdir in iter(in_q.get, None):
-                logger.trace(f"Worker thread processing new item from in_q: {tx_name}")
-                status, results = self.process_transcript(tx_name, subdir)
-                n_tx += 1
-                n_kmers += results["n_kmers"]
-                logger.trace(f"Adding '{tx_name}' to out_q")
-                out_q.put((tx_id, tx_name, status, results))
+            # Fasta class may not be multiprocessing-safe, so initialise here (in each process):
+            with Fasta(self._fasta_fn) as fasta:
+                # Process references in input queue
+                for tx_id, tx_name, subdir in iter(in_q.get, None):
+                    n_tx += 1
+                    logger.trace(f"Worker thread processing new item from in_q: {tx_name}")
+                    if len(fasta[tx_name]) < self._min_transcript_length:
+                        logger.debug(f"Skipping short transcript '{tx_name}'")
+                        out_q.put((tx_id, tx_name, 1, None))
+                    else:
+                        status, results = self.process_transcript(tx_name, subdir)
+                        n_kmers += results["n_kmers"]
+                        out_q.put((tx_id, tx_name, status, results))
+                    logger.trace(f"Added '{tx_name}' to out_q")
 
         # Manage exceptions and add error traceback to error queue
         except Exception as e:
             logger.error("Error in Worker")
-            error_q.put (NanocomporeError(traceback.format_exc()))
+            error_q.put(NanocomporeError(traceback.format_exc()))
 
         # Deal poison pill
         finally:
-            logger.debug(f"Processed {n_tx} transcripts, {n_kmers} kmers")
+            logger.debug(f"Worker thread processed {n_tx} transcripts, {n_kmers} kmers")
             logger.trace("Adding poison pill to out_q")
             out_q.put(None)
 
