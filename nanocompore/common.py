@@ -51,9 +51,8 @@ def set_logger(log_level, log_fn=None):
     logger.remove()
     logger.add(sys.stderr, format="{time} {level} - {process.name} | {message}", enqueue=True, level=log_level)
     if log_fn:
-        if os.path.isfile(log_fn):
-            os.remove(log_fn)
-        logger.add(log_fn, format="{time} {level} - {process.name} | {message}", enqueue=True, level="DEBUG")
+        logger.add(log_fn, format="{time} {level} - {process.name} | {message}", enqueue=True, level="DEBUG",
+                   mode="w")
 
 def log_init_state(loc):
     logger.debug("\tpackage_name: {}".format(pkg.__name__))
