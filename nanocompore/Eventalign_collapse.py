@@ -122,7 +122,7 @@ class Eventalign_collapse ():
         in_q = mp.Queue() # queue for input files
         out_qs = [] # queues for reads (stratified by transcript accession)
         error_q = mp.Queue() # queue for errors
-        self._master_db_lock = mp.Lock() # lock for write access to master DB
+        master_db_lock = mp.Lock() # lock for write access to master DB
 
         logger.info("Creating master database, storing sample information and parameters")
         db_create_mode = DBCreateMode.OVERWRITE if self._overwrite else DBCreateMode.CREATE_MAYBE
@@ -144,7 +144,7 @@ class Eventalign_collapse ():
             self._n_readers = n_samples
         for i in range(self._n_readers):
             in_q.put(None) # one "poison pill" to be consumed by each reader thread
-            ps_list.append(mp.Process(target=self.__split_input, args=(in_q, out_qs, error_q)))
+            ps_list.append(mp.Process(target=self.__split_input, args=(in_q, out_qs, error_q, master_db_lock)))
         self._n_writers = self._nthreads - self._n_readers
         logger.info(f"Using {n_readers} reader and {n_writers} writer processes")
         # Each writer thread is associated with a specific queue (to avoid access conflicts on transcript DBs):
@@ -189,14 +189,14 @@ class Eventalign_collapse ():
             # Calculate two bin numbers derived from the hash:
             q_index, subdir = get_hash_bin(accession, (n_qs, self._output_subdirs))
             # Add transcript to master DB (or get ID if it already exists):
-            with self._master_db_lock, DataStore_master(self._master_db_path) as db:
+            with master_db_lock, DataStore_master(self._master_db_path) as db:
                 tx_id = db.store_transcript(accession, str(subdir))
             logger.debug(f"Added new transcript to DB: {accession}")
             tx_info[accession] = (tx_id, q_index, subdir)
         return tx_info[accession]
 
 
-    def __split_input(self, in_q, out_qs, error_q):
+    def __split_input(self, in_q, out_qs, error_q, master_db_lock):
         """Split input data into reads and enqueue them for processing/output"""
         tx_info = {} # information on transcripts (keyed by accession)
         try:
@@ -223,13 +223,15 @@ class Eventalign_collapse ():
                         # New read/ref group detected - enqueue previous event group and start new one
                         else:
                             n_reads += 1
-                            tx_id, q_index, subdir = self.__handle_transcript(line["ref_id"], tx_info, len(out_qs))
+                            tx_id, q_index, subdir = self.__handle_transcript(line["ref_id"], tx_info, len(out_qs),
+                                                                              master_db_lock)
                             out_qs[q_index].put((sample_id, tx_id, subdir, events))
                             cur_read_id = line["read_id"]
                             events = [line]
                     # Last event/line
                     n_reads += 1
-                    tx_id, q_index, subdir = self.__handle_transcript(line["ref_id"], tx_info, len(out_qs))
+                    tx_id, q_index, subdir = self.__handle_transcript(line["ref_id"], tx_info, len(out_qs),
+                                                                      master_db_lock)
                     out_qs[q_index].put((sample_id, tx_id, subdir, events))
                 logger.debug(f"Parsed {n_reads} reads, {n_events} events from {len(tx_info)} transcripts in input file '{path}'")
         # Manage exceptions and add error trackback to error queue
