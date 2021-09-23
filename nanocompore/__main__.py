@@ -84,30 +84,15 @@ def main():
 
     parser_sc_in = parser_sc.add_argument_group('Input options')
     parser_sc_in.add_argument("--input", "-i", required=True,
-                              help="Path to the input database, i.e. 'eventalign_collapse' output (required)")
+        help="Path to the input/output directory containing 'eventalign_collapse' results (required)")
     parser_sc_in.add_argument("--fasta", "-f", required=True,
                               help="Fasta file used for mapping (required)")
     parser_sc_in.add_argument("--bed", default=None,
                               help="BED file with annotation of transcriptome used for mapping (optional)")
-    parser_sc_in.add_argument("--samples1", "-1", required=True, metavar="C1,C2",
-        help="Comma-separated list of sample identifiers for condition 1 (e.g. control).")
-    parser_sc_in.add_argument("--samples2", "-2", required=True, metavar="T1,T2",
-        help="Comma-separated list of sample identifiers for condition 2 (e.g. treatment).")
-    # TODO: where are these labels used?
-    parser_sc_in.add_argument("--condition1", default="control",
-                              help="Label for condition 1 (default: %(default)s)")
-    parser_sc_in.add_argument("--condition2", default="treatment",
-                              help="Label for condition 2 (default: %(default)s)")
 
     parser_sc_out = parser_sc.add_argument_group("Output options")
-    parser_sc_out.add_argument("--output", "-o", default="sampcomp.db",
-                               help="Path or filename of database output file (default: %(default)s)")
     parser_sc_out.add_argument("--report", "-r", default="sampcomp.tsv",
                                help="Path or filename of report output file (default: %(default)s)")
-    parser_sc_out.add_argument("--outdir", "-d", default="",
-        help="Directory for output files. Will be preprended to --output if given. (default: %(default)s)")
-    parser_sc_out.add_argument("--overwrite", "-w", action="store_true",
-                               help="Overwrite existing output files? (default: %(default)s)")
 
     parser_sc_filter = parser_sc.add_argument_group("Transcript filtering options")
     parser_sc_filter.add_argument("--max_invalid_kmers_freq", type=float, default=0.1,
@@ -248,22 +233,12 @@ def sampcomp_main(args):
     """"""
     logger.warning("Running SampComp")
 
-    outpath = args.output
-    if args.outdir:
-        outpath = os.path.normpath(os.path.join(args.outdir, outpath))
-
-    sample_dict = build_sample_dict(args.samples1, args.samples2, args.label1, args.label2)
-
     univar_test = args.univariate_test if args.univariate_test != "none" else None
     gmm_test = args.gmm_test if args.gmm_test != "none" else None
 
     # Init SampComp
-    s = SampComp(input_db_path = args.input,
-                 output_db_path = outpath,
-                 sample_dict = sample_dict,
+    s = SampComp(input_dir = args.input,
                  fasta_fn = args.fasta,
-                 overwrite = args.overwrite,
-                 whitelist = None,
                  univariate_test = univar_test,
                  fit_gmm = not args.no_gmm,
                  gmm_test = gmm_test,
@@ -271,11 +246,10 @@ def sampcomp_main(args):
                  sequence_context = args.sequence_context,
                  sequence_context_weighting = args.sequence_context_weights,
                  min_coverage = args.min_coverage,
-                 min_ref_length = args.min_ref_length,
+                 min_transcript_length = args.min_ref_length,
                  downsample_high_coverage = args.downsample_high_coverage,
                  max_invalid_kmers_freq = args.max_invalid_kmers_freq,
-                 nthreads = args.nthreads,
-                 progress = args.progress)
+                 nthreads = args.nthreads)
 
     # Run SampComp
     s()
@@ -284,12 +258,8 @@ def sampcomp_main(args):
     if not args.report:
         return
 
-    report_path = args.report
-    if args.outdir:
-        report_path = os.path.normpath(os.path.join(args.outdir, report_path))
-
-    p = PostProcess(outpath, args.input, args.bed)
-    p.save_report(report_path) # TODO: update "save_all()" and call that instead
+    p = PostProcess(args.input, args.bed)
+    p.save_report(args.report) # TODO: update "save_all()" and call that instead
 
 
 def simreads_main(args):
