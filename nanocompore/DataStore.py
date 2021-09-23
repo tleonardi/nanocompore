@@ -121,6 +121,10 @@ class DataStore_master(DataStore):
     table_def_kmer_status = ["id INTEGER NOT NULL PRIMARY KEY",
                              "status VARCHAR NOT NULL UNIQUE"]
 
+    # "transcript_status" table:
+    table_def_transcript_status = ["id INTEGER NOT NULL PRIMARY KEY",
+                                   "status VARCHAR NOT NULL UNIQUE"]
+
     # "samples" table:
     table_def_samples = ["id INTEGER NOT NULL PRIMARY KEY",
                          "name VARCHAR NOT NULL UNIQUE",
@@ -130,20 +134,25 @@ class DataStore_master(DataStore):
     # "transcripts" table:
     table_def_transcripts = ["id INTEGER NOT NULL PRIMARY KEY",
                              "name VARCHAR NOT NULL UNIQUE",
-                             "subdir VARCHAR NOT NULL"]
+                             "subdir VARCHAR NOT NULL",
+                             "status INTEGER",
+                             "FOREIGN KEY status REFERENCES transcript_status(id)"]
 
     table_defs = {"kmer_sequences": table_def_kmer_seqs,
                   "kmer_status": table_def_kmer_status,
+                  "transcript_status": table_def_transcript_status,
                   "samples": table_def_samples,
                   "transcripts": table_def_transcripts}
 
     def _init_db(self):
         super()._init_db()
-        ## fill "kmer_status" and "kmer_sequences" tables:
+        ## fill "kmer_status", "kmer_sequences" and "transcript_status" tables:
         self._cursor.executemany("INSERT INTO kmer_status VALUES (?, ?)",
                                  [(i, x) for x, i in self.status_mapping.items()])
         self._cursor.executemany("INSERT INTO kmer_sequences VALUES (?, ?)",
                                  [(i, x) for x, i in self.sequence_mapping.items()])
+        tx_statuses = [(0, "valid"), (1, "too short"), (2, "low coverage"), (3, "no data")]
+        self._cursor.executemany("INSERT INTO transcript_status VALUES (?, ?)", tx_statuses)
         self._connection.commit()
 
     def store_sample(self, sample_name, file_path, condition):
@@ -221,14 +230,14 @@ class DataStore_master(DataStore):
             raise
         self._connection.commit()
 
-    def store_test_results(self, tx_id, results):
+    def store_test_results(self, tx_id, status, results):
         if not self._connection:
             raise NanocomporeError("Database connection not yet opened")
-        # store number of tests performed (for multiple testing correction):
-        assign = []
-        if self._univariate_test:
+        # store transcript status and numbers of tests performed (for multiple testing correction):
+        assign = [f"status = {status}"]
+        if self._univariate_test and results:
             assign.append("n_univariate_tests = %d" % results["n_univariate_tests"])
-        if self._gmm_test:
+        if self._gmm_test and results:
             assign.append("n_gmm_tests = %d" % results["n_gmm_tests"])
         assign = ", ".join(assign)
         sql = f"UPDATE transcripts SET {assign} WHERE id = {tx_id}"
@@ -236,25 +245,26 @@ class DataStore_master(DataStore):
             self._cursor.execute(sql)
             self._connection.commit()
         except:
-            logger.error(f"Error updating test counts for transcript {tx_id}")
+            logger.error(f"Error updating status and test counts for transcript {tx_id}")
             raise
         # store kmers with significant test results:
-        for kmer, res in results["test_results"].items():
-            values = [tx_id, kmer]
-            if self._univariate_test:
-                values += [res["intensity_pvalue"], res["dwell_pvalue"]]
-                if self._sequence_context:
-                    values += [res["intensity_pvalue_context"], res["dwell_pvalue_context"]]
-            if self._gmm_test:
-                values.append(res["gmm_pvalue"])
-                if self._sequence_context:
-                    values.append(res["gmm_pvalue_context"])
-            qmarks = ", ".join(["?"] * len(values))
-            try:
-                self._cursor.execute(f"INSERT INTO test_results VALUES ({qmarks})", values)
-            except:
-                logger.error(f"Error storing statistics for kmer {kmer}")
-                raise
+        if results and results["test_results"]:
+            for kmer, res in results["test_results"].items():
+                values = [tx_id, kmer]
+                if self._univariate_test:
+                    values += [res["intensity_pvalue"], res["dwell_pvalue"]]
+                    if self._sequence_context:
+                        values += [res["intensity_pvalue_context"], res["dwell_pvalue_context"]]
+                if self._gmm_test:
+                    values.append(res["gmm_pvalue"])
+                    if self._sequence_context:
+                        values.append(res["gmm_pvalue_context"])
+                qmarks = ", ".join(["?"] * len(values))
+                try:
+                    self._cursor.execute(f"INSERT INTO test_results VALUES ({qmarks})", values)
+                except:
+                    logger.error(f"Error storing statistics for kmer {kmer}")
+                    raise
         self._connection.commit()
 
 
