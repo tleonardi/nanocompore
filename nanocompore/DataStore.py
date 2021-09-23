@@ -138,11 +138,19 @@ class DataStore_master(DataStore):
                              "status INTEGER",
                              "FOREIGN KEY status REFERENCES transcript_status(id)"]
 
+    # "parameters" table:
+    table_def_parameters = ["step VARCHAR NOT NULL",
+                            "name VARCHAR NOT NULL",
+                            "value VARCHAR",
+                            "type VARCHAR NOT NULL",
+                            "UNIQUE (step, name)"]
+
     table_defs = {"kmer_sequences": table_def_kmer_seqs,
                   "kmer_status": table_def_kmer_status,
                   "transcript_status": table_def_transcript_status,
                   "samples": table_def_samples,
-                  "transcripts": table_def_transcripts}
+                  "transcripts": table_def_transcripts,
+                  "parameters": table_def_parameters}
 
     def _init_db(self):
         super()._init_db()
@@ -266,6 +274,18 @@ class DataStore_master(DataStore):
                     logger.error(f"Error storing statistics for kmer {kmer}")
                     raise
         self._connection.commit()
+
+    def store_parameters(self, step, **kwargs):
+        if not self._connection:
+            raise NanocomporeError("Database connection not yet opened")
+        values = [(step, k, str(v), type(v).__name__) for k, v in kwargs.items()]
+        sql = "INSERT INTO parameters(step, name, value, type) VALUES (?, ?, ?, ?) ON CONFLICT DO UPDATE SET value = excluded.value, type = excluded.type"
+        try:
+            self._cursor.executemany(sql, values)
+            self._connection.commit()
+        except:
+            logger.error(f"Error storing parameters")
+            raise
 
 
 class DataStore_transcript(DataStore):

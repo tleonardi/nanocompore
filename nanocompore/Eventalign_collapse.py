@@ -124,7 +124,7 @@ class Eventalign_collapse ():
         error_q = mp.Queue() # queue for errors
         self._master_db_lock = mp.Lock() # lock for write access to master DB
 
-        logger.info("Creating master database and storing sample information")
+        logger.info("Creating master database, storing sample information and parameters")
         db_create_mode = DBCreateMode.OVERWRITE if self._overwrite else DBCreateMode.CREATE_MAYBE
         n_samples = 0
         with DataStore_master(self._master_db_path, db_create_mode) as db:
@@ -133,6 +133,7 @@ class Eventalign_collapse ():
                     sample_id = db.store_sample(sample, path, condition)
                     in_q.put((sample_id, path))
                     n_samples += 1
+            db.store_parameters("EC", output_subdirs=self._output_subdirs, n_lines=self._n_lines)
 
         # Define processes
         ps_list = []
