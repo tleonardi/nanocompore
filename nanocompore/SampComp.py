@@ -191,7 +191,7 @@ class SampComp(object):
 
         # Define processes
         ps_list = []
-        ps_list.append(mp.Process(target=self.__list_transcripts_check_length, args=(in_q, error_q)))
+        ps_list.append(mp.Process(target=self.__list_transcripts_check_length, args=(in_q, out_q, error_q)))
         for i in range(self._nthreads):
             ps_list.append(mp.Process(target=self.__process_transcripts, args=(in_q, out_q, error_q)))
         ps_list.append(mp.Process(target=self.__write_output_to_db, args=(out_q, error_q)))
@@ -240,11 +240,11 @@ class SampComp(object):
         if not os.path.exists(db_path):
             logger.error(f"Transcript database not found: {db_path}")
             # TODO: exception?
-            return None
+            return (3, None)
         tx_ok = self._whitelist(db_path)
         if not tx_ok:
             logger.debug("Coverage too low - skipping this transcript")
-            return None
+            return (2, None)
 
         # Kmer data from whitelisted reads from all samples for this transcript
         # Structure: kmer position -> sample -> data
@@ -268,7 +268,6 @@ class SampComp(object):
         logger.trace(f"Data loaded for transcript: {tx_name}")
         if self._tx_compare:
             test_results, n_univariate_tests, n_gmm_tests = self._tx_compare(tx_name, kmer_data)
-            # TODO: check "gmm_anova_failed" state of TxComp object
             # Write complete results to transcript database:
             logger.trace("Writing test results to database")
             with DataStore_transcript(db_path, tx_name, subdir) as db:
@@ -279,8 +278,9 @@ class SampComp(object):
         else:
             test_results = n_univariate_tests = n_gmm_tests = None
 
-        return {"test_results": test_results, "n_kmers": n_kmers,
-                "n_univariate_tests": n_univariate_tests, "n_gmm_tests": n_gmm_tests}
+        results = {"test_results": test_results, "n_kmers": n_kmers,
+                   "n_univariate_tests": n_univariate_tests, "n_gmm_tests": n_gmm_tests}
+        return (0, results)
 
 
     def __filter_test_results(self, test_results):
@@ -300,11 +300,11 @@ class SampComp(object):
 
     #~~~~~~~~~~~~~~PRIVATE MULTIPROCESSING METHOD~~~~~~~~~~~~~~#
 
-    def __list_transcripts_check_length(self, in_q, error_q):
+    def __list_transcripts_check_length(self, in_q, out_q, error_q):
         """Add transcripts to input queue to dispatch the data among the workers"""
-        n_tx = 0
-        short_transcripts = [] # TODO: record short/skipped transcripts in the database?
-        pre_queue = []
+        n_tx = n_short = 0
+        to_process = []
+        too_short = []
         try:
             # DB query needs to finish before further processing, otherwise DB will be locked to updates!
             with DataStore_master(self._master_db_path, DBCreateMode.MUST_EXIST) as db, \
@@ -314,11 +314,14 @@ class SampComp(object):
                     accession = row["name"]
                     if len(fasta[accession]) < self._min_transcript_length:
                         logger.debug(f"Skipping short transcript '{accession}'")
-                        short_transcripts.append((row["id"], accession))
+                        too_short.append((row["id"], accession))
+                        n_short += 1
                     else:
                         logger.debug(f"Transcript '{accession}' will be added to processing queue")
-                        pre_queue.append((row["id"], accession, row["subdir"]))
-            for item in pre_queue:
+                        to_process.append((row["id"], accession, row["subdir"]))
+            for item in too_short: # enqueue directly for output (to record status in DB)
+                out_q.put(item + (1, None))
+            for item in to_process: # enqueue for processing
                 in_q.put(item)
         # Manage exceptions and add error trackback to error queue
         except Exception:
@@ -328,7 +331,7 @@ class SampComp(object):
         finally:
             for i in range(self._nthreads):
                 in_q.put(None)
-            logger.debug(f"Found {n_tx} transcripts, skipped {len(short_transcripts)}.")
+            logger.debug(f"Found {n_tx} transcripts, skipped {n_short} short transcripts.")
 
 
     def __process_transcripts(self, in_q, out_q, error_q):
@@ -342,23 +345,18 @@ class SampComp(object):
             # Process references in input queue
             for tx_id, tx_name, subdir in iter(in_q.get, None):
                 logger.trace(f"Worker thread processing new item from in_q: {tx_name}")
-                results = self.process_transcript(tx_name, subdir)
-                if not results:
-                    continue
+                status, results = self.process_transcript(tx_name, subdir)
                 n_tx += 1
-                # n_reads += results["n_reads"]
                 n_kmers += results["n_kmers"]
-                # Add the current read details to queue
-                if results["test_results"]:
-                    logger.trace(f"Adding '{tx_name}' to out_q")
-                    out_q.put((tx_id, tx_name, results))
+                logger.trace(f"Adding '{tx_name}' to out_q")
+                out_q.put((tx_id, tx_name, status, results))
 
         # Manage exceptions and add error traceback to error queue
         except Exception as e:
             logger.error("Error in Worker")
             error_q.put (NanocomporeError(traceback.format_exc()))
 
-        # Deal poison pill and close file pointer
+        # Deal poison pill
         finally:
             logger.debug(f"Processed {n_tx} transcripts, {n_kmers} kmers")
             logger.trace("Adding poison pill to out_q")
@@ -372,9 +370,9 @@ class SampComp(object):
                 db.init_test_results(bool(self._univariate_test), bool(self._gmm_test), self._sequence_context)
                 # Iterate over the output queue and process items until all poison pills are found
                 for _ in range(self._nthreads):
-                    for tx_id, tx_name, results in iter(out_q.get, None):
+                    for tx_id, tx_name, status, results in iter(out_q.get, None):
                         logger.trace(f"Writer thread storing transcript: {tx_name}")
-                        db.store_test_results(tx_id, results)
+                        db.store_test_results(tx_id, status, results)
                         n_tx += 1
         except Exception:
             logger.error("Error in writer thread")
