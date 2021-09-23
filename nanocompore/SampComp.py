@@ -116,6 +116,7 @@ class SampComp(object):
         self._min_transcript_length = min_transcript_length
         self._min_coverage = min_coverage
         self._max_invalid_kmers_freq = max_invalid_kmers_freq
+        self._downsample_high_coverage = downsample_high_coverage
 
         # Prepare database query once
         # TODO: move this to 'DataStore_transcript'?
@@ -193,9 +194,21 @@ class SampComp(object):
                    for _ in range(self._nthreads)]
         ps_list.append(mp.Process(target=self.__write_output_to_db, args=(out_q, error_q)))
 
-        # enqueue transcripts for processing:
-        # DB query needs to finish before processing starts, otherwise master DB will be locked to updates!
+        logger.debug("Querying transcripts and storing parameters in master DB")
         with DataStore_master(self._master_db_path, DBCreateMode.MUST_EXIST) as db:
+            # write parameters to DB (special handling of 'significance_thresholds' dict):
+            thresholds = {}
+            for k, v in self._significance_thresholds.items():
+                thresholds[f"significance_threshold:{k}"] = v
+            db.store_parameters("SC", fasta_fn=self._fasta_fn, univariate_test=self._univariate_test,
+                                fit_gmm=self._fit_gmm, gmm_test=self._gmm_test,
+                                sequence_context=self._txcomp_params["sequence_context"],
+                                sequence_context_weighting=self._txcomp_params["sequence_context_weighting"],
+                                min_coverage=self._min_coverage, min_transcript_length=self._min_transcript_length,
+                                downsample_high_coverage=self._downsample_high_coverage,
+                                max_invalid_kmers_freq=self._max_invalid_kmers_freq, **thresholds)
+            # enqueue transcripts for processing:
+            # DB query needs to finish before processing starts, otherwise master DB will be locked to updates!
             for row in db.cursor.execute("SELECT id, name, subdir FROM transcripts"):
                 n_tx += 1
                 in_q.put((row["id"], row["name"], row["subdir"]))
