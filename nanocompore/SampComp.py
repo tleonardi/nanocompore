@@ -210,7 +210,6 @@ class SampComp(object):
             # enqueue transcripts for processing:
             # DB query needs to finish before processing starts, otherwise master DB will be locked to updates!
             for row in db.cursor.execute("SELECT id, name, subdir FROM transcripts"):
-                n_tx += 1
                 in_q.put((row["id"], row["name"], row["subdir"]))
         logger.info(f"{in_q.qsize()} transcripts scheduled for processing")
         # Deal poison pills to signal end of input
@@ -340,7 +339,8 @@ class SampComp(object):
                         out_q.put((tx_id, tx_name, 1, None))
                     else:
                         status, results = self.process_transcript(tx_name, subdir)
-                        n_kmers += results["n_kmers"]
+                        if results:
+                            n_kmers += results["n_kmers"]
                         out_q.put((tx_id, tx_name, status, results))
                     logger.trace(f"Added '{tx_name}' to out_q")
 
