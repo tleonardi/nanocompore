@@ -148,7 +148,7 @@ class Eventalign_collapse ():
         logger.info(f"Using {self._n_readers} reader and {self._n_writers} writer processes")
         # Each writer thread is associated with a specific queue (to avoid access conflicts on transcript DBs):
         for i in range(self._n_writers):
-            out_qs.append(mp.Queue(maxsize=100))
+            out_qs.append(mp.Queue(maxsize=100)) # TODO: increase 'maxsize'?
             ps_list.append(mp.Process(target=self.__process_reads, args=(out_qs[i], error_q)))
         q_list = [in_q, error_q] + out_qs
 
