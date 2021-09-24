@@ -279,8 +279,7 @@ class DataStore_master(DataStore):
         if not self._connection:
             raise NanocomporeError("Database connection not yet opened")
         values = [(step, k, str(v), type(v).__name__) for k, v in kwargs.items()]
-        # sql = "INSERT INTO parameters(step, name, value, type) VALUES (?, ?, ?, ?) ON CONFLICT DO UPDATE SET value = excluded.value, type = excluded.type" # what's wrong with this?
-        sql = "INSERT INTO parameters VALUES (?, ?, ?, ?)"
+        sql = "INSERT INTO parameters(step, name, value, type) VALUES (?, ?, ?, ?) ON CONFLICT(step, name) DO UPDATE SET value = excluded.value, type = excluded.type"
         try:
             self._cursor.executemany(sql, values)
             self._connection.commit()
