@@ -136,7 +136,7 @@ class DataStore_master(DataStore):
                              "name VARCHAR NOT NULL UNIQUE",
                              "subdir VARCHAR NOT NULL",
                              "status INTEGER",
-                             "FOREIGN KEY status REFERENCES transcript_status(id)"]
+                             "FOREIGN KEY(status) REFERENCES transcript_status(id)"]
 
     # "parameters" table:
     table_def_parameters = ["step VARCHAR NOT NULL",
@@ -180,7 +180,7 @@ class DataStore_master(DataStore):
             self._cursor.execute("SELECT id FROM transcripts WHERE name = ?", [name])
             if (row := self._cursor.fetchone()) is not None:
                 return row["id"]
-            self._cursor.execute("INSERT INTO transcripts VALUES (NULL, ?, ?)", (name, subdir))
+            self._cursor.execute("INSERT INTO transcripts(name, subdir) VALUES (?, ?)", (name, subdir))
             self._connection.commit()
             # TODO: if there could be multiple writing threads, "INSERT OR IGNORE"
             # query should go before "SELECT"
@@ -279,7 +279,8 @@ class DataStore_master(DataStore):
         if not self._connection:
             raise NanocomporeError("Database connection not yet opened")
         values = [(step, k, str(v), type(v).__name__) for k, v in kwargs.items()]
-        sql = "INSERT INTO parameters(step, name, value, type) VALUES (?, ?, ?, ?) ON CONFLICT DO UPDATE SET value = excluded.value, type = excluded.type"
+        # sql = "INSERT INTO parameters(step, name, value, type) VALUES (?, ?, ?, ?) ON CONFLICT DO UPDATE SET value = excluded.value, type = excluded.type" # what's wrong with this?
+        sql = "INSERT INTO parameters VALUES (?, ?, ?, ?)"
         try:
             self._cursor.executemany(sql, values)
             self._connection.commit()

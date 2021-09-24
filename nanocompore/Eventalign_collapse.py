@@ -4,12 +4,11 @@
 
 # Standard library imports
 import multiprocessing as mp
-from time import time
-from collections import *
 import traceback
 import os
-import cProfile as profile
+# import cProfile as profile
 import statistics
+import shutil
 
 # Third party imports
 from loguru import logger
@@ -86,7 +85,7 @@ class Eventalign_collapse ():
         # {condition1: [(file1, sample1), (file2, sample2), ...], condition2: [...]}
         try:
             conditions = list(self._sample_dict.keys())
-            if len(conditions != 2):
+            if len(conditions) != 2:
                 raise NanocomporeError(f"Expected two experimental conditions, found {len(conditions)}: {', '.join(conditions)}")
             samples = set([])
             paths = set([])
@@ -146,7 +145,7 @@ class Eventalign_collapse ():
             in_q.put(None) # one "poison pill" to be consumed by each reader thread
             ps_list.append(mp.Process(target=self.__split_input, args=(in_q, out_qs, error_q, master_db_lock)))
         self._n_writers = self._nthreads - self._n_readers
-        logger.info(f"Using {n_readers} reader and {n_writers} writer processes")
+        logger.info(f"Using {self._n_readers} reader and {self._n_writers} writer processes")
         # Each writer thread is associated with a specific queue (to avoid access conflicts on transcript DBs):
         for i in range(self._n_writers):
             out_qs.append(mp.Queue(maxsize=100))
@@ -180,6 +179,7 @@ class Eventalign_collapse ():
             except:
                 logger.error("An error occured while trying to kill processes")
             raise E
+        logger.info("Processing finished successfully")
 
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~PRIVATE METHODS~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
@@ -191,7 +191,7 @@ class Eventalign_collapse ():
             # Add transcript to master DB (or get ID if it already exists):
             with master_db_lock, DataStore_master(self._master_db_path) as db:
                 tx_id = db.store_transcript(accession, str(subdir))
-            logger.debug(f"Added new transcript to DB: {accession}")
+            logger.debug(f"Added transcript to DB: {accession}")
             tx_info[accession] = (tx_id, q_index, subdir)
         return tx_info[accession]
 
@@ -210,8 +210,8 @@ class Eventalign_collapse ():
                                  n_lines=self._n_lines) as sp:
                     # First line/event - initialise
                     line = next(iter(sp))
-                    # TODO: read ID should be unique, so no need to check transcript - correct?
                     cur_read_id = line["read_id"]
+                    cur_accession = line["ref_id"]
                     events = [line]
                     n_events = 1
                     # All following lines
@@ -220,20 +220,21 @@ class Eventalign_collapse ():
                         # Same read - just append to current event group
                         if line["read_id"] == cur_read_id:
                             events.append(line)
-                        # New read/ref group detected - enqueue previous event group and start new one
+                        # New read - enqueue previous event group and start new one
                         else:
                             n_reads += 1
-                            tx_id, q_index, subdir = self.__handle_transcript(line["ref_id"], tx_info, len(out_qs),
+                            tx_id, q_index, subdir = self.__handle_transcript(cur_accession, tx_info, len(out_qs),
                                                                               master_db_lock)
                             out_qs[q_index].put((sample_id, tx_id, subdir, events))
                             cur_read_id = line["read_id"]
+                            cur_accession = line["ref_id"]
                             events = [line]
                     # Last event/line
                     n_reads += 1
-                    tx_id, q_index, subdir = self.__handle_transcript(line["ref_id"], tx_info, len(out_qs),
+                    tx_id, q_index, subdir = self.__handle_transcript(cur_accession, tx_info, len(out_qs),
                                                                       master_db_lock)
                     out_qs[q_index].put((sample_id, tx_id, subdir, events))
-                logger.debug(f"Parsed {n_reads} reads, {n_events} events from {len(tx_info)} transcripts in input file '{path}'")
+                logger.info(f"Parsed {n_reads} reads, {n_events} events from {len(tx_info)} transcripts in input file '{path}'")
         # Manage exceptions and add error trackback to error queue
         except Exception:
             logger.debug("Error in reader process")
