@@ -2,22 +2,22 @@
 
 #~~~~~~~~~~~~~~IMPORTS~~~~~~~~~~~~~~#
 # Std lib
-from loguru import logger
+import os.path
 
 # Third party
-# ...
+from loguru import logger
 
 # Local package
 from nanocompore.common import *
-from nanocompore.DataStore import DataStore_EventAlign, DataStore_SampComp
+from nanocompore.DataStore import DataStore_master, DataStore_transcript
 
 #~~~~~~~~~~~~~~MAIN CLASS~~~~~~~~~~~~~~#
 class PostProcess(object):
     """Helper class for post-processing `SampComp` results"""
 
-    def __init__(self, sampcomp_db_path:str, eventalign_db_path:str, bed_path:str=None):
-        self._sampcomp_db_path = sampcomp_db_path
-        self._eventalign_db_path = eventalign_db_path
+    def __init__(self, input_dir:str, master_db:str="nanocompore.db", bed_path:str=None):
+        self._input_dir = input_dir
+        self._master_db_path = os.path.join(input_dir, master_db)
         self._bed_path = bed_path
 
 
@@ -133,7 +133,7 @@ class PostProcess(object):
                                                                  line.name, line.score, line.strand))
 
 
-    def save_report(self, output_fn:str=None, include_shift_stats:bool=True):
+    def save_report(self, output_fn:str=None, significance_thresholds={"adj_gmm_pvalue": 0.01}, details=False):
         """
         Saves a tabulated text dump of the database containing all the statistical results for all the positions
         * output_fn
@@ -150,50 +150,91 @@ class PostProcess(object):
         else:
             raise NanocomporeError("output_fn needs to be a string or None")
 
-        with DataStore_SampComp(self._sampcomp_db_path) as sc_db, \
-             DataStore_EventAlign(self._eventalign_db_path) as ea_db:
-            # do we have GMM results?
-            query = "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'gmm_stats'"
-            sc_db.cursor.execute(query)
-            with_gmm = sc_db.cursor.fetchone() is not None
-            query = "SELECT * FROM kmer_stats LEFT JOIN transcripts ON transcriptid = transcripts.id"
-            if with_gmm:
-                query += " LEFT JOIN gmm_stats ON kmer_stats.id = gmm_stats.kmer_statsid"
-            query += " ORDER BY transcriptid, kmer"
-            first_row = True
-            shift_stat_columns = []
-            univariate_pvalue_columns = []
-            gmm_pvalue_columns = []
-            for row in sc_db.cursor.execute(query):
-                # retrieve k-mer sequence:
-                ea_query = "SELECT sequence FROM kmers LEFT JOIN reads ON readid = reads.id WHERE transcriptid = ? AND position = ? LIMIT 1"
-                ea_db.cursor.execute(ea_query, (row["transcriptid"], row["kmer"]))
-                seq = ea_db.cursor.fetchone()[0]
-                out_dict = {"transcript": row["name"],
-                            "position": row["kmer"],
-                            "sequence": seq}
-                # TODO: add chromosome, genomic pos., strand information (from where?)
-                if first_row: # check which columns we have (do this only once)
-                    univariate_pvalue_columns = [col for col in row.keys()
-                                                 if ("intensity_pvalue" in col) or ("dwell_pvalue" in col)]
-                    if include_shift_stats:
-                        shift_stat_columns = [col for col in row.keys() if col.startswith(("c1_", "c2_"))]
-                    if with_gmm:
-                        gmm_pvalue_columns = [col for col in row.keys() if "test_pvalue" in col]
+        where = []
+        order = []
+        for k, v in significance_thresholds.items():
+            where.append(f"{k} <= {v}")
+            order.append(k)
+        if details or not order:
+            order = ["transcriptid", "kmer_pos"]
+        # TODO: depending on 'details', results will be ordered by p-value or by transcript/pos. - problem?
+        sql = "SELECT * FROM test_results LEFT JOIN (SELECT id, name, subdir FROM transcripts) ON transcriptid = id"
+        if where:
+            sql += f" WHERE " + " OR ".join(where)
+        sql += " ORDER BY " + ", ".join(order)
+        exclude_cols = ["transcriptid", "id", "name", "subdir"]
+        with DataStore_master(self._master_db_path) as master:
+            if not details: # write output from master DB directly to TSV
+                master.cursor.execute(sql)
+                row = master.cursor.fetchone()
+                if row:
+                    self.write_tsv_header(fp, row)
+                    self.write_tsv_row(fp, row)
+                    for row in master.cursor:
+                        self.write_tsv_row(fp, row)
+            else:
+                # include GMM stats?
+                master.cursor.execute("SELECT value FROM parameters WHERE step = 'SC' AND name = 'fit_gmm'")
+                row = master.cursor.fetchone()
+                with_gmm = (row is not None) and (row[0] == "True")
+                master.cursor.execute(sql)
+                row = master.cursor.fetchone()
+                first_row = True # do we need to write the header?
+                while row:
+                    current_tx = row["name"]
+                    db_path = os.path.join(self._input_dir, str(row["subdir"]), current_tx + ".db")
+                    with DataStore_transcript(db_path, current_tx, row["transcriptid"]) as db:
+                        while row and (row["name"] == current_tx): # still on the same transcript
+                            # get data from transcript DB:
+                            kmer_pos = row["kmer_pos"]
+                            seq_query = "SELECT sequenceid FROM kmers WHERE position = ? LIMIT 1"
+                            seq_row = db.cursor.execute(seq_query, (kmer_pos, )).fetchone()
+                            seq = list(master.sequence_mapping.keys())[seq_row[0]]
+                            kmer_query = "SELECT * FROM kmer_stats WHERE kmer_pos = ?"
+                            kmer_row = db.cursor.execute(kmer_query, (kmer_pos, )).fetchone()
+                            if with_gmm:
+                                gmm_query = "SELECT cluster_counts FROM gmm_stats WHERE kmer_pos = ?"
+                                gmm_row = db.cursor.execute(gmm_query, (kmer_pos, )).fetchone()
+                                if not gmm_row: # may be 'None' if best GMM only had one component
+                                    gmm_row = [None]
+                            else:
+                                gmm_row = None
+                            if first_row:
+                                self.write_tsv_header(fp, row, seq, kmer_row, gmm_row)
+                                first_row = False
+                            self.write_tsv_row(fp, row, seq, kmer_row, gmm_row)
+                            row = master.cursor.fetchone()
 
-                for col in shift_stat_columns:
-                    out_dict[col] = row[col]
-                for col in univariate_pvalue_columns:
-                    out_dict[col] = row[col]
-                if with_gmm:
-                    out_dict["GMM_n_components"] = row["n_components"]
-                    out_dict["GMM_cluster_counts"] = row["cluster_counts"]
-                    out_dict["GMM_test_stat"] = row["test_stat"]
-                    for col in gmm_pvalue_columns:
-                        out_dict[col.replace("test", "GMM", 1)] = row[col]
 
-                if first_row: # write header line
-                    fp.write("\t".join(out_dict.keys()) + "\n")
-                # write output data:
-                fp.write("\t".join(str(x) for x in out_dict.values()) + "\n")
-                first_row = False
+    @staticmethod
+    def write_tsv_header(fp, master_row, seq=None, kmer_row=None, gmm_row=None):
+        fp.write("transcript\tkmer_pos")
+        if seq: # squeeze kmer sequence in at this point
+            fp.write("\tkmer_seq")
+        for k in master_row.keys():
+            if "pvalue" in k:
+                fp.write("\t" + k)
+        if kmer_row:
+            for k in kmer_row.keys()[1:]: # skip 'kmer_pos'
+                if "pvalue" not in k: # skip p-value columns (already written from master DB)
+                    fp.write("\t" + k)
+            if gmm_row:
+                fp.write("\tcluster_counts")
+        fp.write("\n")
+
+
+    @staticmethod
+    def write_tsv_row(fp, master_row, seq=None, kmer_row=None, gmm_row=None):
+        fp.write(master_row["name"] + "\t" + str(master_row["kmer_pos"]))
+        if seq: # squeeze kmer sequence in at this point
+            fp.write("\t" + seq)
+        for k in master_row.keys():
+            if "pvalue" in k:
+                fp.write("\t" + str(master_row[k]))
+        if kmer_row:
+            for k in kmer_row.keys()[1:]: # skip 'kmer_pos'
+                if "pvalue" not in k: # skip p-value columns (already written from master DB)
+                    fp.write("\t" + str(kmer_row[k]))
+            if gmm_row:
+                fp.write("\t" + str(gmm_row[0]))
+        fp.write("\n")
