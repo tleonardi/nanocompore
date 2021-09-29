@@ -256,6 +256,7 @@ class DataStore_master(DataStore):
             logger.error(f"Error updating status and test counts for transcript {tx_id}")
             raise
         # store kmers with significant test results:
+        # TODO: include kmer sequence?
         if results and results["test_results"]:
             for kmer, res in results["test_results"].items():
                 values = [tx_id, kmer]
