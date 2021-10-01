@@ -68,7 +68,7 @@ def main():
 
     parser_ec_run = parser_ec.add_argument_group("Run options")
     parser_ec_run.add_argument("--n_lines", "-n", default=None , type=int ,
-                               help = "Number of lines to parse (default: no limit")
+                               help = "Number of lines to parse (default: no limit)")
 
     parser_ec_misc = parser_ec.add_argument_group("Other options")
     parser_ec_misc.add_argument("--nthreads", "-t", default=3, type=int,
@@ -93,6 +93,8 @@ def main():
     parser_sc_out = parser_sc.add_argument_group("Output options")
     parser_sc_out.add_argument("--report", "-r", default="sampcomp.tsv",
                                help="Path or filename of report output file (default: %(default)s)")
+    parser_sc_out.add_argument("--details", "-d", action="store_true",
+                               help="Include additional details in report? (default: %(default)s)")
 
     parser_sc_filter = parser_sc.add_argument_group("Transcript filtering options")
     parser_sc_filter.add_argument("--max_invalid_kmers_freq", type=float, default=0.1,
@@ -105,7 +107,7 @@ def main():
         help="Minimum length of a reference transcript for inclusion in the analysis (default: %(default)s)")
 
     parser_sc_test = parser_sc.add_argument_group('Statistical testing options')
-    parser_sc_test.add_argument("--pvalue_threshold", "-p", type=float, default=0.05,
+    parser_sc_test.add_argument("--pvalue_threshold", "-p", type=float, default=0.01,
         help="Adjusted p-value threshold for reporting significant sites (default: %(default)s)")
     parser_sc_test.add_argument("--univariate_test", choices=["KS", "MW", "ST", "none"], default="KS",
         help="Univariate test for comparing kmer data between conditions. KS: Kolmogorov-Smirnov test, MW: Mann-Whitney test, ST: Student's t-test, none: no univariate test. (default: %(default)s)")
@@ -235,6 +237,13 @@ def sampcomp_main(args):
 
     univar_test = args.univariate_test if args.univariate_test != "none" else None
     gmm_test = args.gmm_test if args.gmm_test != "none" else None
+    thresholds = {}
+    suffix = "_context" if args.sequence_context > 0 else ""
+    if gmm_test:
+        thresholds["gmm_pvalue" + suffix] = args.pvalue_threshold
+    if univar_test:
+        thresholds["intensity_pvalue" + suffix] = args.pvalue_threshold
+        thresholds["dwell_pvalue" + suffix] = args.pvalue_threshold
 
     # Init SampComp
     s = SampComp(input_dir = args.input,
@@ -249,6 +258,7 @@ def sampcomp_main(args):
                  min_transcript_length = args.min_ref_length,
                  downsample_high_coverage = args.downsample_high_coverage,
                  max_invalid_kmers_freq = args.max_invalid_kmers_freq,
+                 significance_thresholds = thresholds,
                  nthreads = args.nthreads)
 
     # Run SampComp
@@ -258,8 +268,10 @@ def sampcomp_main(args):
     if not args.report:
         return
 
-    p = PostProcess(args.input, args.bed)
-    p.save_report(args.report) # TODO: update "save_all()" and call that instead
+    adj_thresholds = {"adj_" + k: v for k, v in thresholds.items()}
+    p = PostProcess(args.input, bed_path=args.bed)
+    # TODO: update "save_all()" and call that instead
+    p.save_report(args.report, adj_thresholds, args.details)
 
 
 def simreads_main(args):
