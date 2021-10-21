@@ -449,3 +449,13 @@ class SampComp(object):
         steps = float(n_tests) / np.arange(len(p), 0, -1)
         q = np.minimum(1, np.minimum.accumulate(steps * p[by_descend]))
         return q[by_orig]
+
+
+    def reset_databases(self):
+        with DataStore_master(self._master_db_path) as master:
+            master.reset_SampComp()
+            for row in master.cursor.execute("SELECT id, name, subdir FROM transcripts"):
+                db_path = os.path.join(self._input_dir, row["subdir"], row["name"] + ".db")
+                with DataStore_transcript(db_path, row["name"], row["id"]) as db:
+                    db.reset_SampComp()
+        logger.info("All databases reset to pre-SampComp state")

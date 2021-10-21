@@ -288,6 +288,24 @@ class DataStore_master(DataStore):
             logger.error(f"Error storing parameters")
             raise
 
+    def reset_SampComp(self):
+        """Reset the database to a state without SampComp results"""
+        if not self._connection:
+            raise NanocomporeError("Database connection not yet opened")
+        self._cursor.execute("DELETE FROM parameters WHERE step = 'SC'")
+        self._cursor.execute("DROP TABLE IF EXISTS test_results")
+        # "ALTER table DROP COLUMN" not supported by SQLite version used here
+        # (sqlite3.sqlite_version: '3.31.1' - supported from 3.35)
+        # can't remove columns, so reset values:
+        for column in ("n_univariate_tests", "n_gmm_tests"):
+            try:
+                self._cursor.execute(f"UPDATE transcripts SET {column} = NULL")
+            except sqlite3.OperationalError as error:
+                # ignore "no such column" error:
+                if not error.args[0].startswith("no such column:"):
+                    raise
+        self._connection.commit()
+
 
 class DataStore_transcript(DataStore):
     """Store Nanocompore data in an SQLite database - single-transcript database"""
@@ -457,3 +475,20 @@ class DataStore_transcript(DataStore):
                     logger.error(f"Error storing GMM stats for kmer {kmer}")
                     raise
             self._connection.commit()
+
+    def reset_SampComp(self):
+        """Reset the database to a state without SampComp results"""
+        if not self._connection:
+            raise NanocomporeError("Database connection not yet opened")
+        # "ALTER table DROP COLUMN" not supported by SQLite version used here
+        # (sqlite3.sqlite_version: '3.31.1' - supported from 3.35)
+        # can't remove column, so reset values:
+        try:
+            self._cursor.execute("UPDATE reads SET pass_filter = 0")
+        except sqlite3.OperationalError as error:
+            # ignore "no such column" error:
+            if not error.args[0].startswith("no such column:"):
+                raise
+        self._cursor.execute("DROP TABLE IF EXISTS kmer_stats")
+        self._cursor.execute("DROP TABLE IF EXISTS gmm_stats")
+        self._connection.commit()
