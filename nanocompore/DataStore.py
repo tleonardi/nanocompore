@@ -8,7 +8,9 @@ import contextlib
 from itertools import zip_longest, product
 
 # Third party
+import numpy as np
 from loguru import logger
+from sklearn.mixture import GaussianMixture
 from nanocompore.common import NanocomporeError
 
 
@@ -373,10 +375,26 @@ class DataStore_transcript(DataStore):
                            "test_pvalue REAL",
                            "FOREIGN KEY (kmer_pos) REFERENCES kmer_stats(kmer_pos)"]
 
+    # "gmm_components" table:
+    # TODO: store other 'GaussianMixture' attributes (e.g. 'converged_', 'n_iter_')?
+    table_def_gmm_components = ["kmer_pos INTEGER NOT NULL",
+                                "component INTEGER NOT NULL",
+                                "weight REAL",
+                                "mean_intensity REAL NOT NULL",
+                                "mean_dwell REAL NOT NULL",
+                                # elements of the Cholesky decomposition of the
+                                # precision matrix (inverse of covariance matrix);
+                                # matrix is triangular, so (1,0) is always 0:
+                                "precision_cholesky_00 REAL NOT NULL",
+                                "precision_cholesky_01 REAL NOT NULL",
+                                "precision_cholesky_11 REAL NOT NULL",
+                                "PRIMARY KEY (kmer_pos, component)",
+                                "FOREIGN KEY (kmer_pos) REFERENCES kmer_stats(kmer_pos)"]
+
     table_defs = {"reads": table_def_reads,
                   "kmers": table_def_kmers,
                   "transcript": table_def_transcript}
-    # "..._stats" tables are added later
+    # "..._stats" and "gmm_components" tables are added later, if needed
 
     def __init__(self, db_path:str, tx_name:str, tx_id:int, create_mode=DBCreateMode.MUST_EXIST):
         self.tx_name = tx_name
@@ -428,14 +446,18 @@ class DataStore_transcript(DataStore):
             logger.error("Error inserting kmer into database")
             raise Exception
 
-    def create_stats_tables(self, with_gmm=True, with_sequence_context=False, drop_old=True):
+    def create_stats_tables(self, with_gmm=True, with_gmm_components=False,
+                            with_sequence_context=False, drop_old=True):
         if not self._connection:
             raise NanocomporeError("Database connection not yet opened")
         self._with_gmm = with_gmm
+        self._with_gmm_components = with_gmm_components
         self._with_sequence_context = with_sequence_context
         table_defs = {"kmer_stats": self.table_def_kmer_stats}
         if with_gmm:
             table_defs["gmm_stats"] = self.table_def_gmm_stats
+            if with_gmm_components:
+                table_defs["gmm_components"] = self.table_def_gmm_components
         if with_sequence_context: # add additional columns for context p-values
             table_defs["kmer_stats"] += ["intensity_pvalue_context REAL",
                                          "dwell_pvalue_context REAL"]
@@ -444,6 +466,7 @@ class DataStore_transcript(DataStore):
                 constraint = table_defs["gmm_stats"].pop()
                 table_defs["gmm_stats"] += ["test_pvalue_context REAL", constraint]
         if drop_old: # remove previous results if any exist
+            self._cursor.execute("DROP TABLE IF EXISTS gmm_components")
             self._cursor.execute("DROP TABLE IF EXISTS gmm_stats")
             self._cursor.execute("DROP TABLE IF EXISTS kmer_stats")
         self._create_tables(table_defs)
@@ -463,18 +486,56 @@ class DataStore_transcript(DataStore):
             except:
                 logger.error(f"Error storing statistics for kmer {kmer}")
                 raise
-            # write GMM results - skip uninformative GMMs with only one component:
-            if self._with_gmm and (res["gmm_model"].n_components > 1):
-                values = [kmer, res.get("gmm_cluster_counts"), res.get("gmm_test_stat"), res.get("gmm_pvalue")]
-                if self._with_sequence_context:
-                    values += [res.get("gmm_pvalue_context")]
-                qmarks = ", ".join(["?"] * len(values))
-                try:
-                    self._cursor.execute(f"INSERT INTO gmm_stats VALUES ({qmarks})", values)
-                except:
-                    logger.error(f"Error storing GMM stats for kmer {kmer}")
-                    raise
+            if self._with_gmm:
+                if self._with_gmm_components:
+                    self.store_GMM_components(res["gmm_model"], kmer)
+                # for GMM stats, skip uninformative GMMs with only one component:
+                if res["gmm_model"].n_components > 1:
+                    values = [kmer, res.get("gmm_cluster_counts"), res.get("gmm_test_stat"), res.get("gmm_pvalue")]
+                    if self._with_sequence_context:
+                        values += [res.get("gmm_pvalue_context")]
+                    qmarks = ", ".join(["?"] * len(values))
+                    try:
+                        self._cursor.execute(f"INSERT INTO gmm_stats VALUES ({qmarks})", values)
+                    except:
+                        logger.error(f"Error storing GMM stats for kmer {kmer}")
+                        raise
             self._connection.commit()
+
+    def store_GMM_components(self, gmm, kmer_pos):
+        for i in range(gmm.n_components):
+            # use index 0 for 1-component GMM, indexes 1/2 for 2-component GMMs:
+            index = i + int(gmm.n_components > 1)
+            values = [kmer_pos, index, gmm.weights_[i]] + gmm.means_[i].tolist()
+            cholesky = gmm.precisions_cholesky_[i].flatten().tolist()
+            del cholesky[2] # this entry is always zero, so don't store it
+            values += cholesky
+            qmarks = ", ".join(["?"] * len(values))
+            try:
+                self._cursor.execute(f"INSERT INTO gmm_components VALUES ({qmarks})", values)
+            except:
+                logger.error(f"Error storing GMM component {i} for kmer {kmer_pos}")
+                raise
+        self._connection.commit()
+
+    def load_GMM(self, kmer_pos):
+        self._cursor.execute("SELECT * FROM gmm_components WHERE kmer_pos = ? ORDER BY component", kmer_pos)
+        rows = self._cursor.fetchall()
+        if not rows:
+            return None # TODO: error?
+        model = GaussianMixture(len(rows))
+        model.weights_ = np.array([row["weight"] for row in rows])
+        model.means_ = np.array([[row["mean_intensity"], row["mean_dwell"]] for row in rows])
+        model.precisions_cholesky_ = np.array([[[row["precisions_cholesky_00"], row["precisions_cholesky_01"]],
+                                                [0.0, row["precisions_cholesky_11"]]] for row in rows])
+        # calculate precision matrix from its Cholesky decomposition:
+        model.precisions_ = np.array([np.matmul(model.precisions_cholesky_[0],
+                                                model.precisions_cholesky_[0].T),
+                                      np.matmul(model.precisions_cholesky_[1],
+                                                model.precisions_cholesky_[1].T)])
+        # calculate covariance matrix from precision matrix:
+        model.covariances_ = np.linalg.inv(model.precisions_)
+        return model
 
     def reset_SampComp(self):
         """Reset the database to a state without SampComp results"""
@@ -489,6 +550,7 @@ class DataStore_transcript(DataStore):
             # ignore "no such column" error:
             if not error.args[0].startswith("no such column:"):
                 raise
-        self._cursor.execute("DROP TABLE IF EXISTS kmer_stats")
+        self._cursor.execute("DROP TABLE IF EXISTS gmm_components")
         self._cursor.execute("DROP TABLE IF EXISTS gmm_stats")
+        self._cursor.execute("DROP TABLE IF EXISTS kmer_stats")
         self._connection.commit()

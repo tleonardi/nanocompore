@@ -43,6 +43,7 @@ class SampComp(object):
                  univariate_test:str = "KS", # or: "MW", "ST"
                  fit_gmm:bool = True,
                  gmm_test:str = "logit", # or: "anova"
+                 store_gmm_components:bool = False,
                  allow_anova_warnings:bool = False,
                  sequence_context:int = 0,
                  sequence_context_weighting:str = "uniform",
@@ -70,6 +71,8 @@ class SampComp(object):
             Fit a Gaussian mixture model (GMM) to the intensity/dwell-time distribution?
         * gmm_test
             Method to compare samples based on the GMM ('logit' or 'anova'), or empty for no comparison.
+        * store_gmm_components
+            Store parameters of fitted GMMs in the transcript databases?
         * allow_anova_warnings
             If True runtime warnings during the ANOVA tests don't raise an error.
         * sequence_context
@@ -141,6 +144,7 @@ class SampComp(object):
         self._univariate_test = univariate_test
         self._fit_gmm = fit_gmm
         self._gmm_test = gmm_test if fit_gmm else ""
+        self._store_gmm_components = fit_gmm and store_gmm_components
         self._sequence_context = sequence_context > 0
 
         # Cut-offs for filtering final results:
@@ -291,7 +295,7 @@ class SampComp(object):
             # Write complete results to transcript database:
             logger.trace("Writing test results to database")
             with DataStore_transcript(db_path, tx_name, subdir) as db:
-                db.create_stats_tables(self._fit_gmm, self._sequence_context)
+                db.create_stats_tables(self._fit_gmm, self._store_gmm_components, self._sequence_context)
                 db.store_test_results(test_results)
             # Keep only significant results for "master" database:
             self.__filter_test_results(test_results)
