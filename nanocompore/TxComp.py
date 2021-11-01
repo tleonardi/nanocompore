@@ -11,7 +11,6 @@ from scipy.stats import mannwhitneyu, ttest_ind, chi2, f_oneway
 from scipy.stats.mstats import ks_twosamp
 import statsmodels.discrete.discrete_model as dm
 from statsmodels.tools.sm_exceptions import ConvergenceWarning
-from sklearn.preprocessing import StandardScaler
 from sklearn.mixture import GaussianMixture
 import numpy as np
 import pandas as pd
@@ -180,8 +179,8 @@ class TxComp(object):
         global_dwell = np.concatenate(list(dwell_times.values()))
         global_dwell = np.log10(global_dwell)
 
-        # Scale the intensity and dwell time arrays
-        X = StandardScaler().fit_transform([(i, d) for i, d in zip(global_intensity, global_dwell)])
+        # Generate the intensity and dwell time array
+        X = np.array([(i, d) for i, d in zip(global_intensity, global_dwell)])
 
         # Generate an array of sample IDs
         Y = np.concatenate((np.repeat(self._cond1_samples, [len(intensities[k]) for k in self._cond1_samples]),
