@@ -84,7 +84,7 @@ class SampComp(object):
         * min_transcript_length
             minimal length of a reference transcript to be considered in the analysis
         * downsample_high_coverage
-            For reference with higher coverage, downsample by randomly selecting reads.
+            For transcripts with high coverage, downsample by selecting reads with most valid kmers.
         * max_invalid_kmers_freq
             maximum frequency of NNNNN, mismatching and missing kmers in reads.
         * select_ref_id - TODO: implement
@@ -124,8 +124,6 @@ class SampComp(object):
         # Prepare database query once
         # TODO: move this to 'DataStore_transcript'?
         subquery = "SELECT id AS reads_id, sampleid FROM reads WHERE pass_filter = 1"
-        if downsample_high_coverage: # choose reads with most valid kmers
-            subquery += f" ORDER BY valid_kmers DESC LIMIT {downsample_high_coverage}"
         columns = "sampleid, position, sequenceid, statusid, dwell_time, median"
         # select only valid kmers (status 0):
         self._kmer_query = f"SELECT {columns} FROM kmers INNER JOIN ({subquery}) ON readid = reads_id WHERE statusid = 0"
@@ -164,7 +162,8 @@ class SampComp(object):
         # Initialise the "Whitelist" (filtering) object:
         self._whitelist = Whitelist(self._db_samples,
                                     self._min_coverage,
-                                    self._max_invalid_kmers_freq)
+                                    self._max_invalid_kmers_freq,
+                                    downsample_high_coverage=self._downsample_high_coverage)
 
         # If statistical tests are requested, initialise the "TxComp" object:
         if self._univariate_test or self._fit_gmm:

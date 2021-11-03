@@ -29,7 +29,8 @@ class Whitelist(object):
                  max_invalid_kmers_freq = 0.1,
                  max_NNNNN_freq = 0.1,
                  max_mismatching_freq = 0.1,
-                 max_missing_freq = 0.1):
+                 max_missing_freq = 0.1,
+                 downsample_high_coverage = 5000):
         # TODO: add 'min_coverage' equivalent for conditions, not samples
         """
         Generate a whitelist of reads that fulfill filtering criteria
@@ -48,6 +49,8 @@ class Whitelist(object):
             maximum frequency of mismatching kmers in reads (1 to deactivate)
         * max_missing_freq
             maximum frequency of missing kmers in reads (1 to deactivate)
+        * downsample_high_coverage
+            maximum number of reads to consider per sample
         """
         # Total number of samples:
         self._n_samples = sum(map(len, sample_dict.values()))
@@ -72,6 +75,7 @@ class Whitelist(object):
             self._update_query += " WHERE " + where
 
         self._min_coverage = min_coverage
+        self._downsample_high_coverage = downsample_high_coverage
 
 
     def __call__(self, db_path):
@@ -80,12 +84,22 @@ class Whitelist(object):
             # filter reads:
             db.add_or_reset_column("reads", "pass_filter", "INTEGER DEFAULT 0", 0)
             db.cursor.execute(self._update_query)
-            # count reads that passed the filter:
-            if self._min_coverage:
-                subquery = "SELECT sampleid, COUNT(*) AS n_reads FROM reads WHERE pass_filter = 1 GROUP BY sampleid"
-                sql = f"SELECT COUNT(*) AS n_samples, MIN(n_reads) AS min_reads FROM ({subquery})"
+            if self._min_coverage or self._downsample_high_coverage:
+                # count reads that passed the filter:
+                sql = "SELECT sampleid, COUNT(*) AS n_reads FROM reads WHERE pass_filter = 1 GROUP BY sampleid"
                 db.cursor.execute(sql)
-                row = db.cursor.fetchone()
-                if (row["n_samples"] < self._n_samples) or (row["min_reads"] < self._min_coverage):
+                rows = db.cursor.fetchall()
+                # min.-coverage criterion satisfied for all samples?
+                if self._min_coverage and (len(rows) < self._n_samples or
+                                           any([row["n_reads"] < self._min_coverage for row in rows])):
                     return False
+                # any samples with too many reads? - if yes, downsample:
+                if self._downsample_high_coverage:
+                    for row in rows:
+                        if row["n_reads"] > self._downsample_high_coverage:
+                            sampleid = row["sampleid"]
+                            # TODO: optimise these queries?
+                            subquery = f"SELECT id FROM reads WHERE pass_filter = 1 AND sampleid = {sampleid} ORDER BY valid_kmers DESC LIMIT {self._downsample_high_coverage}"
+                            sql = f"UPDATE reads SET pass_filter = 0 WHERE sampleid = {sampleid} AND id NOT IN ({subquery})"
+                            db.cursor.execute(sql)
         return True
