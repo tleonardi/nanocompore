@@ -87,6 +87,8 @@ class SampComp(object):
             For transcripts with high coverage, downsample by selecting reads with most valid kmers.
         * max_invalid_kmers_freq
             maximum frequency of NNNNN, mismatching and missing kmers in reads.
+        * significance_thresholds
+            Dictionary of significance thresholds used for filtering results by p-value. Only results that meet at least one of the thresholds will be written to the master database (and from there exported). If empty, no filtering is done.
         * select_ref_id - TODO: implement
             if given, only reference ids in the list will be selected for the analysis.
         * exclude_ref_id - TODO: implement
@@ -123,8 +125,8 @@ class SampComp(object):
 
         # Prepare database query once
         # TODO: move this to 'DataStore_transcript'?
-        subquery = "SELECT id AS reads_id, sampleid FROM reads WHERE pass_filter = 1"
-        columns = "sampleid, position, sequenceid, statusid, dwell_time, median"
+        subquery = "SELECT id AS reads_id, sampleid, dwelltime_mean, dwelltime_sd FROM reads WHERE pass_filter = 1"
+        columns = "sampleid, position, sequenceid, statusid, dwelltime, intensity"
         # select only valid kmers (status 0):
         self._kmer_query = f"SELECT {columns} FROM kmers INNER JOIN ({subquery}) ON readid = reads_id WHERE statusid = 0"
 
@@ -272,20 +274,25 @@ class SampComp(object):
         # Kmer data from whitelisted reads from all samples for this transcript
         # Structure: kmer position -> sample -> data
         kmer_data = defaultdict(lambda: {sample_id: {"intensity": [],
-                                                "dwell": [],
+                                                "dwelltime": [],
                                                 "coverage": 0}
                                     for sample_id in self._condition_lookup})
 
         n_kmers = 0 # TODO: count number of reads? (adds overhead)
         # Read kmer data from database
         with DataStore_transcript(db_path, tx_name, subdir) as db:
+            # Get transcript-wide intensity stats for scaling:
+            db.cursor.execute("SELECT avg(intensity_mean), avg(intensity_sd) FROM reads WHERE pass_filter = 1")
+            intensity_mean, intensity_sd = db.cursor.fetchone()
             for row in db.cursor.execute(self._kmer_query):
                 n_kmers += 1
                 sample_id = row["sampleid"]
                 pos = row["position"]
                 data = kmer_data[pos][sample_id]
-                data["intensity"].append(row["median"])
-                data["dwell"].append(row["dwell_time"])
+                data["intensity"].append(self.standard_scale(row["intensity"],
+                                                             intensity_mean, intensity_sd))
+                data["dwelltime"].append(self.standard_scale(row["dwelltime"],
+                                                             row["dwelltime_mean"], row["dwelltime_sd"])
                 data["coverage"] += 1
 
         logger.trace(f"Data loaded for transcript: {tx_name}")
@@ -296,14 +303,19 @@ class SampComp(object):
             with DataStore_transcript(db_path, tx_name, subdir) as db:
                 db.create_stats_tables(self._fit_gmm, self._store_gmm_components, self._sequence_context)
                 db.store_test_results(test_results)
-            # Keep only significant results for "master" database:
-            self.__filter_test_results(test_results)
+            if self._significance_thresholds: # keep only significant results for "master" DB
+                self.__filter_test_results(test_results)
         else:
             test_results = n_univariate_tests = n_gmm_tests = None
 
         results = {"test_results": test_results, "n_kmers": n_kmers,
                    "n_univariate_tests": n_univariate_tests, "n_gmm_tests": n_gmm_tests}
         return (0, results)
+
+
+    @staticmethod
+    def standard_scale(x, mean, sd):
+        return (x - mean) / sd
 
 
     def __filter_test_results(self, test_results):
@@ -389,7 +401,7 @@ class SampComp(object):
         # for "context-averaged" p-values, add a suffix to the column names:
         col_suffix = "_context" if sequence_context else ""
         if self._univariate_test:
-            pval_columns += [f"intensity_pvalue{col_suffix}", f"dwell_pvalue{col_suffix}"]
+            pval_columns += [f"intensity_pvalue{col_suffix}", f"dwelltime_pvalue{col_suffix}"]
             ntest_columns.append("SUM(n_univariate_tests)")
         if self._gmm_test:
             pval_columns.append(f"gmm_pvalue{col_suffix}")
