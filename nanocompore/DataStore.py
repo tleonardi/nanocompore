@@ -5,6 +5,7 @@ import datetime
 import os
 import sqlite3
 import contextlib
+from math import sqrt
 from itertools import zip_longest, product
 
 # Third party
@@ -21,7 +22,30 @@ class DBCreateMode(Enum):
     OVERWRITE = "w" # always create a new database, overwrite if it exists
 
 
-class DataStore(object):
+def makeStdDevAggregate(mean):
+    """Return an aggregation function to calculate the standard deviation of a
+    database column given the mean"""
+    class StdDevAggregate:
+        mean_ = mean
+
+        def __init__(self):
+            self.count = 0
+            self.sum_of_devs = 0.0
+
+        def step(self, value):
+            if value is not None:
+                self.count += 1
+                self.sum_of_devs += (value - self.mean_)**2
+
+        def finalize(self):
+            if self.count < 2:
+                return None
+            return sqrt(self.sum_of_devs / (self.count - 1))
+
+    return StdDevAggregate
+
+
+class DataStore:
     """Store Nanocompore data in an SQLite database - base class"""
 
     table_defs = {} # table name -> column definitions (to be filled by derived classes)
@@ -339,7 +363,6 @@ class DataStore_transcript(DataStore):
                        "readid INTEGER NOT NULL",
                        "position INTEGER NOT NULL",
                        "sequenceid INTEGER", # references 'kmer_sequences(id)' in master DB
-                       # "sequence VARCHAR NOT NULL",
                        # "num_events INTEGER NOT NULL",
                        # "num_signals INTEGER NOT NULL",
                        "statusid INTEGER NOT NULL", # references 'kmer_status(id)' in master DB
@@ -544,13 +567,61 @@ class DataStore_transcript(DataStore):
         # "ALTER table DROP COLUMN" not supported by SQLite version used here
         # (sqlite3.sqlite_version: '3.31.1' - supported from 3.35)
         # can't remove column, so reset values:
-        try:
-            self._cursor.execute("UPDATE reads SET pass_filter = 0")
-        except sqlite3.OperationalError as error:
-            # ignore "no such column" error:
-            if not error.args[0].startswith("no such column:"):
-                raise
+        resets = ["UPDATE reads SET pass_filter = 0",
+                  "UPDATE kmers SET scaled_intensity = NULL, scaled_dwell_time = NULL",
+                  "UPDATE transcript SET intensity_mean = NULL, intensity_sd = NULL",
+                  "UPDATE reads SET dwell_time_mean = NULL, dwell_time_sd = NULL"]
+        for sql in resets:
+            try:
+                self._cursor.execute(sql)
+            except sqlite3.OperationalError as error:
+                # ignore "no such column" error:
+                if not error.args[0].startswith("no such column:"):
+                    raise
         self._cursor.execute("DROP TABLE IF EXISTS gmm_components")
         self._cursor.execute("DROP TABLE IF EXISTS gmm_stats")
         self._cursor.execute("DROP TABLE IF EXISTS kmer_stats")
+        self._connection.commit()
+
+    def scale_kmer_data(self):
+        """Scale kmer intensities and dwell times to standard scores"""
+        # TODO: do this only for kmers from reads that have passed filters!
+        if not self._connection:
+            raise NanocomporeError("Database connection not yet opened")
+        # For intensities, scale over all data from the whole transcript:
+        sql = "SELECT avg(median) FROM kmers WHERE statusid = 0"
+        mean = self._cursor.execute(sql).fetchone()[0]
+        logger.debug(f"mean intensity: {mean}")
+        self._connection.create_aggregate("sd_intensity", 1, makeStdDevAggregate(mean))
+        self._cursor.execute("SELECT sd_intensity(median) FROM kmers WHERE statusid = 0")
+        sdev = self._cursor.fetchone()[0]
+        logger.debug(f"s.d. intensity: {sdev}")
+        self.add_or_reset_column("kmers", "scaled_intensity", "REAL")
+        sql = "UPDATE kmers SET scaled_intensity = (median - ?) / ? WHERE statusid = 0"
+        self._cursor.execute(sql, (mean, sdev))
+        # store mean/s.d. in "transcript" table:
+        self.add_or_reset_column("transcript", "intensity_mean", "REAL")
+        self.add_or_reset_column("transcript", "intensity_sd", "REAL")
+        self._cursor.execute("UPDATE transcript SET intensity_mean = ?, intensity_sd = ?", (mean, sdev))
+
+        # For dwell times, scale per-read to correct for dwell time differences
+        # in reads that were acquired early vs. late in the experiment:
+        self.add_or_reset_column("kmers", "scaled_dwell_time", "REAL")
+        self.add_or_reset_column("reads", "dwell_time_mean", "REAL")
+        self.add_or_reset_column("reads", "dwell_time_sd", "REAL")
+        sql = "SELECT readid, avg(dwell_time), COUNT(*) FROM kmers WHERE scaled_intensity IS NOT NULL GROUP BY readid"
+        rows = self._cursor.execute(sql).fetchall() # free up the cursor for queries below
+        for row in rows:
+            if row[2] == 0: # no valid data for this read
+                continue
+            readid = row[0]
+            mean = row[1]
+            self._connection.create_aggregate("sd_dwell", 1, makeStdDevAggregate(mean))
+            self._cursor.execute(f"SELECT sd_dwell(dwell_time) FROM kmers WHERE readid = {readid} AND scaled_intensity IS NOT NULL")
+            sdev = self._cursor.fetchone()[0]
+            sql = "UPDATE kmers SET scaled_dwell_time = (dwell_time - ?) / ? WHERE readid = ? AND scaled_intensity IS NOT NULL"
+            self._cursor.execute(sql, (mean, sdev, readid))
+            # store mean/s.d. in "reads" table:
+            self._cursor.execute("UPDATE reads SET dwell_time_mean = ?, dwell_time_sd = ? WHERE id = ?",
+                                 (mean, sdev, readid))
         self._connection.commit()
