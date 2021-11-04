@@ -334,6 +334,17 @@ class Read:
             d[k.status + "_kmers"] += 1
         return d
 
+    def get_kmer_stats(self):
+        result = {}
+        intensities = [kmer.intensity for kmer in self.kmer_l]
+        result["intensity_mean"] = statistics.fmean(intensities)
+        result["intensity_sd"] = statistics.stdev(intensities, mean)
+        dwell_times = [kmer.dwell_time for kmer in self.kmer_l]
+        result["dwelltime_mean"] = statistics.fmean(dwell_times)
+        result["dwelltime_sd"] = statistics.stdev(dwell_times, mean)
+        return result
+
+
 class Kmer:
     """Helper class representing a single kmer"""
 
@@ -346,6 +357,7 @@ class Kmer:
         self.NNNNN_dwell_time = 0.0
         self.mismatch_dwell_time = 0.0
         self.sample_list = []
+        self.have_intensity = False # have we calculated an up-to-date median intensity?
 
     def __repr__(self):
         s = "Kmer instance\n"
@@ -363,19 +375,19 @@ class Kmer:
         if not self.ref_pos:
             self.ref_pos = event_d["ref_pos"]
             self.ref_kmer = event_d["reference_kmer"]
-
         # Update kmer values
-        self.num_events+=1
-        self.num_signals+=len(event_d["sample_list"])
-        self.dwell_time+=event_d["dwell_time"]
+        self.num_events += 1
+        self.num_signals += len(event_d["sample_list"])
+        self.dwell_time += event_d["dwell_time"]
         if event_d["model_kmer"] == "NNNNN":
-            self.NNNNN_dwell_time+=event_d["dwell_time"]
+            self.NNNNN_dwell_time += event_d["dwell_time"]
         elif event_d["model_kmer"] != self.ref_kmer:
-            self.mismatch_dwell_time+=event_d["dwell_time"]
+            self.mismatch_dwell_time += event_d["dwell_time"]
         self.sample_list.extend(event_d["sample_list"])
+        self.have_intensity = False
 
     @property
-    def status (self):
+    def status(self):
         """Define kmer status depending on mismatching or NNNNN events"""
         # If no NNNNN nor mismatch events then the kmer the purely valid
         if not self.NNNNN_dwell_time and not self.mismatch_dwell_time:
@@ -385,6 +397,13 @@ class Kmer:
             return "NNNNN"
         else:
             return "mismatch"
+
+    @property
+    def intensity(self):
+        if not self.have_intensity:
+            self.intensity_ = statistics.median(self.sample_list)
+            self.have_intensity = True
+        return self.intensity_
 
     def get_results(self):
         d = OrderedDict()
@@ -396,6 +415,6 @@ class Kmer:
         d["NNNNN_dwell_time"] = self.NNNNN_dwell_time
         d["mismatch_dwell_time"] = self.mismatch_dwell_time
         d["status"] = self.status
-        d["median"] = statistics.median(self.sample_list)
+        d["median"] = self.intensity
         d["mad"] = statistics.median([abs(i - d["median"]) for i in self.sample_list])
         return d
