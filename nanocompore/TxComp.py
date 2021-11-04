@@ -85,7 +85,7 @@ class TxComp(object):
                 continue
 
             intensities = {k: v["intensity"] for k, v in pos_dict.items()}
-            dwell_times = {k: v["dwell"] for k, v in pos_dict.items()}
+            dwell_times = {k: v["dwelltime"] for k, v in pos_dict.items()}
 
             cond1_intensity = np.concatenate([intensities[rep] for rep in self._cond1_samples])
             cond2_intensity = np.concatenate([intensities[rep] for rep in self._cond2_samples])
@@ -97,7 +97,7 @@ class TxComp(object):
             if self._univariate_test:
                 logger.trace(f"Running {self._univariate_test} test on position {pos}")
                 res["intensity_pvalue"] = self.__univariate_test(cond1_intensity, cond2_intensity)
-                res["dwell_pvalue"] = self.__univariate_test(cond1_dwell, cond2_dwell)
+                res["dwelltime_pvalue"] = self.__univariate_test(cond1_dwell, cond2_dwell)
                 n_univariate_tests += 2
 
             if self._fit_gmm:
@@ -124,7 +124,7 @@ class TxComp(object):
         if self._sequence_context > 0:
             if self._univariate_test:
                 self.__combine_adjacent_pvalues(results, "intensity_pvalue")
-                self.__combine_adjacent_pvalues(results, "dwell_pvalue")
+                self.__combine_adjacent_pvalues(results, "dwelltime_pvalue")
             if self._fit_gmm and self._gmm_test:
                 self.__combine_adjacent_pvalues(results, "gmm_pvalue")
 
@@ -312,12 +312,12 @@ class TxComp(object):
             ('c2_median_intensity', np.median(condition2_intensity)),
             ('c1_sd_intensity', np.std(condition1_intensity)),
             ('c2_sd_intensity', np.std(condition2_intensity)),
-            ('c1_mean_dwell', np.mean(condition1_dwell)),
-            ('c2_mean_dwell', np.mean(condition2_dwell)),
-            ('c1_median_dwell', np.median(condition1_dwell)),
-            ('c2_median_dwell', np.median(condition2_dwell)),
-            ('c1_sd_dwell', np.std(condition1_dwell)),
-            ('c2_sd_dwell', np.std(condition2_dwell))
+            ('c1_mean_dwelltime', np.mean(condition1_dwell)),
+            ('c2_mean_dwelltime', np.mean(condition2_dwell)),
+            ('c1_median_dwelltime', np.median(condition1_dwell)),
+            ('c2_median_dwelltime', np.median(condition2_dwell)),
+            ('c1_sd_dwelltime', np.std(condition1_dwell)),
+            ('c2_sd_dwelltime', np.std(condition2_dwell))
         ])
         return shift_stats
 
