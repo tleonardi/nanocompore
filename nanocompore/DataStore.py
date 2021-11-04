@@ -22,29 +22,6 @@ class DBCreateMode(Enum):
     OVERWRITE = "w" # always create a new database, overwrite if it exists
 
 
-def makeStdDevAggregate(mean):
-    """Return an aggregation function to calculate the standard deviation of a
-    database column given the mean"""
-    class StdDevAggregate:
-        mean_ = mean
-
-        def __init__(self):
-            self.count = 0
-            self.sum_of_devs = 0.0
-
-        def step(self, value):
-            if value is not None:
-                self.count += 1
-                self.sum_of_devs += (value - self.mean_)**2
-
-        def finalize(self):
-            if self.count < 2:
-                return None
-            return sqrt(self.sum_of_devs / (self.count - 1))
-
-    return StdDevAggregate
-
-
 class DataStore:
     """Store Nanocompore data in an SQLite database - base class"""
 
@@ -245,9 +222,9 @@ class DataStore_master(DataStore):
         # add more table columns as necessary:
         if univariate_test:
             self.add_or_reset_column("transcripts", "n_univariate_tests", "INTEGER")
-            table_def += ["intensity_pvalue REAL", "dwell_pvalue REAL"]
+            table_def += ["intensity_pvalue REAL", "dwelltime_pvalue REAL"]
             if sequence_context:
-                table_def += ["intensity_pvalue_context REAL", "dwell_pvalue_context REAL"]
+                table_def += ["intensity_pvalue_context REAL", "dwelltime_pvalue_context REAL"]
         if gmm_test:
             self.add_or_reset_column("transcripts", "n_gmm_tests", "INTEGER")
             table_def.append("gmm_pvalue REAL")
@@ -287,9 +264,9 @@ class DataStore_master(DataStore):
             for kmer, res in results["test_results"].items():
                 values = [tx_id, kmer]
                 if self._univariate_test:
-                    values += [res["intensity_pvalue"], res["dwell_pvalue"]]
+                    values += [res["intensity_pvalue"], res["dwelltime_pvalue"]]
                     if self._sequence_context:
-                        values += [res["intensity_pvalue_context"], res["dwell_pvalue_context"]]
+                        values += [res["intensity_pvalue_context"], res["dwelltime_pvalue_context"]]
                 if self._gmm_test:
                     values.append(res["gmm_pvalue"])
                     if self._sequence_context:
@@ -354,24 +331,26 @@ class DataStore_transcript(DataStore):
                        "missing_kmers INT NOT NULL",
                        "NNNNN_kmers INT NOT NULL",
                        "mismatch_kmers INT NOT NULL",
-                       "valid_kmers INT NOT NULL"]
+                       "valid_kmers INT NOT NULL",
+                       "intensity_mean REAL NOT NULL",
+                       "intensity_sd REAL NOT NULL",
+                       "dwelltime_mean REAL NOT NULL",
+                       "dwelltime_sd REAL NOT NULL"]
 
     # "kmers" table:
-    # TODO: is combination of "readid" and "position" unique per kmer?
-    # if so, use those as combined primary key (for access efficiency)?
-    table_def_kmers = ["id INTEGER NOT NULL PRIMARY KEY",
-                       "readid INTEGER NOT NULL",
+    table_def_kmers = ["readid INTEGER NOT NULL",
                        "position INTEGER NOT NULL",
                        "sequenceid INTEGER", # references 'kmer_sequences(id)' in master DB
                        # "num_events INTEGER NOT NULL",
                        # "num_signals INTEGER NOT NULL",
                        "statusid INTEGER NOT NULL", # references 'kmer_status(id)' in master DB
-                       "dwell_time REAL NOT NULL",
-                       # "NNNNN_dwell_time REAL NOT NULL",
-                       # "mismatch_dwell_time REAL NOT NULL",
-                       "median REAL NOT NULL",
-                       "mad REAL NOT NULL",
-                       "FOREIGN KEY(readid) REFERENCES reads(id)"]
+                       "dwelltime REAL NOT NULL",
+                       # "NNNNN_dwelltime REAL NOT NULL",
+                       # "mismatch_dwelltime REAL NOT NULL",
+                       "intensity REAL NOT NULL",
+                       "intensity_deviation REAL NOT NULL",
+                       "PRIMARY KEY (readid, position)",
+                       "FOREIGN KEY (readid) REFERENCES reads(id)"]
 
     # "kmer_stats" table:
     table_def_kmer_stats = ["kmer_pos INTEGER NOT NULL PRIMARY KEY",
@@ -381,14 +360,14 @@ class DataStore_transcript(DataStore):
                             "c2_median_intensity REAL",
                             "c1_sd_intensity REAL",
                             "c2_sd_intensity REAL",
-                            "c1_mean_dwell REAL",
-                            "c2_mean_dwell REAL",
-                            "c1_median_dwell REAL",
-                            "c2_median_dwell REAL",
-                            "c1_sd_dwell REAL",
-                            "c2_sd_dwell REAL",
+                            "c1_mean_dwelltime REAL",
+                            "c2_mean_dwelltime REAL",
+                            "c1_median_dwelltime REAL",
+                            "c2_median_dwelltime REAL",
+                            "c1_sd_dwelltime REAL",
+                            "c2_sd_dwelltime REAL",
                             "intensity_pvalue REAL",
-                            "dwell_pvalue REAL"]
+                            "dwelltime_pvalue REAL"]
     # TODO: are "c1" and "c2" (conditions) properly defined?
 
     # "gmm_stats" table:
@@ -404,7 +383,7 @@ class DataStore_transcript(DataStore):
                                 "component INTEGER NOT NULL",
                                 "weight REAL",
                                 "mean_intensity REAL NOT NULL",
-                                "mean_dwell REAL NOT NULL",
+                                "mean_dwelltime REAL NOT NULL",
                                 # elements of the Cholesky decomposition of the
                                 # precision matrix (inverse of covariance matrix);
                                 # matrix is triangular, so (1,0) is always 0:
@@ -437,7 +416,9 @@ class DataStore_transcript(DataStore):
             sample_id: DB ID of the sample to which the read belongs
         """
         values = (read.read_id, sample_id, read.ref_start, read.ref_end,
-                  read.n_events, read.n_signals, read.dwell_time) + tuple(read.kmers_status.values())
+                  read.n_events, read.n_signals, read.dwell_time) + \
+                  tuple(read.kmers_status.values()) + \
+                  tuple(read.get_kmer_stats().values())
         try:
             self._cursor.execute("INSERT INTO reads VALUES(NULL" + ", ?" * len(values) + ")",
                                   values)
@@ -447,7 +428,7 @@ class DataStore_transcript(DataStore):
             raise Exception
 
         for kmer in read.kmer_l:
-            self._store_kmer(kmer=kmer, read_id=read_id)
+            self._store_kmer(kmer, read_id)
         self._connection.commit()
 
     def _store_kmer(self, kmer, read_id):
@@ -462,7 +443,7 @@ class DataStore_transcript(DataStore):
             status_id = self.status_mapping[res["status"]]
             # in case of unexpected kmer seq., this should give None (NULL in the DB):
             seq_id = self.sequence_mapping.get(res["ref_kmer"])
-            self._cursor.execute("INSERT INTO kmers VALUES(NULL, ?, ?, ?, ?, ?, ?, ?)",
+            self._cursor.execute("INSERT INTO kmers VALUES(?, ?, ?, ?, ?, ?, ?)",
                                  (read_id, res["ref_pos"], seq_id, status_id,
                                   res["dwell_time"], res["median"], res["mad"]))
         except Exception:
@@ -483,7 +464,7 @@ class DataStore_transcript(DataStore):
                 table_defs["gmm_components"] = self.table_def_gmm_components
         if with_sequence_context: # add additional columns for context p-values
             table_defs["kmer_stats"] += ["intensity_pvalue_context REAL",
-                                         "dwell_pvalue_context REAL"]
+                                         "dwelltime_pvalue_context REAL"]
             if with_gmm:
                 # column definitions must go before table constraints!
                 constraint = table_defs["gmm_stats"].pop()
@@ -500,9 +481,9 @@ class DataStore_transcript(DataStore):
         for kmer, res in test_results.items():
             values = [kmer]
             values += res["shift_stats"].values()
-            values += [res.get("intensity_pvalue"), res.get("dwell_pvalue")]
+            values += [res.get("intensity_pvalue"), res.get("dwelltime_pvalue")]
             if self._with_sequence_context:
-                values += [res.get("intensity_pvalue_context"), res.get("dwell_pvalue_context")]
+                values += [res.get("intensity_pvalue_context"), res.get("dwelltime_pvalue_context")]
             qmarks = ", ".join(["?"] * len(values))
             try:
                 self._cursor.execute(f"INSERT INTO kmer_stats VALUES ({qmarks})", values)
@@ -548,7 +529,7 @@ class DataStore_transcript(DataStore):
             return None # TODO: error?
         model = GaussianMixture(len(rows))
         model.weights_ = np.array([row["weight"] for row in rows])
-        model.means_ = np.array([[row["mean_intensity"], row["mean_dwell"]] for row in rows])
+        model.means_ = np.array([[row["mean_intensity"], row["mean_dwelltime"]] for row in rows])
         model.precisions_cholesky_ = np.array([[[row["precisions_cholesky_00"], row["precisions_cholesky_01"]],
                                                 [0.0, row["precisions_cholesky_11"]]] for row in rows])
         # calculate precision matrix from its Cholesky decomposition:
@@ -567,61 +548,14 @@ class DataStore_transcript(DataStore):
         # "ALTER table DROP COLUMN" not supported by SQLite version used here
         # (sqlite3.sqlite_version: '3.31.1' - supported from 3.35)
         # can't remove column, so reset values:
-        resets = ["UPDATE reads SET pass_filter = 0",
-                  "UPDATE kmers SET scaled_intensity = NULL, scaled_dwell_time = NULL",
-                  "UPDATE transcript SET intensity_mean = NULL, intensity_sd = NULL",
-                  "UPDATE reads SET dwell_time_mean = NULL, dwell_time_sd = NULL"]
-        for sql in resets:
-            try:
-                self._cursor.execute(sql)
-            except sqlite3.OperationalError as error:
-                # ignore "no such column" error:
-                if not error.args[0].startswith("no such column:"):
-                    raise
+        sql = "UPDATE reads SET pass_filter = 0"
+        try:
+            self._cursor.execute(sql)
+        except sqlite3.OperationalError as error:
+            # ignore "no such column" error:
+            if not error.args[0].startswith("no such column:"):
+                raise
         self._cursor.execute("DROP TABLE IF EXISTS gmm_components")
         self._cursor.execute("DROP TABLE IF EXISTS gmm_stats")
         self._cursor.execute("DROP TABLE IF EXISTS kmer_stats")
-        self._connection.commit()
-
-    def scale_kmer_data(self):
-        """Scale kmer intensities and dwell times to standard scores"""
-        # TODO: do this only for kmers from reads that have passed filters!
-        if not self._connection:
-            raise NanocomporeError("Database connection not yet opened")
-        # For intensities, scale over all data from the whole transcript:
-        sql = "SELECT avg(median) FROM kmers WHERE statusid = 0"
-        mean = self._cursor.execute(sql).fetchone()[0]
-        logger.debug(f"mean intensity: {mean}")
-        self._connection.create_aggregate("sd_intensity", 1, makeStdDevAggregate(mean))
-        self._cursor.execute("SELECT sd_intensity(median) FROM kmers WHERE statusid = 0")
-        sdev = self._cursor.fetchone()[0]
-        logger.debug(f"s.d. intensity: {sdev}")
-        self.add_or_reset_column("kmers", "scaled_intensity", "REAL")
-        sql = "UPDATE kmers SET scaled_intensity = (median - ?) / ? WHERE statusid = 0"
-        self._cursor.execute(sql, (mean, sdev))
-        # store mean/s.d. in "transcript" table:
-        self.add_or_reset_column("transcript", "intensity_mean", "REAL")
-        self.add_or_reset_column("transcript", "intensity_sd", "REAL")
-        self._cursor.execute("UPDATE transcript SET intensity_mean = ?, intensity_sd = ?", (mean, sdev))
-
-        # For dwell times, scale per-read to correct for dwell time differences
-        # in reads that were acquired early vs. late in the experiment:
-        self.add_or_reset_column("kmers", "scaled_dwell_time", "REAL")
-        self.add_or_reset_column("reads", "dwell_time_mean", "REAL")
-        self.add_or_reset_column("reads", "dwell_time_sd", "REAL")
-        sql = "SELECT readid, avg(dwell_time), COUNT(*) FROM kmers WHERE scaled_intensity IS NOT NULL GROUP BY readid"
-        rows = self._cursor.execute(sql).fetchall() # free up the cursor for queries below
-        for row in rows:
-            if row[2] == 0: # no valid data for this read
-                continue
-            readid = row[0]
-            mean = row[1]
-            self._connection.create_aggregate("sd_dwell", 1, makeStdDevAggregate(mean))
-            self._cursor.execute(f"SELECT sd_dwell(dwell_time) FROM kmers WHERE readid = {readid} AND scaled_intensity IS NOT NULL")
-            sdev = self._cursor.fetchone()[0]
-            sql = "UPDATE kmers SET scaled_dwell_time = (dwell_time - ?) / ? WHERE readid = ? AND scaled_intensity IS NOT NULL"
-            self._cursor.execute(sql, (mean, sdev, readid))
-            # store mean/s.d. in "reads" table:
-            self._cursor.execute("UPDATE reads SET dwell_time_mean = ?, dwell_time_sd = ? WHERE id = ?",
-                                 (mean, sdev, readid))
         self._connection.commit()
