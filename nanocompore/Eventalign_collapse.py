@@ -358,10 +358,10 @@ class Read:
     def get_kmer_stats(self):
         result = {}
         intensities = [kmer.intensity for kmer in self.kmer_l]
-        result["intensity_mean"] = statistics.fmean(intensities)
+        result["intensity_mean"] = mean = statistics.fmean(intensities)
         result["intensity_sd"] = statistics.stdev(intensities, mean)
         dwell_times = [kmer.dwell_time for kmer in self.kmer_l]
-        result["dwelltime_mean"] = statistics.fmean(dwell_times)
+        result["dwelltime_mean"] = mean = statistics.fmean(dwell_times)
         result["dwelltime_sd"] = statistics.stdev(dwell_times, mean)
         return result
 
