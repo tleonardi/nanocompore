@@ -9,6 +9,7 @@ import os
 # import cProfile as profile
 import statistics
 import shutil
+import re
 
 # Third party imports
 from loguru import logger
@@ -36,6 +37,8 @@ class Eventalign_collapse ():
                  output_subdirs:int = 100,
                  overwrite:bool = False,
                  n_lines:int = None,
+                 transcript_filter = [],
+                 invert_filter = False,
                  nthreads:int = 3):
         """
         Collapse the nanopolish eventalign events at kmer level
@@ -50,6 +53,10 @@ class Eventalign_collapse ():
             Overwrite an existing output file?
         * n_lines
             Maximum number of read to parse.
+        * transcript_filter
+            List of regular expressions to search against transcript names. Only data from matching (default) or non-matching (with 'invert_filter') transcripts will be converted. If empty, no filtering is performed.
+        * invert_filter
+            Use 'transcript_filter' to exclude rather than include specific transcripts?
         * nthreads
             Number of threads (need at least one each for the main process, reading, and writing).
         """
@@ -72,7 +79,12 @@ class Eventalign_collapse ():
         self._output_subdirs = max(1, output_subdirs)
         self._overwrite = overwrite
         self._n_lines = n_lines
+        self._transcript_filter = transcript_filter
+        self._invert_filter = invert_filter
         self._nthreads = nthreads - 1 # subtract 1 for main process
+
+        if transcript_filter: # combine regexes into one
+            self._filter_regexp = re.compile("|".join(transcript_filter))
 
         # Input file field selection typing and renaming
         self._select_colnames = ["contig", "read_name", "position", "reference_kmer", "model_kmer", "event_length", "samples"]
@@ -132,7 +144,8 @@ class Eventalign_collapse ():
                     sample_id = db.store_sample(sample, path, condition)
                     in_q.put((sample_id, path))
                     n_samples += 1
-            db.store_parameters("EC", output_subdirs=self._output_subdirs, n_lines=self._n_lines)
+            db.store_parameters("EC", output_subdirs=self._output_subdirs, n_lines=self._n_lines,
+                                transcript_filter=self._transcript_filter, invert_filter=self._invert_filter)
 
         # Define processes
         ps_list = []
@@ -186,6 +199,12 @@ class Eventalign_collapse ():
     def __handle_transcript(self, accession, tx_info, n_qs, master_db_lock):
         """Deal with a transcript accession found by '__split_input'"""
         if accession not in tx_info:
+            if self._transcript_filter:
+                match = self._filter_regexp.search(accession)
+                if ((self._invert_filter and match) or # accession is excluded, or...
+                    (not self._invert_filter and not match)): # ...accession is not included
+                    tx_info[accession] = False
+                    return False
             # Calculate two bin numbers derived from the hash:
             q_index, subdir = get_hash_bin(accession, (n_qs, self._output_subdirs))
             # Add transcript to master DB (or get ID if it already exists):
@@ -203,38 +222,40 @@ class Eventalign_collapse ():
             for sample_id, path in iter(in_q.get, None):
                 n_reads = n_events = 0
                 logger.info(f"Reading input file: {path}")
+                # TODO: replace SuperParser with csv.DictReader for efficiency?
                 with SuperParser(path,
                                  select_colnames=self._select_colnames,
                                  cast_colnames=self._cast_colnames,
                                  change_colnames=self._change_colnames,
                                  n_lines=self._n_lines) as sp:
-                    # First line/event - initialise
-                    line = next(iter(sp))
-                    cur_read_id = line["read_id"]
-                    cur_accession = line["ref_id"]
-                    events = [line]
-                    n_events = 1
-                    # All following lines
+                    prev_read_id = None
+                    events = [] # if transcript doesn't pass accession filter, this stays empty
                     for line in sp:
-                        n_events += 1
-                        # Same read - just append to current event group
-                        if line["read_id"] == cur_read_id:
-                            events.append(line)
-                        # New read - enqueue previous event group and start new one
+                        cur_read_id = line["read_id"]
+                        if cur_read_id == prev_read_id:
+                            # Same read - append to current event group (unless transcript is filtered out)
+                            if events: # transcript has passed filter
+                                events.append(line)
+                                n_events += 1
                         else:
-                            n_reads += 1
-                            tx_id, q_index, subdir = self.__handle_transcript(cur_accession, tx_info, len(out_qs),
-                                                                              master_db_lock)
-                            out_qs[q_index].put((sample_id, tx_id, subdir, events))
-                            cur_read_id = line["read_id"]
-                            cur_accession = line["ref_id"]
-                            events = [line]
-                    # Last event/line
-                    n_reads += 1
-                    tx_id, q_index, subdir = self.__handle_transcript(cur_accession, tx_info, len(out_qs),
-                                                                      master_db_lock)
-                    out_qs[q_index].put((sample_id, tx_id, subdir, events))
-                logger.info(f"Parsed {n_reads} reads, {n_events} events from {len(tx_info)} transcripts in input file '{path}'")
+                            # New read - enqueue previous event group (if any) and start new one
+                            if events:
+                                out_qs[q_index].put((sample_id, tx_id, subdir, events))
+                                n_reads += 1
+                            prev_read_id = cur_read_id
+                            result = self.__handle_transcript(line["ref_id"], tx_info,
+                                                              len(out_qs), master_db_lock)
+                            if result: # transcript passed filter (if any)
+                                tx_id, q_index, subdir = result
+                                events = [line]
+                            else:
+                                events = []
+                    # Enqueue final event group
+                    if events:
+                        out_qs[q_index].put((sample_id, tx_id, subdir, events))
+                        n_reads += 1
+                logger.info(f"Parsed {n_reads} reads, {n_events} events from input file '{path}'")
+
         # Manage exceptions and add error trackback to error queue
         except Exception:
             logger.debug("Error in reader process")
