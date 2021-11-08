@@ -5,7 +5,7 @@ import datetime
 import os
 import sqlite3
 import contextlib
-from math import sqrt
+import math
 from itertools import zip_longest, product
 
 # Third party
@@ -334,8 +334,8 @@ class DataStore_transcript(DataStore):
                        "valid_kmers INT NOT NULL",
                        "intensity_mean REAL NOT NULL",
                        "intensity_sd REAL NOT NULL",
-                       "dwelltime_mean REAL NOT NULL",
-                       "dwelltime_sd REAL NOT NULL"]
+                       "dwelltime_log10_mean REAL NOT NULL",
+                       "dwelltime_log10_sd REAL NOT NULL"]
 
     # "kmers" table:
     table_def_kmers = ["readid INTEGER NOT NULL",
@@ -344,16 +344,17 @@ class DataStore_transcript(DataStore):
                        # "num_events INTEGER NOT NULL",
                        # "num_signals INTEGER NOT NULL",
                        "statusid INTEGER NOT NULL", # references 'kmer_status(id)' in master DB
-                       "dwelltime REAL NOT NULL",
-                       # "NNNNN_dwelltime REAL NOT NULL",
-                       # "mismatch_dwelltime REAL NOT NULL",
+                       "dwelltime_log10 REAL NOT NULL",
+                       # "NNNNN_dwelltime_log10 REAL NOT NULL",
+                       # "mismatch_dwelltime_log10 REAL NOT NULL",
                        "intensity REAL NOT NULL",
-                       "intensity_deviation REAL NOT NULL",
+                       # "intensity_deviation REAL NOT NULL",
                        "PRIMARY KEY (readid, position)",
                        "FOREIGN KEY (readid) REFERENCES reads(id)"]
 
     # "kmer_stats" table:
     table_def_kmer_stats = ["kmer_pos INTEGER NOT NULL PRIMARY KEY",
+                            # stats are after scaling, i.e. based on z-scores:
                             "c1_mean_intensity REAL",
                             "c2_mean_intensity REAL",
                             "c1_median_intensity REAL",
@@ -382,6 +383,7 @@ class DataStore_transcript(DataStore):
     table_def_gmm_components = ["kmer_pos INTEGER NOT NULL",
                                 "component INTEGER NOT NULL",
                                 "weight REAL",
+                                # stats are after scaling, i.e. based on z-scores:
                                 "mean_intensity REAL NOT NULL",
                                 "mean_dwelltime REAL NOT NULL",
                                 # elements of the Cholesky decomposition of the
@@ -443,9 +445,9 @@ class DataStore_transcript(DataStore):
             status_id = self.status_mapping[res["status"]]
             # in case of unexpected kmer seq., this should give None (NULL in the DB):
             seq_id = self.sequence_mapping.get(res["ref_kmer"])
-            self._cursor.execute("INSERT INTO kmers VALUES(?, ?, ?, ?, ?, ?, ?)",
+            self._cursor.execute("INSERT INTO kmers VALUES(?, ?, ?, ?, ?, ?)",
                                  (read_id, res["ref_pos"], seq_id, status_id,
-                                  res["dwell_time"], res["median"], res["mad"]))
+                                  math.log10(res["dwell_time"]), res["median"]))
         except Exception:
             logger.error("Error inserting kmer into database")
             raise Exception

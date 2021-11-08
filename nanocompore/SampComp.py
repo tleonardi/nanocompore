@@ -125,8 +125,8 @@ class SampComp(object):
 
         # Prepare database query once
         # TODO: move this to 'DataStore_transcript'?
-        subquery = "SELECT id AS reads_id, sampleid, dwelltime_mean, dwelltime_sd FROM reads WHERE pass_filter = 1"
-        columns = "sampleid, position, intensity, dwelltime, dwelltime_mean, dwelltime_sd"
+        subquery = "SELECT id AS reads_id, sampleid, dwelltime_log10_mean, dwelltime_log10_sd FROM reads WHERE pass_filter = 1"
+        columns = "sampleid, position, intensity, dwelltime_log10, dwelltime_log10_mean, dwelltime_log10_sd"
         # select only valid kmers (status 0):
         self._kmer_query = f"SELECT {columns} FROM kmers INNER JOIN ({subquery}) ON readid = reads_id WHERE statusid = 0"
 
@@ -289,10 +289,11 @@ class SampComp(object):
                 sample_id = row["sampleid"]
                 pos = row["position"]
                 data = kmer_data[pos][sample_id]
+                # Standardize intensity and (log10) dwell time to z-scores:
                 data["intensity"].append(self.standard_scale(row["intensity"],
                                                              intensity_mean, intensity_sd))
-                data["dwelltime"].append(self.standard_scale(row["dwelltime"],
-                                                             row["dwelltime_mean"], row["dwelltime_sd"]))
+                data["dwelltime"].append(self.standard_scale(row["dwelltime_log10"],
+                                                             row["dwelltime_log10_mean"], row["dwelltime_log10_sd"]))
                 data["coverage"] += 1
 
         logger.trace(f"Data loaded for transcript: {tx_name}")

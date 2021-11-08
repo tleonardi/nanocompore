@@ -177,7 +177,6 @@ class TxComp(object):
         # Merge the intensities and dwell times of all samples in a single array
         global_intensity = np.concatenate(list(intensities.values()))
         global_dwell = np.concatenate(list(dwell_times.values()))
-        global_dwell = np.log10(global_dwell)
 
         # Generate the intensity and dwell time array
         X = np.array([(i, d) for i, d in zip(global_intensity, global_dwell)])

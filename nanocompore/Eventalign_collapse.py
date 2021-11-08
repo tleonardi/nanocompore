@@ -7,6 +7,7 @@ import multiprocessing as mp
 import traceback
 import os
 # import cProfile as profile
+import math
 import statistics
 import shutil
 import re
@@ -360,9 +361,9 @@ class Read:
         intensities = [kmer.intensity for kmer in self.kmer_l]
         result["intensity_mean"] = mean = statistics.fmean(intensities)
         result["intensity_sd"] = statistics.stdev(intensities, mean)
-        dwell_times = [kmer.dwell_time for kmer in self.kmer_l]
-        result["dwelltime_mean"] = mean = statistics.fmean(dwell_times)
-        result["dwelltime_sd"] = statistics.stdev(dwell_times, mean)
+        dwelltimes_log10 = [math.log10(kmer.dwell_time) for kmer in self.kmer_l]
+        result["dwelltime_log10_mean"] = mean = statistics.fmean(dwelltimes_log10)
+        result["dwelltime_log10_sd"] = statistics.stdev(dwelltimes_log10, mean)
         return result
 
 
