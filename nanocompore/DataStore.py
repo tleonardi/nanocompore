@@ -380,6 +380,8 @@ class DataStore_transcript(DataStore):
 
     # "gmm_components" table:
     # TODO: store other 'GaussianMixture' attributes (e.g. 'converged_', 'n_iter_')?
+    # TODO: add 'coveriance_type' if it becomes variable (currently fixed to 'full' in TxComp)
+    # TODO: split into separate 'gmm_models' and 'gmm_components' tables to avoid redundancy?
     table_def_gmm_components = ["kmer_pos INTEGER NOT NULL",
                                 "component INTEGER NOT NULL",
                                 "weight REAL",
@@ -392,6 +394,7 @@ class DataStore_transcript(DataStore):
                                 "precision_cholesky_00 REAL NOT NULL",
                                 "precision_cholesky_01 REAL NOT NULL",
                                 "precision_cholesky_11 REAL NOT NULL",
+                                "model_bic REAL",
                                 "PRIMARY KEY (kmer_pos, component)",
                                 "FOREIGN KEY (kmer_pos) REFERENCES kmer_stats(kmer_pos)"]
 
@@ -452,7 +455,7 @@ class DataStore_transcript(DataStore):
             logger.error("Error inserting kmer into database")
             raise Exception
 
-    def create_stats_tables(self, with_gmm=True, with_gmm_components=False,
+    def create_stats_tables(self, with_gmm=True, with_gmm_components="none",
                             with_sequence_context=False, drop_old=True):
         if not self._connection:
             raise NanocomporeError("Database connection not yet opened")
@@ -462,7 +465,7 @@ class DataStore_transcript(DataStore):
         table_defs = {"kmer_stats": self.table_def_kmer_stats}
         if with_gmm:
             table_defs["gmm_stats"] = self.table_def_gmm_stats
-            if with_gmm_components:
+            if with_gmm_components != "none":
                 table_defs["gmm_components"] = self.table_def_gmm_components
         if with_sequence_context: # add additional columns for context p-values
             table_defs["kmer_stats"] += ["intensity_pvalue_context REAL",
@@ -493,10 +496,14 @@ class DataStore_transcript(DataStore):
                 logger.error(f"Error storing statistics for kmer {kmer}")
                 raise
             if self._with_gmm:
-                if self._with_gmm_components:
-                    self.store_GMM_components(res["gmm_model"], kmer)
+                best_index = res["gmm_best_index"]
+                if self._with_gmm_components == "best": # store components of best GMM
+                    self.store_GMM_components(res["gmm_models"][best_index], res["gmm_bics"][best_index], kmer)
+                elif self._with_gmm_components == "all": # store components of all GMMs
+                    for index in range(len(res["gmm_models"])):
+                        self.store_GMM_components(res["gmm_models"][index], res["gmm_bics"][index], kmer)
                 # for GMM stats, skip uninformative GMMs with only one component:
-                if res["gmm_model"].n_components > 1:
+                if res["gmm_models"][best_index].n_components > 1:
                     values = [kmer, res.get("gmm_cluster_counts"), res.get("gmm_test_stat"), res.get("gmm_pvalue")]
                     if self._with_sequence_context:
                         values += [res.get("gmm_pvalue_context")]
@@ -508,7 +515,7 @@ class DataStore_transcript(DataStore):
                         raise
             self._connection.commit()
 
-    def store_GMM_components(self, gmm, kmer_pos):
+    def store_GMM_components(self, gmm, bic, kmer_pos):
         for i in range(gmm.n_components):
             # use index 0 for 1-component GMM, indexes 1/2 for 2-component GMMs:
             index = i + int(gmm.n_components > 1)
@@ -516,6 +523,7 @@ class DataStore_transcript(DataStore):
             cholesky = gmm.precisions_cholesky_[i].flatten().tolist()
             del cholesky[2] # this entry is always zero, so don't store it
             values += cholesky
+            values.append(bic)
             qmarks = ", ".join(["?"] * len(values))
             try:
                 self._cursor.execute(f"INSERT INTO gmm_components VALUES ({qmarks})", values)

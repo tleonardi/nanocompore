@@ -43,7 +43,7 @@ class SampComp(object):
                  univariate_test:str = "KS", # or: "MW", "ST"
                  fit_gmm:bool = True,
                  gmm_test:str = "logit", # or: "anova"
-                 store_gmm_components:bool = False,
+                 store_gmm_components:str = "none",
                  allow_anova_warnings:bool = False,
                  sequence_context:int = 0,
                  sequence_context_weighting:str = "uniform",
@@ -72,7 +72,7 @@ class SampComp(object):
         * gmm_test
             Method to compare samples based on the GMM ('logit' or 'anova'), or empty for no comparison.
         * store_gmm_components
-            Store parameters of fitted GMMs in the transcript databases?
+            Store parameters of any fitted GMMs in the transcript databases? ('none', 'best' or 'all')
         * allow_anova_warnings
             If True runtime warnings during the ANOVA tests don't raise an error.
         * sequence_context
@@ -110,6 +110,8 @@ class SampComp(object):
             raise NanocomporeError(f"Invalid univariate test {univariate_test}")
         if fit_gmm and gmm_test and (gmm_test not in ["logit", "anova"]):
             raise NanocomporeError(f"Invalid GMM-based test {gmm_test}")
+        if store_gmm_components not in ["none", "best", "all"]:
+            raise NanocomporeError(f"Invalid choice for 'store_gmm_components': {store_gmm_components}")
 
         # Test if Fasta can be opened
         try:
@@ -144,7 +146,7 @@ class SampComp(object):
         self._univariate_test = univariate_test
         self._fit_gmm = fit_gmm
         self._gmm_test = gmm_test if fit_gmm else ""
-        self._store_gmm_components = fit_gmm and store_gmm_components
+        self._store_gmm_components = store_gmm_components if fit_gmm else "none"
         self._sequence_context = sequence_context > 0
 
         # Cut-offs for filtering final results:

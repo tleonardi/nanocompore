@@ -115,6 +115,8 @@ def main():
         help="Do not perform the GMM fit and subsequent test (see --gmm_test) (default: %(default)s)")
     parser_sc_test.add_argument("--gmm_test", choices=["logit", "anova", "none"], default="logit",
         help="Statistical test performed after GMM fitting (unless --no_gmm is used). (default: %(default)s)")
+    parser_sc_test.add_argument("--store_gmm_components", choices=["all", "best", "none"], default="none",
+        help="Store components of any fitted GMMs in the database? (default: %(default)s)")
     parser_sc_test.add_argument("--allow_warnings", action="store_true",
                                 help="If True runtime warnings during the ANOVA tests (see --gmm_test) don't raise an error (default: %(default)s)")
     parser_sc_test.add_argument("--sequence_context", type=int, default=0, choices=range(0,5),
@@ -251,6 +253,7 @@ def sampcomp_main(args):
                  univariate_test = univar_test,
                  fit_gmm = not args.no_gmm,
                  gmm_test = gmm_test,
+                 store_gmm_components = args.store_gmm_components,
                  allow_anova_warnings = args.allow_warnings,
                  sequence_context = args.sequence_context,
                  sequence_context_weighting = args.sequence_context_weights,
