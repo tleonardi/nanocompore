@@ -185,46 +185,46 @@ class TxComp(object):
         Y = np.concatenate((np.repeat(self._cond1_samples, [len(intensities[k]) for k in self._cond1_samples]),
                             np.repeat(self._cond2_samples, [len(intensities[k]) for k in self._cond2_samples])))
 
-        gmm_mod, gmm_type, gmm_ncomponents = self.__fit_best_gmm(X, max_components=2, cv_types=['full'])
-
-        if gmm_ncomponents == 2:
+        gmms, bics, best_index = self.__fit_best_gmm(X, max_components=2, cv_types=['full'])
+        gmm = gmms[best_index]
+        if gmm.n_components == 2:
             # Assign data points to the clusters
-            y_pred = gmm_mod.predict(X)
+            y_pred = gmm.predict(X)
             counters = dict()
             # Count how many reads in each cluster for each sample
             for lab in self._cond1_samples + self._cond2_samples:
                 counters[lab] = Counter(y_pred[[i == lab for i in Y]])
             cluster_counts = self.__count_reads_in_cluster(counters)
             if self._gmm_test == "anova":
-                pvalue, stat, details = self.__gmm_anova_test(counters, sample_condition_labels, gmm_ncomponents)
+                pvalue, stat, details = self.__gmm_anova_test(counters, sample_condition_labels, gmm.n_components)
             elif self._gmm_test == "logit":
                 pvalue, stat, details = self.__gmm_logit_test(Y, y_pred, sample_condition_labels)
         else:
             pvalue = stat = details = cluster_counts = None
 
-        return {"model": gmm_mod, "cluster_counts": cluster_counts, "pvalue": pvalue, "test_stat": stat,
-                "test_details": details}
+        return {"models": gmms, "bics": bics, "best_index": best_index, "cluster_counts": cluster_counts,
+                "pvalue": pvalue, "test_stat": stat, "test_details": details}
 
 
     def __fit_best_gmm(self, X, max_components=2, cv_types=['spherical', 'tied', 'diag', 'full']):
-       # Loop over multiple cv_types and n_components and for each fit a GMM
-        # calculate the BIC and retain the lowest
-        lowest_bic = np.infty
-        bic = []
+        # Loop over multiple cv_types and n_components and for each fit a GMM
+        # Calculate the BIC and identify the best model (lowest BIC)
+        gmms = []
+        bics = np.full(len(cv_types) * max_components, np.infty)
         n_components_range = range(1, max_components + 1)
+        index = 0
         for cv_type in cv_types:
             for n_components in n_components_range:
-            # Fit a Gaussian mixture with EM
+                # Fit a Gaussian mixture with EM
                 gmm = GaussianMixture(n_components=n_components, covariance_type=cv_type,
                                       random_state=self._random_state)
                 gmm.fit(X)
-                bic.append(gmm.bic(X))
-                if bic[-1] < lowest_bic:
-                    lowest_bic = bic[-1]
-                    best_gmm = gmm
-                    best_gmm_type = cv_type
-                    best_gmm_ncomponents = n_components
-        return (best_gmm, best_gmm_type, best_gmm_ncomponents)
+                gmms.append(gmm)
+                bics[index] = gmm.bic(X)
+                index += 1
+        # Find model with lowest BIC:
+        index = bics.argmin()
+        return (gmms, bics, index)
 
 
     def __gmm_anova_test(self, counters, sample_condition_labels, gmm_ncomponents):
