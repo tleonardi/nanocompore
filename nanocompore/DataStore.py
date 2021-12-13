@@ -368,7 +368,12 @@ class DataStore_transcript(DataStore):
                             "c1_sd_dwelltime REAL",
                             "c2_sd_dwelltime REAL",
                             "intensity_pvalue REAL",
-                            "dwelltime_pvalue REAL"]
+                            "dwelltime_pvalue REAL"
+                            # the following are only added when appropriate:
+                            # "intensity_pvalue_context REAL",
+                            # "dwelltime_pvalue_context REAL"
+                            ]
+
     # TODO: are "c1" and "c2" (conditions) properly defined?
 
     # "gmm_stats" table:
@@ -376,13 +381,27 @@ class DataStore_transcript(DataStore):
                            "cluster_counts VARCHAR",
                            "test_stat REAL",
                            "test_pvalue REAL",
+                           # the following are only added when appropriate:
+                           # "test_pvalue_context REAL",
+                           # "model_id INTEGER",
+                           # "FOREIGN KEY (model_id) REFERENCES gmm_models(id)",
                            "FOREIGN KEY (kmer_pos) REFERENCES kmer_stats(kmer_pos)"]
 
-    # "gmm_components" table:
-    # TODO: store other 'GaussianMixture' attributes (e.g. 'converged_', 'n_iter_')?
+    # "gmm_models" table:
     # TODO: add 'coveriance_type' if it becomes variable (currently fixed to 'full' in TxComp)
-    # TODO: split into separate 'gmm_models' and 'gmm_components' tables to avoid redundancy?
-    table_def_gmm_components = ["kmer_pos INTEGER NOT NULL",
+    # TODO: store other 'GaussianMixture' attributes (e.g. 'converged_', 'n_iter_')?
+    table_def_gmm_models = ["id INTEGER NOT NULL PRIMARY KEY",
+                            "kmer_pos INTEGER NOT NULL",
+                            "n_components INTEGER NOT NULL",
+                            "n_parameters INTEGER NOT NULL",
+                            "n_observations INTEGER NOT NULL",
+                            "log_likelihood REAL",
+                            "bic REAL",
+                            "UNIQUE (kmer_pos, n_components)",
+                            "FOREIGN KEY (kmer_pos) REFERENCES kmer_stats(kmer_pos)"]
+
+    # "gmm_components" table:
+    table_def_gmm_components = ["model_id INTEGER NOT NULL",
                                 "component INTEGER NOT NULL",
                                 "weight REAL",
                                 # stats are after scaling, i.e. based on z-scores:
@@ -394,9 +413,8 @@ class DataStore_transcript(DataStore):
                                 "precision_cholesky_00 REAL NOT NULL",
                                 "precision_cholesky_01 REAL NOT NULL",
                                 "precision_cholesky_11 REAL NOT NULL",
-                                "model_bic REAL",
-                                "PRIMARY KEY (kmer_pos, component)",
-                                "FOREIGN KEY (kmer_pos) REFERENCES kmer_stats(kmer_pos)"]
+                                "PRIMARY KEY (model_id, component)",
+                                "FOREIGN KEY (model_id) REFERENCES gmm_models(id)"]
 
     table_defs = {"reads": table_def_reads,
                   "kmers": table_def_kmers,
@@ -465,18 +483,26 @@ class DataStore_transcript(DataStore):
         table_defs = {"kmer_stats": self.table_def_kmer_stats}
         if with_gmm:
             table_defs["gmm_stats"] = self.table_def_gmm_stats
-            if with_gmm_components != "none":
-                table_defs["gmm_components"] = self.table_def_gmm_components
-        if with_sequence_context: # add additional columns for context p-values
-            table_defs["kmer_stats"] += ["intensity_pvalue_context REAL",
-                                         "dwelltime_pvalue_context REAL"]
-            if with_gmm:
+            if with_sequence_context: # add additional columns for context p-values
                 # column definitions must go before table constraints!
                 constraint = table_defs["gmm_stats"].pop()
                 table_defs["gmm_stats"] += ["test_pvalue_context REAL", constraint]
+            if with_gmm_components != "none":
+                table_defs["gmm_models"] = self.table_def_gmm_models
+                table_defs["gmm_components"] = self.table_def_gmm_components
+                # insert reference to "gmm_models" in "gmm_stats":
+                # column definitions must go before table constraints!
+                constraint = table_defs["gmm_stats"].pop()
+                table_defs["gmm_stats"] += ["model_id INTEGER",
+                                            "FOREIGN KEY (model_id) REFERENCES gmm_models(id)",
+                                            constraint]
+        if with_sequence_context: # add additional columns for context p-values
+            table_defs["kmer_stats"] += ["intensity_pvalue_context REAL",
+                                         "dwelltime_pvalue_context REAL"]
         if drop_old: # remove previous results if any exist
-            self._cursor.execute("DROP TABLE IF EXISTS gmm_components")
             self._cursor.execute("DROP TABLE IF EXISTS gmm_stats")
+            self._cursor.execute("DROP TABLE IF EXISTS gmm_components")
+            self._cursor.execute("DROP TABLE IF EXISTS gmm_models")
             self._cursor.execute("DROP TABLE IF EXISTS kmer_stats")
         self._create_tables(table_defs)
 
@@ -498,15 +524,20 @@ class DataStore_transcript(DataStore):
             if self._with_gmm:
                 best_index = res["gmm_best_index"]
                 if self._with_gmm_components == "best": # store components of best GMM
-                    self.store_GMM_components(res["gmm_models"][best_index], res["gmm_bics"][best_index], kmer)
+                    best_model_id = self.store_GMM_components(res["gmm_models"][best_index],
+                                                              res["gmm_bics"][best_index], kmer)
                 elif self._with_gmm_components == "all": # store components of all GMMs
                     for index in range(len(res["gmm_models"])):
-                        self.store_GMM_components(res["gmm_models"][index], res["gmm_bics"][index], kmer)
+                        model_id = self.store_GMM_components(res["gmm_models"][index], res["gmm_bics"][index], kmer)
+                        if index == best_index:
+                            best_model_id = model_id
                 # for GMM stats, skip uninformative GMMs with only one component:
                 if res["gmm_models"][best_index].n_components > 1:
                     values = [kmer, res.get("gmm_cluster_counts"), res.get("gmm_test_stat"), res.get("gmm_pvalue")]
                     if self._with_sequence_context:
                         values += [res.get("gmm_pvalue_context")]
+                    if self._with_gmm_components != "none":
+                        values.append(best_model_id)
                     qmarks = ", ".join(["?"] * len(values))
                     try:
                         self._cursor.execute(f"INSERT INTO gmm_stats VALUES ({qmarks})", values)
@@ -516,14 +547,23 @@ class DataStore_transcript(DataStore):
             self._connection.commit()
 
     def store_GMM_components(self, gmm, bic, kmer_pos):
+        # general model information:
+        values = [None, kmer_pos, gmm.n_components, gmm._n_parameters(), gmm.n_obs_, gmm.lower_bound_, bic]
+        qmarks = ", ".join(["?"] * len(values))
+        try:
+            self._cursor.execute(f"INSERT INTO gmm_models VALUES ({qmarks})", values)
+            model_id = self._cursor.lastrowid
+        except:
+            logger.error(f"Error storing GMM attributes for kmer {kmer_pos}")
+            raise
+        # components:
         for i in range(gmm.n_components):
             # use index 0 for 1-component GMM, indexes 1/2 for 2-component GMMs:
             index = i + int(gmm.n_components > 1)
-            values = [kmer_pos, index, gmm.weights_[i]] + gmm.means_[i].tolist()
+            values = [model_id, index, gmm.weights_[i]] + gmm.means_[i].tolist()
             cholesky = gmm.precisions_cholesky_[i].flatten().tolist()
             del cholesky[2] # this entry is always zero, so don't store it
             values += cholesky
-            values.append(bic)
             qmarks = ", ".join(["?"] * len(values))
             try:
                 self._cursor.execute(f"INSERT INTO gmm_components VALUES ({qmarks})", values)
@@ -531,9 +571,14 @@ class DataStore_transcript(DataStore):
                 logger.error(f"Error storing GMM component {i} for kmer {kmer_pos}")
                 raise
         self._connection.commit()
+        return model_id
 
-    def load_GMM(self, kmer_pos):
-        self._cursor.execute("SELECT * FROM gmm_components WHERE kmer_pos = ? ORDER BY component", kmer_pos)
+    def load_GMM(self, kmer_pos, n_components):
+        self._cursor.execute("SELECT id FROM gmm_models WHERE kmer_pos = ? AND n_components = ?",
+                             (kmer_pos, n_components))
+        if not (row := self._cursor.fetchone()):
+            return None # TODO: error?
+        self._cursor.execute("SELECT * FROM gmm_components WHERE model_id = ? ORDER BY component", row[0])
         rows = self._cursor.fetchall()
         if not rows:
             return None # TODO: error?

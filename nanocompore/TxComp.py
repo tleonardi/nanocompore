@@ -219,6 +219,7 @@ class TxComp(object):
                 gmm = GaussianMixture(n_components=n_components, covariance_type=cv_type,
                                       random_state=self._random_state)
                 gmm.fit(X)
+                gmm.n_obs_ = X.shape[0] # attach number of observations used for training
                 gmms.append(gmm)
                 bics[index] = gmm.bic(X)
                 index += 1
