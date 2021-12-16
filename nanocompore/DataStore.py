@@ -315,7 +315,9 @@ class DataStore_transcript(DataStore):
 
     # "transcript" table (information is also stored in master DB):
     table_def_transcript = ["id INTEGER NOT NULL PRIMARY KEY",
-                            "name VARCHAR NOT NULL UNIQUE"]
+                            "name VARCHAR NOT NULL UNIQUE",
+                            "intensity_scaling_mean REAL",
+                            "intensity_scaling_sd REAL"]
     # TODO: store transcript sequence here instead of kmer seqs. in "kmers" table?
 
     # "reads" table:
@@ -428,7 +430,7 @@ class DataStore_transcript(DataStore):
 
     def _init_db(self):
         super()._init_db()
-        self._cursor.execute("INSERT INTO transcript VALUES (?, ?)", (self.tx_id, self.tx_name))
+        self._cursor.execute("INSERT INTO transcript VALUES (?, ?, NULL, NULL)", (self.tx_id, self.tx_name))
         self._connection.commit()
 
     def store_read(self, read, sample_id):
@@ -505,6 +507,17 @@ class DataStore_transcript(DataStore):
             self._cursor.execute("DROP TABLE IF EXISTS gmm_models")
             self._cursor.execute("DROP TABLE IF EXISTS kmer_stats")
         self._create_tables(table_defs)
+
+    def store_intensity_scale(self, mean, sd):
+        if not self._connection:
+            raise NanocomporeError("Database connection not yet opened")
+        try:
+            self._cursor.execute("UPDATE transcript SET intensity_scaling_mean = ?, intensity_scaling_sd = ?",
+                                 (mean, sd))
+            self._connection.commit()
+        except:
+            logger.error(f"Error storing intensity scaling values")
+            raise
 
     def store_test_results(self, test_results):
         if not self._connection:
