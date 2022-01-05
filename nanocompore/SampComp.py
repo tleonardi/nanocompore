@@ -283,28 +283,13 @@ class SampComp(object):
         n_kmers = 0 # TODO: count number of reads? (adds overhead)
         # Read kmer data from database
         with DataStore_transcript(db_path, tx_name, subdir) as db:
-            # Get transcript-wide, per-sequence (!) intensity stats for scaling:
-            # Use this formula to calculate variance: Var(X) = E(X^2) - E(X)^2
-            # TODO: exclude reads that didn't pass the filter?
-            query = "SELECT sequenceid, AVG(intensity) AS mean, AVG(intensity * intensity) - AVG(intensity) * AVG(intensity) AS variance FROM kmers WHERE statusid = 0 GROUP BY sequenceid"
-            # note: moving "AVG(intensity)" to a separate subquery (to avoid repeats) didn't make this faster
-            seq_means = []
-            seq_vars = []
-            for row in db.cursor.execute(query):
-                seq_means.append(row[1])
-                seq_vars.append(row[2])
-            intensity_mean = np.median(seq_means)
-            intensity_sd = np.sqrt(np.median(seq_vars))
-            # store these summary stats in the database for future reference:
-            db.store_intensity_scale(intensity_mean, intensity_sd)
             for row in db.cursor.execute(self._kmer_query):
                 n_kmers += 1
                 sample_id = row["sampleid"]
                 pos = row["position"]
                 data = kmer_data[pos][sample_id]
-                # Standardize intensity and (log10) dwell time to z-scores:
-                data["intensity"].append(self.standard_scale(row["intensity"],
-                                                             intensity_mean, intensity_sd))
+                data["intensity"].append(row["intensity"])
+                # Standardize (log10) dwell times to z-scores using per-read mean and std. dev.:
                 data["dwelltime"].append(self.standard_scale(row["dwelltime_log10"],
                                                              row["dwelltime_log10_mean"], row["dwelltime_log10_sd"]))
                 data["coverage"] += 1

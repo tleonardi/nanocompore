@@ -395,7 +395,7 @@ class DataStore_transcript(DataStore):
     table_def_gmm_models = ["id INTEGER NOT NULL PRIMARY KEY",
                             "kmer_pos INTEGER NOT NULL",
                             "n_components INTEGER NOT NULL",
-                            "n_parameters INTEGER NOT NULL",
+                            # number of model parameters: 6 * n_components - 1
                             "n_observations INTEGER NOT NULL",
                             "log_likelihood REAL",
                             "bic REAL",
@@ -409,12 +409,11 @@ class DataStore_transcript(DataStore):
                                 # stats are after scaling, i.e. based on z-scores:
                                 "mean_intensity REAL NOT NULL",
                                 "mean_dwelltime REAL NOT NULL",
-                                # elements of the Cholesky decomposition of the
-                                # precision matrix (inverse of covariance matrix);
-                                # matrix is triangular, so (1,0) is always 0:
-                                "precision_cholesky_00 REAL NOT NULL",
-                                "precision_cholesky_01 REAL NOT NULL",
-                                "precision_cholesky_11 REAL NOT NULL",
+                                # elements of the covariance matrix;
+                                # matrix is symmetric, so (1,0) is same as (0,1):
+                                "covariance_00 REAL NOT NULL",
+                                "covariance_01 REAL NOT NULL",
+                                "covariance_11 REAL NOT NULL",
                                 "PRIMARY KEY (model_id, component)",
                                 "FOREIGN KEY (model_id) REFERENCES gmm_models(id)"]
 
@@ -508,17 +507,6 @@ class DataStore_transcript(DataStore):
             self._cursor.execute("DROP TABLE IF EXISTS kmer_stats")
         self._create_tables(table_defs)
 
-    def store_intensity_scale(self, mean, sd):
-        if not self._connection:
-            raise NanocomporeError("Database connection not yet opened")
-        try:
-            self._cursor.execute("UPDATE transcript SET intensity_scaling_mean = ?, intensity_scaling_sd = ?",
-                                 (mean, sd))
-            self._connection.commit()
-        except:
-            logger.error(f"Error storing intensity scaling values")
-            raise
-
     def store_test_results(self, test_results):
         if not self._connection:
             raise NanocomporeError("Database connection not yet opened")
@@ -538,10 +526,13 @@ class DataStore_transcript(DataStore):
                 best_index = res["gmm_best_index"]
                 if self._with_gmm_components == "best": # store components of best GMM
                     best_model_id = self.store_GMM_components(res["gmm_models"][best_index],
-                                                              res["gmm_bics"][best_index], kmer)
+                                                              res["gmm_bics"][best_index],
+                                                              res["gmm_scaler"], kmer)
                 elif self._with_gmm_components == "all": # store components of all GMMs
                     for index in range(len(res["gmm_models"])):
-                        model_id = self.store_GMM_components(res["gmm_models"][index], res["gmm_bics"][index], kmer)
+                        model_id = self.store_GMM_components(res["gmm_models"][index],
+                                                             res["gmm_bics"][index],
+                                                             res["gmm_scaler"], kmer)
                         if index == best_index:
                             best_model_id = model_id
                 # for GMM stats, skip uninformative GMMs with only one component:
@@ -559,9 +550,9 @@ class DataStore_transcript(DataStore):
                         raise
             self._connection.commit()
 
-    def store_GMM_components(self, gmm, bic, kmer_pos):
+    def store_GMM_components(self, gmm, bic, scaler, kmer_pos):
         # general model information:
-        values = [None, kmer_pos, gmm.n_components, gmm._n_parameters(), gmm.n_obs_, gmm.lower_bound_, bic]
+        values = [None, kmer_pos, gmm.n_components, gmm.n_obs_, gmm.lower_bound_, bic]
         qmarks = ", ".join(["?"] * len(values))
         try:
             self._cursor.execute(f"INSERT INTO gmm_models VALUES ({qmarks})", values)
@@ -569,14 +560,17 @@ class DataStore_transcript(DataStore):
         except:
             logger.error(f"Error storing GMM attributes for kmer {kmer_pos}")
             raise
+        # transform means and covariances back to original scale (before standardising):
+        means = scaler.inverse_transform(gmm.means_)
+        covariances = gmm.covariances_ * scaler.var_
         # components:
         for i in range(gmm.n_components):
             # use index 0 for 1-component GMM, indexes 1/2 for 2-component GMMs:
             index = i + int(gmm.n_components > 1)
-            values = [model_id, index, gmm.weights_[i]] + gmm.means_[i].tolist()
-            cholesky = gmm.precisions_cholesky_[i].flatten().tolist()
-            del cholesky[2] # this entry is always zero, so don't store it
-            values += cholesky
+            values = [model_id, index, gmm.weights_[i]] + means[i].tolist()
+            cov_i = covariances[i].flatten().tolist()
+            del cov_i[2] # covariance matrix is symmetric, so this entry is redundant
+            values += cov_i
             qmarks = ", ".join(["?"] * len(values))
             try:
                 self._cursor.execute(f"INSERT INTO gmm_components VALUES ({qmarks})", values)
@@ -598,15 +592,11 @@ class DataStore_transcript(DataStore):
         model = GaussianMixture(len(rows))
         model.weights_ = np.array([row["weight"] for row in rows])
         model.means_ = np.array([[row["mean_intensity"], row["mean_dwelltime"]] for row in rows])
-        model.precisions_cholesky_ = np.array([[[row["precisions_cholesky_00"], row["precisions_cholesky_01"]],
-                                                [0.0, row["precisions_cholesky_11"]]] for row in rows])
-        # calculate precision matrix from its Cholesky decomposition:
-        model.precisions_ = np.array([np.matmul(model.precisions_cholesky_[0],
-                                                model.precisions_cholesky_[0].T),
-                                      np.matmul(model.precisions_cholesky_[1],
-                                                model.precisions_cholesky_[1].T)])
-        # calculate covariance matrix from precision matrix:
-        model.covariances_ = np.linalg.inv(model.precisions_)
+        model.covariances_ = np.array([[[row["covariance_00"], row["covariance_01"]],
+                                        [row["covariance_01"], row["covariance_11"]]] for row in rows])
+        # calculate precision matrix from covariance matrix:
+        model.precisions_ = np.linalg.inv(model.covariances_)
+        # model.precisions_cholesky_ = ... # needed?
         return model
 
     def reset_SampComp(self):

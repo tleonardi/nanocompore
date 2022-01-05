@@ -9,9 +9,10 @@ import warnings
 from loguru import logger
 from scipy.stats import mannwhitneyu, ttest_ind, chi2, f_oneway
 from scipy.stats.mstats import ks_twosamp
-import statsmodels.discrete.discrete_model as dm
 from statsmodels.tools.sm_exceptions import ConvergenceWarning
 from sklearn.mixture import GaussianMixture
+from sklearn.preprocessing import StandardScaler
+import statsmodels.discrete.discrete_model as dm
 import numpy as np
 import pandas as pd
 
@@ -178,8 +179,11 @@ class TxComp(object):
         global_intensity = np.concatenate(list(intensities.values()))
         global_dwell = np.concatenate(list(dwell_times.values()))
 
-        # Generate the intensity and dwell time array
-        X = np.array([(i, d) for i, d in zip(global_intensity, global_dwell)])
+        # Scale the intensity and dwell time array
+        # (Necessary because GMM is initialised using k-means, which uses Euclidean distances,
+        # i.e. is sensitive to unequal variances.)
+        scaler = StandardScaler()
+        X = scaler.fit_transform([(i, d) for i, d in zip(global_intensity, global_dwell)])
 
         # Generate an array of sample IDs
         Y = np.concatenate((np.repeat(self._cond1_samples, [len(intensities[k]) for k in self._cond1_samples]),
@@ -203,7 +207,7 @@ class TxComp(object):
             pvalue = stat = details = cluster_counts = None
 
         return {"models": gmms, "bics": bics, "best_index": best_index, "cluster_counts": cluster_counts,
-                "pvalue": pvalue, "test_stat": stat, "test_details": details}
+                "pvalue": pvalue, "test_stat": stat, "test_details": details, "scaler": scaler}
 
 
     def __fit_best_gmm(self, X, max_components=2, cv_types=['spherical', 'tied', 'diag', 'full']):
