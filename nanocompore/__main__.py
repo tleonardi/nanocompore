@@ -45,14 +45,14 @@ def main():
     parser_ec.set_defaults(func=eventalign_collapse_main)
 
     parser_ec_in = parser_ec.add_argument_group("Input options")
-    parser_ec_in.add_argument("--input1", "-1", required=True, nargs="+",
-                              help="Filenames or paths of nanopolish eventalign TSV files for condition 1")
-    parser_ec_in.add_argument("--input2", "-2", required=True, nargs="+",
-                              help="Filenames or paths of nanopolish eventalign TSV files for condition 2")
+    parser_ec_in.add_argument("--input1", "-1", nargs="*",
+                              help="Filenames or paths of nanopolish eventalign TSV files for condition 1. May be omitted if input is piped to stdin.")
+    parser_ec_in.add_argument("--input2", "-2", nargs="*",
+                              help="Filenames or paths of nanopolish eventalign TSV files for condition 2. May be omitted if input is piped to stdin.")
     parser_ec_in.add_argument("--samples1", "-s1", nargs="*",
                               help="Sample names for input files from condition 1 (default: 'C1', 'C2', etc.)")
     parser_ec_in.add_argument("--samples2", "-s2", nargs="*",
-                              help="Sample names for input files from condition 1 (default: 'T1', 'T2', etc.)")
+                              help="Sample names for input files from condition 2 (default: 'T1', 'T2', etc.)")
     parser_ec_in.add_argument("--condition1", "-c1", default="control", help="Label for condition 1")
     parser_ec_in.add_argument("--condition2", "-c2", default="treatment", help="Label for condition 2")
     parser_ec_in.add_argument("--indir", "-i",
@@ -206,25 +206,59 @@ def eventalign_collapse_main(args):
     logger.warning("Running Eventalign_collapse")
 
     # Init Eventalign_collapse
-    if not args.samples1:
-        args.samples1 = [f"C{n}" for n in range(1, len(args.input1) + 1)]
-    elif len(args.samples1) != len(args.input1):
-        raise NanocomporeError("Same number of arguments required for 'input1' and 'samples1'")
-    if not args.samples2:
-        args.samples2 = [f"T{n}" for n in range(1, len(args.input2) + 1)]
-    elif len(args.samples2) != len(args.input2):
-        raise NanocomporeError("Same number of arguments required for 'input2' and 'samples2'")
-    if args.indir:
-        if not os.path.isdir(indir):
-            raise NanocomporeError(f"Input directory not found: {args.indir}")
-        args.input1 = [os.path.join(indir, f) for f in args.input1]
-        args.input2 = [os.path.join(indir, f) for f in args.input2]
+    if not args.input1 and not args.input2: # input for one sample via stdin
+        # sample name needs to be given explicitly:
+        if not (((len(args.samples1) == 1) and not args.samples2) or
+                ((len(args.samples2) == 1) and not args.samples1)):
+            raise NanocomporeError("Expected one sample name via argument 'samples1' or 'samples2'")
 
-    sample_dict = {args.condition1: [(f, s) for f, s in zip(args.input1, args.samples1)],
-                   args.condition2: [(f, s) for f, s in zip(args.input2, args.samples2)]}
+        if args.samples1:
+            sample_dict = {args.condition1: [(0, args.samples1[0])]}
+        else:
+            sample_dict = {args.condition2: [(0, args.samples2[0])]}
+        single_sample = True
+
+    elif len(args.input1) == 1 and not args.input2: # input for one sample (cond. 1) via file
+        if len(args.samples1) != 1: # sample name needs to be given explicitly
+            raise NanocomporeError("Expected one sample name via argument 'samples1'")
+
+        sample_dict = {args.condition1: [(args.input1[0], args.samples1[0])]}
+        single_sample = True
+
+    elif len(args.input2) == 1 and not args.input1: # input for one sample (cond. 2) via file
+        if len(args.samples2) != 1: # sample name needs to be given explicitly
+            raise NanocomporeError("Expected one sample name via argument 'samples2'")
+
+        sample_dict = {args.condition2: [(args.input2[0], args.samples2[0])]}
+        single_sample = True
+
+    else: # input for all samples via files:
+        if not args.samples1:
+            args.samples1 = [f"C{n}" for n in range(1, len(args.input1) + 1)]
+        elif len(args.samples1) != len(args.input1):
+            raise NanocomporeError("Same number of arguments required for 'input1' and 'samples1'")
+        if not args.samples2:
+            args.samples2 = [f"T{n}" for n in range(1, len(args.input2) + 1)]
+        elif len(args.samples2) != len(args.input2):
+            raise NanocomporeError("Same number of arguments required for 'input2' and 'samples2'")
+
+        sample_dict = {args.condition1: [(f, s) for f, s in zip(args.input1, args.samples1)],
+                       args.condition2: [(f, s) for f, s in zip(args.input2, args.samples2)]}
+        single_sample = False
+
+    if args.indir:
+        if not os.path.isdir(args.indir):
+            raise NanocomporeError(f"Input directory not found: {args.indir}")
+        # update paths to input files:
+        for inputs in sample_dict.values():
+            for i in range(len(inputs)):
+                filename = inputs[i][0]
+                if filename != 0: # input via stdin?
+                    inputs[i] = (os.path.join(args.indir, filename), *inputs[i][1:])
 
     e = Eventalign_collapse(sample_dict,
                             output_dir = args.outdir,
+                            single_sample = single_sample,
                             output_subdirs = args.subdirs,
                             overwrite = args.overwrite,
                             n_lines = args.n_lines,

@@ -169,6 +169,8 @@ class DataStore_master(DataStore):
     def store_sample(self, sample_name, file_path, condition):
         """Store a new sample in the database"""
         try:
+            if file_path == 0: # input via stdin
+                file_path = "stdin"
             self._cursor.execute("INSERT INTO samples VALUES(NULL, ?, ?, ?)",
                                  (sample_name, file_path, condition))
             self._connection.commit()

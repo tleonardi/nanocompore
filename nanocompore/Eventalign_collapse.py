@@ -34,6 +34,7 @@ class Eventalign_collapse ():
     def __init__(self,
                  sample_dict:dict,
                  output_dir:str,
+                 single_sample:bool = False,
                  master_db:str = "nanocompore.db",
                  output_subdirs:int = 100,
                  overwrite:bool = False,
@@ -48,6 +49,8 @@ class Eventalign_collapse ():
             {condition1: [(file1, sample1), (file2, sample2), ...], condition2: [...]}
         * output_dir
             Path to the output directory
+        * single_sample
+            Does 'sample_dict' only contain one of the samples for later analysis?
         * output_subdirs
             Distribute output files into this many subdirectories
         * overwrite
@@ -72,7 +75,7 @@ class Eventalign_collapse ():
 
         # Check sample information
         self._sample_dict = sample_dict
-        self.__check_sample_dict()
+        self.__check_sample_dict(single_sample)
 
         # Save args to self values
         self._output_dir = output_dir
@@ -93,27 +96,42 @@ class Eventalign_collapse ():
         self._cast_colnames = {"ref_pos": int, "dwell_time": np.float32, "sample_list": lambda x: [float(i) for i in x.split(",")]}
 
 
-    def __check_sample_dict(self):
-        # expected format:
-        # {condition1: [(file1, sample1), (file2, sample2), ...], condition2: [...]}
+    def __check_sample_dict(self, single_sample=False):
         try:
-            conditions = list(self._sample_dict.keys())
-            if len(conditions) != 2:
-                raise NanocomporeError(f"Expected two experimental conditions, found {len(conditions)}: {', '.join(conditions)}")
-            samples = set([])
-            paths = set([])
-            for condition, sample_list in self._sample_dict.items():
-                if len(sample_list) == 0:
-                    raise NanocomporeError(f"No input file/sample information for condition '{condition}'")
-                for path, sample in sample_list:
-                    if sample in samples:
-                        raise NanocomporeError(f"Sample labels must be unique. Found duplicate label: {sample}.")
-                    samples.add(sample)
-                    if not os.path.isfile(path):
-                        raise NanocomporeError(f"Input file not found: {path}")
-                    if path in paths:
-                        raise NanocomporeError(f"Found duplicate input file: {path}.")
-                    paths.add(path)
+            if single_sample:
+                # expected format:
+                # {condition: [(file, sample)]}
+                # 'file' may be 0, indicating input via stdin
+                if len(self._sample_dict) != 1:
+                    raise NanocomporeError(f"Expected one experimental condition, found {len(self._sample_dict)}")
+                values = list(self._sample_dict.values())[0]
+                if len(values) != 1:
+                    raise NanocomporeError(f"Expected one input file/sample only, found {len(values)}")
+                if (values[0][0] != 0) and not os.path.isfile(values[0][0]):
+                    raise NanocomporeError(f"Input file not found: {values[0][0]}")
+                if not values[0][1]:
+                    raise NanocomporeError("Sample label must not be empty")
+
+            else:
+                # expected format:
+                # {condition1: [(file1, sample1), (file2, sample2), ...], condition2: [...]}
+                conditions = list(self._sample_dict.keys())
+                if len(conditions) != 2:
+                    raise NanocomporeError(f"Expected two experimental conditions, found {len(conditions)}: {', '.join(conditions)}")
+                samples = set([])
+                paths = set([])
+                for condition, sample_list in self._sample_dict.items():
+                    if len(sample_list) == 0:
+                        raise NanocomporeError(f"No input file/sample information for condition '{condition}'")
+                    for path, sample in sample_list:
+                        if sample in samples:
+                            raise NanocomporeError(f"Sample labels must be unique. Found duplicate label: {sample}.")
+                        samples.add(sample)
+                        if not os.path.isfile(path):
+                            raise NanocomporeError(f"Input file not found: {path}")
+                        if path in paths:
+                            raise NanocomporeError(f"Found duplicate input file: {path}.")
+                        paths.add(path)
         except:
             logger.error("Input file/sample information failed to validate")
             raise
@@ -222,7 +240,10 @@ class Eventalign_collapse ():
         try:
             for sample_id, path in iter(in_q.get, None):
                 n_reads = n_events = 0
-                logger.info(f"Reading input file: {path}")
+                if path == 0:
+                    logger.info("Reading input from stdin")
+                else:
+                    logger.info(f"Reading input file: {path}")
                 # TODO: replace SuperParser with csv.DictReader for efficiency?
                 with SuperParser(path,
                                  select_colnames=self._select_colnames,
