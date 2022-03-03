@@ -131,7 +131,7 @@ class DataStore_master(DataStore):
     # "samples" table:
     table_def_samples = ["id INTEGER NOT NULL PRIMARY KEY",
                          "name VARCHAR NOT NULL UNIQUE",
-                         "file VARCHAR NOT NULL UNIQUE",
+                         "file VARCHAR UNIQUE", # 'NULL' means stdin
                          "condition VARCHAR NOT NULL CHECK (condition != '')"]
 
     # "transcripts" table:
@@ -170,7 +170,7 @@ class DataStore_master(DataStore):
         """Store a new sample in the database"""
         try:
             if file_path == 0: # input via stdin
-                file_path = "stdin"
+                file_path = None
             self._cursor.execute("INSERT INTO samples VALUES(NULL, ?, ?, ?)",
                                  (sample_name, file_path, condition))
             self._connection.commit()
