@@ -276,7 +276,8 @@ class Eventalign_collapse ():
                     if events:
                         out_qs[q_index].put((sample_id, tx_id, subdir, events))
                         n_reads += 1
-                logger.info(f"Parsed {n_reads} reads, {n_events} events from input file '{path}'")
+                source = f"input file '{path}'" if path != 0 else "stdin"
+                logger.info(f"Parsed {n_reads} reads, {n_events} events from {source}")
 
         # Manage exceptions and add error trackback to error queue
         except Exception:
