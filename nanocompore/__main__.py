@@ -207,9 +207,9 @@ def eventalign_collapse_main(args):
 
     # Init Eventalign_collapse
     if not args.input1 and not args.input2: # input for one sample via stdin
-        # sample name needs to be given explicitly:
-        if not (((len(args.samples1) == 1) and not args.samples2) or
-                ((len(args.samples2) == 1) and not args.samples1)):
+        # one sample name needs to be given explicitly:
+        if not ((not args.samples2 and args.samples1 and (len(args.samples1) == 1)) or
+                (not args.samples1 and args.samples2 and (len(args.samples2) == 1))):
             raise NanocomporeError("Expected one sample name via argument 'samples1' or 'samples2'")
 
         if args.samples1:
