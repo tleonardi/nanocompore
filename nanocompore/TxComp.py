@@ -210,6 +210,17 @@ class TxComp(object):
                 "pvalue": pvalue, "test_stat": stat, "test_details": details, "scaler": scaler}
 
 
+    @staticmethod
+    def __swap_gmm_components(gmm):
+        assert gmm.n_components == 2
+        gmm.means_ = gmm.means_[[1, 0]]
+        gmm.weights_ = gmm.weights_[[1, 0]]
+        gmm.covariances_ = gmm.covariances_[[1, 0]]
+        gmm.precisions_ = gmm.precisions_[[1, 0]]
+        gmm.precisions_cholesky_ = gmm.precisions_cholesky_[[1, 0]]
+        return gmm
+
+
     def __fit_best_gmm(self, X, max_components=2, cv_types=['spherical', 'tied', 'diag', 'full']):
         # Loop over multiple cv_types and n_components and for each fit a GMM
         # Calculate the BIC and identify the best model (lowest BIC)
@@ -223,6 +234,10 @@ class TxComp(object):
                 gmm = GaussianMixture(n_components=n_components, covariance_type=cv_type,
                                       random_state=self._random_state)
                 gmm.fit(X)
+                # For 2-GMMs, make sure component 1 has lower intensity than component 2:
+                # TODO: implement ordering of > 2 components (if necessary)
+                if n_components == 2 and gmm.means_[0][0] > gmm.means_[1][0]:
+                    gmm = self.__swap_gmm_components(gmm)
                 gmm.n_obs_ = X.shape[0] # attach number of observations used for training
                 gmms.append(gmm)
                 bics[index] = gmm.bic(X)
