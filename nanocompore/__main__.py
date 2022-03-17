@@ -41,7 +41,7 @@ def main():
         description=textwrap.dedent("""
         Collapse the nanopolish eventalign output at kmer level and compute kmer-level statistics
         * Minimal example:
-            nanocompore eventalign_collapse -i nanopolish_eventalign.tsv -s T1"""))
+            nanocompore eventalign_collapse -1 eventalign1.tsv -2 eventalign2.tsv -o work_dir"""))
     parser_ec.set_defaults(func=eventalign_collapse_main)
 
     parser_ec_in = parser_ec.add_argument_group("Input options")
@@ -77,9 +77,9 @@ def main():
     # SampComp subparser
     parser_sc = subparsers.add_parser('sampcomp', formatter_class=argparse.RawDescriptionHelpFormatter,
         description=textwrap.dedent("""
-            Compare 2 samples and find significant signal differences\n
+            Compare samples from two conditions and find significant signal differences\n
             * Minimal example:\n
-                nanocompore sampcomp -i eventalign_collapse.db -1 C1,C2 -2 T1,T2 -f ref.fa"""))
+                nanocompore sampcomp -i work_dir -f ref.fa"""))
     parser_sc.set_defaults(func=sampcomp_main)
 
     parser_sc_in = parser_sc.add_argument_group('Input options')
@@ -102,7 +102,7 @@ def main():
     parser_sc_filter.add_argument("--min_coverage", type=int, default=30,
         help="Minimum coverage required in each condition to perform the comparison (default: %(default)s)")
     parser_sc_filter.add_argument("--downsample_high_coverage", type=int, default=5000,
-        help="Downsample transcripts with high coverage to this number of reads (default: %(default)s)")
+        help="Downsample transcripts with high coverage to this number of reads. '0' to use all reads. (default: %(default)s)")
     parser_sc_filter.add_argument("--min_ref_length", type=int, default=100,
         help="Minimum length of a reference transcript for inclusion in the analysis (default: %(default)s)")
 
@@ -187,13 +187,15 @@ def main():
     args = parser.parse_args()
 
     # Check if output folder already exists
-    try:
-        mkdir(fn=args.outdir, exist_ok=True)
-    except (NanocomporeError, FileExistsError) as E:
-        raise NanocomporeError(f"Could not create the output folder: {args.outdir}")
-
-    # Set logger
-    log_fn = os.path.join(args.outdir, vars(args)["subcommand"] + ".log")
+    if "outdir" in vars(args): # "eventalign_collapse" and "simreads"
+        try:
+            mkdir(fn=args.outdir, exist_ok=True)
+        except (NanocomporeError, FileExistsError) as E:
+            raise NanocomporeError(f"Could not create the output folder: {args.outdir}")
+        # Set logger
+        log_fn = os.path.join(args.outdir, vars(args)["subcommand"] + ".log")
+    else: # "sampcomp"
+        log_fn = os.path.join(args.input, vars(args)["subcommand"] + ".log")
     set_logger(args.log_level, log_fn=log_fn)
 
     # Call relevant subfunction
@@ -279,7 +281,7 @@ def sampcomp_main(args):
         thresholds["gmm_pvalue" + suffix] = args.pvalue_threshold
     if univar_test:
         thresholds["intensity_pvalue" + suffix] = args.pvalue_threshold
-        thresholds["dwell_pvalue" + suffix] = args.pvalue_threshold
+        thresholds["dwelltime_pvalue" + suffix] = args.pvalue_threshold
 
     # Init SampComp
     s = SampComp(input_dir = args.input,
