@@ -304,7 +304,7 @@ class Eventalign_collapse ():
                         read.add_event(event)
                         n_events += 1
                     # If at least one valid event found collect results at read and kmer level
-                    if read.n_events > 1:
+                    if read.n_events > 0:
                         n_reads += 1
                         n_kmers += len(read.kmer_l)
                         n_signals += read.n_signals
@@ -381,11 +381,12 @@ class Read:
     def get_kmer_stats(self):
         result = {}
         intensities = [kmer.intensity for kmer in self.kmer_l]
-        result["intensity_mean"] = mean = statistics.fmean(intensities)
-        result["intensity_sd"] = statistics.stdev(intensities, mean)
+        ## "statistics.stdev" fails for length one arguments, so use "np.std" instead:
+        result["intensity_mean"] = statistics.fmean(intensities)
+        result["intensity_sd"] = np.std(intensities)
         dwelltimes_log10 = [math.log10(kmer.dwell_time) for kmer in self.kmer_l]
-        result["dwelltime_log10_mean"] = mean = statistics.fmean(dwelltimes_log10)
-        result["dwelltime_log10_sd"] = statistics.stdev(dwelltimes_log10, mean)
+        result["dwelltime_log10_mean"] = statistics.fmean(dwelltimes_log10)
+        result["dwelltime_log10_sd"] = np.std(dwelltimes_log10)
         return result
 
 
