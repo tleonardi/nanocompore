@@ -4,22 +4,22 @@
 
 # Standard library imports
 import multiprocessing as mp
-from time import time
-from collections import *
 import traceback
 import os
-import cProfile as profile
+# import cProfile as profile
+import math
 import statistics
+import shutil
+import re
 
 # Third party imports
 from loguru import logger
 import numpy as np
-from tqdm import tqdm
 
 # Local imports
 from nanocompore.common import *
 from nanocompore.SuperParser import SuperParser
-from nanocompore.DataStore import DataStore
+from nanocompore.DataStore import DataStore_master, DataStore_transcript, DBCreateMode
 
 # Disable multithreading for MKL and openBlas
 os.environ["MKL_NUM_THREADS"] = "1"
@@ -28,40 +28,41 @@ os.environ["NUMEXPR_NUM_THREADS"] = "1"
 os.environ["OMP_NUM_THREADS"] = "1"
 os.environ['OPENBLAS_NUM_THREADS'] = '1'
 
-log_level_dict = {"debug":"DEBUG", "info":"INFO", "warning":"WARNING"}
-#logger.remove()
-
 #~~~~~~~~~~~~~~MAIN CLASS~~~~~~~~~~~~~~#
 class Eventalign_collapse ():
 
-    def __init__ (self,
-        eventalign_fn:str,
-        sample_name:str,
-        outpath:str="./",
-        outprefix:str="out",
-        overwrite:bool = False,
-        n_lines:int=None,
-        nthreads:int = 3,
-        progress:bool = False):
+    def __init__(self,
+                 sample_dict:dict,
+                 output_dir:str,
+                 single_sample:bool = False,
+                 master_db:str = "nanocompore.db",
+                 output_subdirs:int = 100,
+                 overwrite:bool = False,
+                 n_lines:int = None,
+                 transcript_filter = [],
+                 invert_filter = False,
+                 nthreads:int = 3):
         """
         Collapse the nanopolish eventalign events at kmer level
-        * eventalign_fn
-            Path to a nanopolish eventalign tsv output file, or a list of file, or a regex (can be gzipped)
-        * sample_name
-            The name of the sample being processed
-        * outpath
-            Path to the output folder (will be created if it does exist yet)
-        * outprefix
-            text outprefix for all the files generated
+        * sample_dict
+            Dictionary with input file and sample information:
+            {condition1: [(file1, sample1), (file2, sample2), ...], condition2: [...]}
+        * output_dir
+            Path to the output directory
+        * single_sample
+            Does 'sample_dict' only contain one of the samples for later analysis?
+        * output_subdirs
+            Distribute output files into this many subdirectories
         * overwrite
-            If the output directory already exists, the standard behaviour is to raise an error to prevent overwriting existing data
-            This option ignore the error and overwrite data if they have the same outpath and outprefix.
+            Overwrite an existing output file?
         * n_lines
             Maximum number of read to parse.
+        * transcript_filter
+            List of regular expressions to search against transcript names. Only data from matching (default) or non-matching (with 'invert_filter') transcripts will be converted. If empty, no filtering is performed.
+        * invert_filter
+            Use 'transcript_filter' to exclude rather than include specific transcripts?
         * nthreads
-            Number of threads (two are used for reading and writing, all the others for parallel processing).
-        * progress
-            Display a progress bar during execution
+            Number of threads (need at least one each for the main process, reading, and writing).
         """
         logger.info("Checking and initialising Eventalign_collapse")
 
@@ -70,267 +71,263 @@ class Eventalign_collapse ():
 
         # Check threads number
         if nthreads < 3:
-            raise NanocomporeError("Minimal required number of threads >=3")
+            raise NanocomporeError("Minimal required number of threads is 3")
+
+        # Check sample information
+        self._sample_dict = sample_dict
+        self.__check_sample_dict(single_sample)
 
         # Save args to self values
-        self.__sample_name = sample_name
-        self.__outpath = outpath
-        self.__outprefix = outprefix
-        self.__eventalign_fn = eventalign_fn
-        self.__n_lines = n_lines
-        self.__nthreads = nthreads - 2 # subtract 1 for reading and 1 for writing
-        self.__progress = progress
+        self._output_dir = output_dir
+        self._master_db_path = os.path.join(output_dir, master_db)
+        self._output_subdirs = max(1, output_subdirs)
+        self._overwrite = overwrite
+        self._n_lines = n_lines
+        self._transcript_filter = transcript_filter
+        self._invert_filter = invert_filter
+        self._nthreads = nthreads - 1 # subtract 1 for main process
+
+        if transcript_filter: # combine regexes into one
+            self._filter_regexp = re.compile("|".join(transcript_filter))
 
         # Input file field selection typing and renaming
-        self.__select_colnames = ["contig", "read_name", "position", "reference_kmer", "model_kmer", "event_length", "samples"]
-        self.__change_colnames = {"contig":"ref_id" ,"position":"ref_pos", "read_name":"read_id", "samples":"sample_list", "event_length":"dwell_time"}
-        self.__cast_colnames = {"ref_pos":int, "dwell_time":np.float32, "sample_list":lambda x: [float(i) for i in x.split(",")]}
+        self._select_colnames = ["contig", "read_name", "position", "reference_kmer", "model_kmer", "event_length", "samples"]
+        self._change_colnames = {"contig": "ref_id", "position": "ref_pos", "read_name": "read_id", "samples": "sample_list", "event_length": "dwell_time"}
+        self._cast_colnames = {"ref_pos": int, "dwell_time": np.float32, "sample_list": lambda x: [float(i) for i in x.split(",")]}
+
+
+    def __check_sample_dict(self, single_sample=False):
+        try:
+            if single_sample:
+                # expected format:
+                # {condition: [(file, sample)]}
+                # 'file' may be 0, indicating input via stdin
+                if len(self._sample_dict) != 1:
+                    raise NanocomporeError(f"Expected one experimental condition, found {len(self._sample_dict)}")
+                values = list(self._sample_dict.values())[0]
+                if len(values) != 1:
+                    raise NanocomporeError(f"Expected one input file/sample only, found {len(values)}")
+                if (values[0][0] != 0) and not os.path.isfile(values[0][0]):
+                    raise NanocomporeError(f"Input file not found: {values[0][0]}")
+                if not values[0][1]:
+                    raise NanocomporeError("Sample label must not be empty")
+
+            else:
+                # expected format:
+                # {condition1: [(file1, sample1), (file2, sample2), ...], condition2: [...]}
+                conditions = list(self._sample_dict.keys())
+                if len(conditions) != 2:
+                    raise NanocomporeError(f"Expected two experimental conditions, found {len(conditions)}: {', '.join(conditions)}")
+                samples = set([])
+                paths = set([])
+                for condition, sample_list in self._sample_dict.items():
+                    if len(sample_list) == 0:
+                        raise NanocomporeError(f"No input file/sample information for condition '{condition}'")
+                    for path, sample in sample_list:
+                        if sample in samples:
+                            raise NanocomporeError(f"Sample labels must be unique. Found duplicate label: {sample}.")
+                        samples.add(sample)
+                        if not os.path.isfile(path):
+                            raise NanocomporeError(f"Input file not found: {path}")
+                        if path in paths:
+                            raise NanocomporeError(f"Found duplicate input file: {path}.")
+                        paths.add(path)
+        except:
+            logger.error("Input file/sample information failed to validate")
+            raise
+
 
     def __call__(self):
         """
         Run the analysis
         """
-        logger.info("Starting data processing")
-        # Init Multiprocessing variables
-        in_q = mp.Queue(maxsize = 100)
-        out_q = mp.Queue(maxsize = 100)
-        error_q = mp.Queue()
+        logger.info("Creating output subdirectories")
+        for i in range(self._output_subdirs):
+            subdir = os.path.normpath(os.path.join(self._output_dir, str(i)))
+            if self._overwrite and os.path.exists(subdir):
+                # TODO: what if 'subdir' is a file, not a directory?
+                shutil.rmtree(subdir)
+            os.makedirs(subdir, exist_ok=True)
+
+        in_q = mp.Queue() # queue for input files
+        out_qs = [] # queues for reads (stratified by transcript accession)
+        error_q = mp.Queue() # queue for errors
+        master_db_lock = mp.Lock() # lock for write access to master DB
+
+        logger.info("Creating master database, storing sample information and parameters")
+        db_create_mode = DBCreateMode.OVERWRITE if self._overwrite else DBCreateMode.CREATE_MAYBE
+        n_samples = 0
+        with DataStore_master(self._master_db_path, db_create_mode) as db:
+            for condition, sample_list in self._sample_dict.items():
+                for path, sample in sample_list:
+                    sample_id = db.store_sample(sample, path, condition)
+                    in_q.put((sample_id, path))
+                    n_samples += 1
+            db.store_parameters("EC", output_subdirs=self._output_subdirs, n_lines=self._n_lines,
+                                transcript_filter=self._transcript_filter, invert_filter=self._invert_filter)
 
         # Define processes
         ps_list = []
-        ps_list.append (mp.Process (target=self.__split_reads, args=(in_q, error_q)))
-        for i in range (self.__nthreads):
-            ps_list.append (mp.Process (target=self.__process_read, args=(in_q, out_q, error_q)))
-        ps_list.append (mp.Process (target=self.__write_output_to_db, args=(out_q, error_q)))
+        # Do we have enough threads to allocate one to each input file?
+        if self._nthreads < n_samples * 2: # no - assign half the threads to reading/writing
+            self._n_readers = self._nthreads // 2
+        else: # yes - use one reader thread per input, the rest writers
+            self._n_readers = n_samples
+        for i in range(self._n_readers):
+            in_q.put(None) # one "poison pill" to be consumed by each reader thread
+            ps_list.append(mp.Process(target=self.__split_input, args=(in_q, out_qs, error_q, master_db_lock)))
+        self._n_writers = self._nthreads - self._n_readers
+        logger.info(f"Using {self._n_readers} reader and {self._n_writers} writer processes")
+        # Each writer thread is associated with a specific queue (to avoid access conflicts on transcript DBs):
+        for i in range(self._n_writers):
+            out_qs.append(mp.Queue(maxsize=100)) # TODO: increase 'maxsize'?
+            ps_list.append(mp.Process(target=self.__process_reads, args=(out_qs[i], error_q)))
+        q_list = [in_q, error_q] + out_qs
 
-
-        # TODO: Check that sample_name does not exist already in DB
-
-        # Start processes and monitor error queue
+        logger.info("Starting data processing")
         try:
             # Start all processes
             for ps in ps_list:
                 ps.start()
-
             # Monitor error queue
-            for tb in iter(error_q.get, None):
-                logger.error("Error caught from error_q")
-                raise NanocomporeError(tb)
-
+            for _ in range(self._n_writers):
+                for trace in iter(error_q.get, None):
+                    logger.error("Error caught from error_q")
+                    raise NanocomporeError(trace)
             # Soft processes and queues stopping
             for ps in ps_list:
                 ps.join()
-            for q in (in_q, out_q, error_q):
+            for q in q_list:
                 q.close()
 
         # Catch error, kill all processed and reraise error
         except Exception as E:
-            logger.error("An error occured. Killing all processes and closing queues\n")
+            logger.error("An error occured. Killing all processes and closing queues")
             try:
                 for ps in ps_list:
                     ps.terminate()
-                for q in (in_q, out_q, error_q):
+                for q in q_list:
                     q.close()
             except:
-                logger.error("An error occured while trying to kill processes\n")
+                logger.error("An error occured while trying to kill processes")
             raise E
+        logger.info("Processing finished successfully")
+
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~PRIVATE METHODS~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
-    def __split_reads (self, in_q, error_q):
-        """
-        Mono-threaded reader
-        """
-        logger.debug("Start reading input file(s)")
+    def __handle_transcript(self, accession, tx_info, n_qs, master_db_lock):
+        """Deal with a transcript accession found by '__split_input'"""
+        if accession not in tx_info:
+            if self._transcript_filter:
+                match = self._filter_regexp.search(accession)
+                if ((self._invert_filter and match) or # accession is excluded, or...
+                    (not self._invert_filter and not match)): # ...accession is not included
+                    tx_info[accession] = False
+                    return False
+            # Calculate two bin numbers derived from the hash:
+            q_index, subdir = get_hash_bin(accession, (n_qs, self._output_subdirs))
+            # Add transcript to master DB (or get ID if it already exists):
+            with master_db_lock, DataStore_master(self._master_db_path) as db:
+                tx_id = db.store_transcript(accession, str(subdir))
+            logger.debug(f"Added transcript to DB: {accession}")
+            tx_info[accession] = (tx_id, q_index, subdir)
+        return tx_info[accession]
 
-        n_reads = n_events = 0
 
+    def __split_input(self, in_q, out_qs, error_q, master_db_lock):
+        """Split input data into reads and enqueue them for processing/output"""
+        tx_info = {} # information on transcripts (keyed by accession)
         try:
-            # Open input file with superParser
-            with SuperParser(
-                fn = self.__eventalign_fn,
-                select_colnames = self.__select_colnames,
-                cast_colnames = self.__cast_colnames,
-                change_colnames = self.__change_colnames,
-                n_lines=self.__n_lines) as sp:
-
-                for l in sp:
-                    n_events+=1
-
-                    # First event exception
-                    if n_events==1:
-                        cur_ref_id = l["ref_id"]
-                        cur_read_id = l["read_id"]
-                        event_l = [l]
-
-                    # Same read/ref group = just append to current event group
-                    elif l["ref_id"] == cur_ref_id and l["read_id"] == cur_read_id:
-                        event_l.append(l)
-
-                    # If new read/ref group detected = enqueue previous event group and start new one
-                    else:
-                        n_reads+=1
-                        in_q.put(event_l)
-
-                        cur_ref_id = l["ref_id"]
-                        cur_read_id = l["read_id"]
-                        event_l = [l]
-
-                # Last event line exception
-                in_q.put(event_l)
-                n_reads+=1
+            for sample_id, path in iter(in_q.get, None):
+                n_reads = n_events = 0
+                if path == 0:
+                    logger.info("Reading input from stdin")
+                else:
+                    logger.info(f"Reading input file: {path}")
+                # TODO: replace SuperParser with csv.DictReader for efficiency?
+                with SuperParser(path,
+                                 select_colnames=self._select_colnames,
+                                 cast_colnames=self._cast_colnames,
+                                 change_colnames=self._change_colnames,
+                                 n_lines=self._n_lines) as sp:
+                    prev_read_id = None
+                    events = [] # if transcript doesn't pass accession filter, this stays empty
+                    for line in sp:
+                        cur_read_id = line["read_id"]
+                        if cur_read_id == prev_read_id:
+                            # Same read - append to current event group (unless transcript is filtered out)
+                            if events: # transcript has passed filter
+                                events.append(line)
+                                n_events += 1
+                        else:
+                            # New read - enqueue previous event group (if any) and start new one
+                            if events:
+                                out_qs[q_index].put((sample_id, tx_id, subdir, events))
+                                n_reads += 1
+                            prev_read_id = cur_read_id
+                            result = self.__handle_transcript(line["ref_id"], tx_info,
+                                                              len(out_qs), master_db_lock)
+                            if result: # transcript passed filter (if any)
+                                tx_id, q_index, subdir = result
+                                events = [line]
+                            else:
+                                events = []
+                    # Enqueue final event group
+                    if events:
+                        out_qs[q_index].put((sample_id, tx_id, subdir, events))
+                        n_reads += 1
+                source = f"input file '{path}'" if path != 0 else "stdin"
+                logger.info(f"Parsed {n_reads} reads, {n_events} events from {source}")
 
         # Manage exceptions and add error trackback to error queue
         except Exception:
-            logger.debug("Error in Reader")
-            error_q.put (NanocomporeError(traceback.format_exc()))
-
+            logger.debug("Error in reader process")
+            error_q.put(NanocomporeError(traceback.format_exc()))
         # Deal poison pills
         finally:
-            for i in range (self.__nthreads):
-                in_q.put(None)
-            logger.debug("Parsed Reads:{} Events:{}".format(n_reads, n_events))
+            for out_q in out_qs:
+                out_q.put(None)
 
-    def __process_read (self, in_q, out_q, error_q):
-        """
-        Multi-threaded workers collapsing events at kmer level
-        """
+
+    def __process_reads(self, out_q, error_q):
+        """Process reads from output queue and write to transcript database"""
         logger.debug("Starting processing reads")
         try:
             n_reads = n_kmers = n_events = n_signals = 0
-
-            # Take on event list corresponding to one read from the list
-            for events_l in iter(in_q.get, None):
-
-                # Create an empty Read object and fill it with event lines
-                # events aggregation at kmer level is managed withon the object
-                read = Read (read_id=events_l[0]["read_id"], ref_id=events_l[0]["ref_id"], sample_name=self.__sample_name)
-                for event_d in events_l:
-                    read.add_event(event_d)
-                    n_events+=1
-
-                # If at least one valid event found collect results at read and kmer level
-                if read.n_events > 1:
-                    read_res_d = read.get_read_results()
-                    kmer_res_l = read.get_kmer_results()
-                    out_q.put(read)
-                    n_reads+=1
-                    n_kmers+= len(kmer_res_l)
-                    n_signals+= read.n_signals
-
+            for _ in range(self._n_readers): # every reader is going to put items on the queue
+                # Take one event list corresponding to one read from the list
+                for sample_id, tx_id, subdir, events in iter(out_q.get, None):
+                    # Create an empty Read object and fill it with event lines
+                    # events aggregation at kmer level is managed within the object
+                    read = Read(read_id=events[0]["read_id"], ref_id=events[0]["ref_id"], sample_name=sample_id)
+                    for event in events:
+                        read.add_event(event)
+                        n_events += 1
+                    # If at least one valid event found collect results at read and kmer level
+                    if read.n_events > 0:
+                        n_reads += 1
+                        n_kmers += len(read.kmer_l)
+                        n_signals += read.n_signals
+                        # Write read to transcript database:
+                        db_path = os.path.join(self._output_dir, str(subdir), read.ref_id + ".db")
+                        with DataStore_transcript(db_path, read.ref_id, tx_id, DBCreateMode.CREATE_MAYBE) as db:
+                            db.store_read(read, sample_id)
         # Manage exceptions and add error trackback to error queue
         except Exception:
-            logger.error("Error in Worker.")
-            error_q.put (NanocomporeError(traceback.format_exc()))
-
+            logger.error("Error in writer process.")
+            error_q.put(NanocomporeError(traceback.format_exc()))
         # Deal poison pill
         finally:
-            logger.debug("Processed Reads:{} Kmers:{} Events:{} Signals:{}".format(n_reads, n_kmers, n_events, n_signals))
-            out_q.put(None)
-
-    def __write_output_to_db (self, out_q, error_q):
-        """
-        Mono-threaded Writer
-        """
-        logger.debug("Start writing output to DB")
-
-        pr = profile.Profile()
-        pr.enable()
-        n_reads = 0
-        try:
-            with DataStore(db_path=os.path.join(self.__outpath, self.__outprefix+"nanocompore.db")) as datastore, tqdm (unit=" reads") as pbar:
-                # Iterate over out queue until nthread poison pills are found
-                for _ in range (self.__nthreads):
-                    for read in iter (out_q.get, None):
-                        n_reads+=1
-                        datastore.store_read(read)
-                        pbar.update(1)
-        except Exception:
-            logger.error("Error adding read to DB")
-            error_q.put (NanocomporeError(traceback.format_exc()))
-
-        finally:
-            logger.info ("Output reads written:{}".format(n_reads))
-            # Kill error queue with poison pill
+            logger.debug(f"Processed {n_reads} reads, {n_kmers} kmers, {n_events} events, {n_signals} signals")
             error_q.put(None)
-            pr.disable()
-            pr.dump_stats("prof")
 
-    def __write_output (self, out_q, error_q):
-        """
-        Mono-threaded Writer
-        """
-        logger.debug("Start writing output files")
-
-        byte_offset = n_reads = n_kmers = 0
-
-        # Init variables for index files
-        idx_fn = os.path.join(self.__outpath, self.__outprefix+"_eventalign_collapse.tsv.idx")
-        data_fn = os.path.join(self.__outpath, self.__outprefix+"_eventalign_collapse.tsv")
-
-        try:
-            # Open output files and tqdm progress bar
-            with open (data_fn, "w") as data_fp, open (idx_fn, "w") as idx_fp, tqdm (unit=" reads", disable=not self.__progress) as pbar:
-
-                # Iterate over out queue until nthread poison pills are found
-                for _ in range (self.__nthreads):
-                    for read in iter (out_q.get, None):
-                        read_res_d = read.get_read_results()
-                        kmer_res_l = read.get_kmer_results()
-                        n_reads+=1
-
-                        # Define file header from first read and first kmer
-                        if byte_offset == 0:
-                            idx_header_list = list(read_res_d.keys())+["byte_offset","byte_len"]
-                            idx_header_str = "\t".join(idx_header_list)
-                            data_header_list = list(kmer_res_l[0].keys())
-                            data_header_str = "\t".join(data_header_list)
-
-                            # Write index file header
-                            idx_fp.write ("{}\n".format(idx_header_str))
-
-                        # Write data file header
-                        byte_len = 0
-                        header_str = "#{}\t{}\n{}\n".format(read_res_d["read_id"], read_res_d["ref_id"], data_header_str)
-                        data_fp.write(header_str)
-                        byte_len+=len(header_str)
-
-                        # Write kmer data matching data field order
-                        for kmer in kmer_res_l:
-                            n_kmers+=1
-                            data_str = "\t".join([str(kmer[f]) for f in data_header_list])+"\n"
-                            data_fp.write(data_str)
-                            byte_len+=len(data_str)
-
-                        # Add byte
-                        read_res_d["byte_offset"] = byte_offset
-                        read_res_d["byte_len"] = byte_len-1
-                        idx_str = "\t".join([str(read_res_d[f]) for f in idx_header_list])
-                        idx_fp.write("{}\n".format(idx_str))
-
-                        # Update pbar
-                        byte_offset+=byte_len
-                        pbar.update(1)
-
-                # Flag last line
-                data_fp.write ("#\n")
-
-        # Manage exceptions and add error trackback to error queue
-        except Exception:
-            logger.error("Error in Writer")
-            error_q.put (NanocomporeError(traceback.format_exc()))
-
-        finally:
-            logger.debug("Written Reads:{} Kmers:{}".format(n_reads, n_kmers))
-            logger.info ("Output reads written:{}".format(n_reads))
-            # Kill error queue with poison pill
-            error_q.put(None)
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~HELPER CLASSES~~~~~~~~~~~~~~~~~~~~~~~~~~#
 
-class Read ():
+class Read:
     """Helper class representing a single read"""
 
-    def __init__ (self, read_id, ref_id, sample_name):
+    def __init__(self, read_id, ref_id, sample_name):
         self.read_id = read_id
         self.ref_id = ref_id
         self.sample_name = sample_name
@@ -353,55 +350,47 @@ class Read ():
             s+="\t{}: {}\n".format(status, count)
         return s
 
-    def add_event (self, event_d):
-        self.n_events+=1
-        self.n_signals+=len(event_d["sample_list"])
-        self.dwell_time+=event_d["dwell_time"]
-
+    def add_event(self, event_d):
+        self.n_events += 1
+        self.n_signals += len(event_d["sample_list"])
+        self.dwell_time += event_d["dwell_time"]
         # First event
         if not self.ref_end:
             self.ref_start = event_d["ref_pos"]
             self.ref_end = event_d["ref_pos"]
-
         # Position offset = Move to next position
         if event_d["ref_pos"] > self.ref_end:
             self.kmer_l.append(Kmer())
             self.ref_end = event_d["ref_pos"]
             self.ref_end = event_d["ref_pos"]
-
         # Update current kmer
         self.kmer_l[-1].add_event(event_d)
 
     @property
-    def kmers_status (self):
+    def kmers_status(self):
         d = OrderedDict()
-        d["kmers"] = self.ref_end-self.ref_start+1
+        d["kmers"] = self.ref_end - self.ref_start + 1
         d["missing_kmers"] = d["kmers"] - len(self.kmer_l)
-        d["NNNNN_kmers"]=0
-        d["mismatch_kmers"]=0
-        d["valid_kmers"]=0
+        d["NNNNN_kmers"] = 0
+        d["mismatch_kmers"] = 0
+        d["valid_kmers"] = 0
         for k in self.kmer_l:
-            d[k.status+"_kmers"]+=1
+            d[k.status + "_kmers"] += 1
         return d
 
-    def get_read_results (self):
-        d = OrderedDict()
-        d["ref_id"] = self.ref_id
-        d["ref_start"] = self.ref_start
-        d["ref_end"] = self.ref_end
-        d["read_id"] = self.read_id
-        d["num_events"] = self.n_events
-        d["num_signals"] = self.n_signals
-        d["dwell_time"] = self.dwell_time
-        for status, count in self.kmers_status.items():
-            d[status] = count
-        return d
+    def get_kmer_stats(self):
+        result = {}
+        intensities = [kmer.intensity for kmer in self.kmer_l]
+        ## "statistics.stdev" fails for length one arguments, so use "np.std" instead:
+        result["intensity_mean"] = statistics.fmean(intensities)
+        result["intensity_sd"] = np.std(intensities)
+        dwelltimes_log10 = [math.log10(kmer.dwell_time) for kmer in self.kmer_l]
+        result["dwelltime_log10_mean"] = statistics.fmean(dwelltimes_log10)
+        result["dwelltime_log10_sd"] = np.std(dwelltimes_log10)
+        return result
 
-    def get_kmer_results (self):
-        l = [kmer.get_results() for kmer in self.kmer_l]
-        return l
 
-class Kmer ():
+class Kmer:
     """Helper class representing a single kmer"""
 
     def __init__ (self):
@@ -413,6 +402,7 @@ class Kmer ():
         self.NNNNN_dwell_time = 0.0
         self.mismatch_dwell_time = 0.0
         self.sample_list = []
+        self.have_intensity = False # have we calculated an up-to-date median intensity?
 
     def __repr__(self):
         s = "Kmer instance\n"
@@ -430,19 +420,19 @@ class Kmer ():
         if not self.ref_pos:
             self.ref_pos = event_d["ref_pos"]
             self.ref_kmer = event_d["reference_kmer"]
-
         # Update kmer values
-        self.num_events+=1
-        self.num_signals+=len(event_d["sample_list"])
-        self.dwell_time+=event_d["dwell_time"]
+        self.num_events += 1
+        self.num_signals += len(event_d["sample_list"])
+        self.dwell_time += event_d["dwell_time"]
         if event_d["model_kmer"] == "NNNNN":
-            self.NNNNN_dwell_time+=event_d["dwell_time"]
+            self.NNNNN_dwell_time += event_d["dwell_time"]
         elif event_d["model_kmer"] != self.ref_kmer:
-            self.mismatch_dwell_time+=event_d["dwell_time"]
+            self.mismatch_dwell_time += event_d["dwell_time"]
         self.sample_list.extend(event_d["sample_list"])
+        self.have_intensity = False
 
     @property
-    def status (self):
+    def status(self):
         """Define kmer status depending on mismatching or NNNNN events"""
         # If no NNNNN nor mismatch events then the kmer the purely valid
         if not self.NNNNN_dwell_time and not self.mismatch_dwell_time:
@@ -452,6 +442,13 @@ class Kmer ():
             return "NNNNN"
         else:
             return "mismatch"
+
+    @property
+    def intensity(self):
+        if not self.have_intensity:
+            self.intensity_ = statistics.median(self.sample_list)
+            self.have_intensity = True
+        return self.intensity_
 
     def get_results(self):
         d = OrderedDict()
@@ -463,8 +460,6 @@ class Kmer ():
         d["NNNNN_dwell_time"] = self.NNNNN_dwell_time
         d["mismatch_dwell_time"] = self.mismatch_dwell_time
         d["status"] = self.status
-        d["median"] = statistics.median(self.sample_list)
-        d["mad"] = statistics.median([ abs( i-d["median"] ) for i in self.sample_list])
-
+        d["median"] = self.intensity
+        d["mad"] = statistics.median([abs(i - d["median"]) for i in self.sample_list])
         return d
-
