@@ -3,6 +3,7 @@
 #~~~~~~~~~~~~~~IMPORTS~~~~~~~~~~~~~~#
 # Std lib
 from collections import *
+import collections
 import shelve
 import multiprocessing as mp
 import traceback
@@ -113,17 +114,6 @@ class SampComp(object):
         # Save init options in dict for later
         log_init_state(loc=locals())
 
-        # If eventalign_fn_dict is not a dict try to load a YAML file instead
-        if type(eventalign_fn_dict) == str:
-            logger.debug("Parsing YAML file")
-            if not access_file(eventalign_fn_dict):
-                raise NanocomporeError("{} is not a valid file".format(eventalign_fn_dict))
-            with open(eventalign_fn_dict, "r") as fp:
-                eventalign_fn_dict = yaml.load(fp, Loader=yaml.SafeLoader)
-
-        # Check eventalign_dict file paths and labels
-        eventalign_fn_dict = self.__check_eventalign_fn_dict(eventalign_fn_dict)
-        logger.debug(eventalign_fn_dict)
 
         # Check if fasta and bed files exist
         if not access_file(fasta_fn):
@@ -132,7 +122,7 @@ class SampComp(object):
             raise NanocomporeError("{} is not a valid BED file".format(bed_fn))
 
         # Check threads number
-        if nthreads < 3:
+        if nthreads < 2:
             raise NanocomporeError("The minimum number of threads is 3")
 
         # Parse comparison methods
@@ -152,119 +142,114 @@ class SampComp(object):
                 else:
                     raise NanocomporeError("Invalid comparison method {}".format(method))
 
-        if not whitelist:
-            whitelist = Whitelist(
-                eventalign_fn_dict = eventalign_fn_dict,
-                fasta_fn = fasta_fn,
-                min_coverage = min_coverage,
-                min_ref_length = min_ref_length,
-                downsample_high_coverage = downsample_high_coverage,
-                max_invalid_kmers_freq = max_invalid_kmers_freq,
-                select_ref_id = select_ref_id,
-                exclude_ref_id = exclude_ref_id)
-        elif not isinstance(whitelist, Whitelist):
-            raise NanocomporeError("Whitelist is not valid")
 
-        # Set private args from whitelist args
-        self.__min_coverage = whitelist._Whitelist__min_coverage
-        self.__downsample_high_coverage = whitelist._Whitelist__downsample_high_coverage
-        self.__max_invalid_kmers_freq = whitelist._Whitelist__max_invalid_kmers_freq
+        # Set private args
+        self.__reference_samples = reference_samples
+        self.__test_samples = test_samples
 
-        # Save private args
-        self.__eventalign_fn_dict = eventalign_fn_dict
-        self.__db_fn = os.path.join(outpath, outprefix+"SampComp.db")
-        self.__fasta_fn = fasta_fn
+        self.__min_coverage = min_coverage
+        self.__max_coverage = max_coverage
+        self.__min_ref_length = min_ref_length
+        self.__reference_fasta = reference
         self.__bed_fn = bed_fn
-        self.__whitelist = whitelist
         self.__comparison_methods = comparison_methods
         self.__logit = logit
         self.__anova = anova
         self.__allow_warnings = allow_warnings
         self.__sequence_context = sequence_context
         self.__sequence_context_weights = sequence_context_weights
-        self.__nthreads = nthreads - 2
+        self.__nthreads = nthreads - 1
         self.__progress = progress
 
+        self.resultsDBmanager = ResultsDBmanager(outpath)
+
         # Get number of samples
-        n = 0
-        for sample_dict in self.__eventalign_fn_dict.values():
-            for sample_lab in sample_dict.keys():
-                n+=1
-        self.__n_samples = n
+        self.__n_samples = len(self.__reference_samples) + len(self.__test_samples)
 
     def __call__(self):
         """
         Run the analysis
         """
         logger.info("Starting data processing")
-        # Init Multiprocessing variables
-        in_q = mp.Queue(maxsize = 100)
-        out_q = mp.Queue(maxsize = 100)
-        error_q = mp.Queue()
+
+        valid_transcripts = self.__getValidTranscripts()
+        in_q = valid_transcripts
+        out_q = list()
+        error_q = list()
 
         # Define processes
-        ps_list = []
-        ps_list.append(mp.Process(target=self.__list_refid, args=(in_q, error_q)))
-        for i in range(self.__nthreads):
-            ps_list.append(mp.Process(target=self.__process_references, args=(in_q, out_q, error_q)))
-        ps_list.append(mp.Process(target=self.__write_output, args=(out_q, error_q)))
+        processes = list()
+        for (i in range(self.__nthreads)):
+            in_q.put(null)
+            processes.append(mp.Process(target=self.__processTx, args=(in_q, out_q, error_q)))
 
-        # Start processes and monitor error queue
+        writerProcess = mp.Process(target=self.__writeResults, args=(out_q, error_q))
+
         try:
-            # Start all processes
-            for ps in ps_list:
-                ps.start()
+            writerProcess.start()
+
+            for p in processes:
+                p.start()
 
             # Monitor error queue
             for tb in iter(error_q.get, None):
                 logger.trace("Error caught from error_q")
                 raise NanocomporeError(tb)
+            
+            for p in processes:
+                p.join()
 
-            # Soft processes and queues stopping
-            for ps in ps_list:
-                ps.join()
+            out_q.put(null)
+            writerProcess.join()
+
             for q in (in_q, out_q, error_q):
                 q.close()
+            
+            self.__finish()
 
-            # Return database wrapper object
-            return SampCompDB(
-                db_fn=self.__db_fn,
-                fasta_fn=self.__fasta_fn,
-                bed_fn=self.__bed_fn)
-
-        # Catch error, kill all processed and reraise error
         except Exception as E:
             logger.error("An error occured. Killing all processes and closing queues\n")
             try:
-                for ps in ps_list:
+                for ps in processes:
                     ps.terminate()
+                writerProcess.terminate()
                 for q in (in_q, out_q, error_q):
                     q.close()
             except:
                 logger.error("An error occured while trying to kill processes\n")
             raise E
 
+
     #~~~~~~~~~~~~~~PRIVATE MULTIPROCESSING METHOD~~~~~~~~~~~~~~#
-    def __list_refid(self, in_q, error_q):
-        """Add valid refid from whitelist to input queue to dispatch the data among the workers"""
-        n_tx = 0
-        try:
-            for ref_id, ref_dict in self.__whitelist:
-                logger.debug("Adding {} to in_q".format(ref_id))
-                in_q.put((ref_id, ref_dict))
-                n_tx+=1
+    def __processTx(self, in_q, out_q, error_q):
+        while(txid in in_q.poll()):
+            tx_length = self.__transcript2length[txid]
+            transcript = Transcript_Data(txid, self.__reference_samples, self.__test_samples, tx_length)
+            if transcript.enoughTxCoverage(self.__min_coverage):
+                results = self.txComp(transcript)
+                out_q.put(results)
+            out_q.put(null)
 
-        # Manage exceptions and add error trackback to error queue
-        except Exception:
-            logger.debug("Error in Reader")
-            error_q.put(traceback.format_exc())
+    def __writeResults(self, out_q, error_q):
+        self.resultsDBmanager.saveExperimentMetadata()
 
-        # Deal poison pills
-        finally:
-            for i in range (self.__nthreads):
-                in_q.put(None)
-            logger.debug("Parsed transcripts:{}".format(n_tx))
+        while(res = out_q.poll()):
+            self.resultsDBmanager.save(res)
 
+        self.resultsDBmanager.finish()
+
+    def __getValidTranscripts(self):
+        self.__txid2length = collections.defaultdict(int)
+        validTranscripts = []
+
+        for record in SeqIO.parse(self.reference, "fasta"):
+            transcript = record.id
+            if len(record.seq) >= self.min_ref_length:
+                validTranscripts.append(transcript)
+
+        return validTranscripts
+
+    
     def __process_references(self, in_q, out_q, error_q):
         """
         Consume ref_id, agregate intensity and dwell time at position level and
@@ -379,137 +364,3 @@ class SampComp(object):
             logger.debug("Adding poison pill to out_q")
             self.__eventalign_fn_close(fp_dict)
             out_q.put(None)
-
-    def __write_output(self, out_q, error_q):
-        # Get results out of the out queue and write in shelve
-        pvalue_tests = set()
-        ref_id_list = []
-        n_tx = n_pos = 0
-        try:
-            with shelve.open(self.__db_fn, flag='n') as db, tqdm(total=len(self.__whitelist), unit=" Processed References", disable= not self.__progress) as pbar:
-                # Iterate over the counter queue and process items until all poison pills are found
-                for _ in range(self.__nthreads):
-                    for ref_id, ref_pos_list in iter(out_q.get, None):
-                        ref_id_list.append(ref_id)
-                        logger.debug("Writer thread writing %s"%ref_id)
-                        # Get pvalue fields available in analysed data before
-                        for pos_dict in ref_pos_list:
-                            if 'txComp' in pos_dict:
-                                for res in pos_dict['txComp'].keys():
-                                    if "pvalue" in res:
-                                        n_pos+=1
-                                        pvalue_tests.add(res)
-                        # Write results in a shelve db
-                        db [ref_id] = ref_pos_list
-                        pbar.update(1)
-                        n_tx+=1
-
-                # Write list of refid
-                db["__ref_id_list"] = ref_id_list
-
-                # Write metadata
-                db["__metadata"] = {
-                    "package_name": pkg.__version__,
-                    "package_version": pkg.__name__,
-                    "timestamp": str(datetime.datetime.now()),
-                    "comparison_methods": self.__comparison_methods,
-                    "pvalue_tests": sorted(list(pvalue_tests)),
-                    "sequence_context": self.__sequence_context,
-                    "min_coverage": self.__min_coverage,
-                    "n_samples": self.__n_samples}
-
-        # Manage exceptions and add error trackback to error queue
-        except Exception:
-            logger.error("Error in Writer")
-            error_q.put(traceback.format_exc())
-
-        finally:
-            logger.debug("Written Transcripts:{} Valid positions:{}".format(n_tx, n_pos))
-            logger.info ("All Done. Transcripts processed: {}".format(n_tx))
-            # Kill error queue with poison pill
-            error_q.put(None)
-
-    #~~~~~~~~~~~~~~PRIVATE HELPER METHODS~~~~~~~~~~~~~~#
-    def __check_eventalign_fn_dict(self, d):
-        """
-        """
-        # Check that the number of condition is 2 and raise a warning if there are less than 2 replicates per conditions
-        if len(d) != 2:
-            raise NanocomporeError("2 conditions are expected. Found {}".format(len(d)))
-        for cond_lab, sample_dict in d.items():
-            if len(sample_dict) == 1:
-                logger.info("Only 1 replicate found for condition {}".format(cond_lab))
-                logger.info("This is not recommended. The statistics will be calculated with the logit method")
-
-        # Test if files are accessible and verify that there are no duplicated replicate labels
-        duplicated_lab = False
-        rep_lab_list = []
-        rep_fn_list = []
-        for cond_lab, sd in d.items():
-            for rep_lab, fn in sd.items():
-                if not access_file(fn):
-                    raise NanocomporeError("Cannot access eventalign file: {}".format(fn))
-                if fn in rep_fn_list:
-                    raise NanocomporeError("Duplicated eventalign file detected: {}".format(fn))
-                if rep_lab in rep_lab_list:
-                    duplicated_lab = True
-                rep_lab_list.append(rep_lab)
-                rep_fn_list.append(fn)
-        if not duplicated_lab:
-            return d
-
-        # If duplicated replicate labels found, prefix labels with condition name
-        else:
-            logger.debug("Found duplicated labels in the replicate names. Prefixing with condition name")
-            d_clean = OrderedDict()
-            for cond_lab, sd in d.items():
-                d_clean[cond_lab] = OrderedDict()
-                for rep_lab, fn in sd.items():
-                    d_clean[cond_lab]["{}_{}".format(cond_lab, rep_lab)] = fn
-            return d_clean
-
-    def __eventalign_fn_open(self):
-        """
-        """
-        fp_dict = OrderedDict()
-        for cond_lab, sample_dict in self.__eventalign_fn_dict.items():
-            fp_dict[cond_lab] = OrderedDict()
-            for sample_lab, fn in sample_dict.items():
-                fp_dict[cond_lab][sample_lab] = open(fn, "r")
-        return fp_dict
-
-    def __eventalign_fn_close(self, fp_dict):
-        """
-        """
-        for sample_dict in fp_dict.values():
-            for fp in sample_dict.values():
-                fp.close()
-
-    def __make_ref_pos_list(self, ref_id):
-        """
-        """
-        ref_pos_list = []
-        with Fasta(self.__fasta_fn) as fasta:
-            ref_fasta = fasta [ref_id]
-            ref_len = len(ref_fasta)
-            ref_seq = str(ref_fasta)
-
-            for pos in range(ref_len-4):
-                pos_dict = OrderedDict()
-                pos_dict["ref_kmer"] = ref_seq[pos:pos+5]
-                pos_dict["data"] = OrderedDict()
-                for cond_lab, s_dict in self.__eventalign_fn_dict.items():
-                    pos_dict["data"][cond_lab] = OrderedDict()
-                    for sample_lab in s_dict.keys():
-
-                        pos_dict["data"][cond_lab][sample_lab] = {
-                            "intensity":[],
-                            "dwell":[],
-                            "coverage":0,
-                            #logan adding variance
-                            "variance":[],
-                            #logan adding previous dwell
-                            "prev_dwell":[],
-                            "kmers_stats":{"missing":0,"valid":0,"NNNNN":0,"mismatching":0}}
-                ref_pos_list.append(pos_dict)
-        return ref_pos_list
