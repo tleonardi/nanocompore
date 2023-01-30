@@ -60,10 +60,10 @@ class Transcript_Data():
         return sorted(self._valid_positions)
 
     def getReferenceIntensityData(self, pos):
-        return self._getDataFromSamples(self.reference_samples, pos, 'intesnity')
+        return self._getDataFromSamples(self._reference_samples, pos, 'intensity')
 
     def getTestIntensityData(self, pos):
-        return self._getDataFromSamples(self.test_samples, pos, 'intensity')
+        return self._getDataFromSamples(self._test_samples, pos, 'intensity')
 
     def _getDataFromSamples(self, sample_list, pos, data_type):
         data = []
@@ -81,25 +81,29 @@ class Transcript_Data():
                 #log failure and exit
 
             data.append(sample_data)
-        return itertools.chain(data)
+
+        if data_type == 'intensity' or data_type == 'dwell':
+            return np.array(data).ravel()
+        else:
+            return list(itertools.chain(*data))
 
     def getReferenceDwellData(self, pos):
-        return self._getDataFromSamples(self.reference_samples, pos, 'dwell')
+        return self._getDataFromSamples(self._reference_samples, pos, 'dwell')
 
     def getTestDwellData(self, pos):
-        return self._getDataFromSamples(self.test_samples, pos, 'dwell')
+        return self._getDataFromSamples(self._test_samples, pos, 'dwell')
 
     def getReferenceLabelData(self, pos):
-        return self._getDataFromSamples(self.reference_samples, pos, 'label')
+        return self._getDataFromSamples(self._reference_samples, pos, 'label')
 
-    def getTestDwellData(self, pos):
-        return self._getDataFromSamples(self.test_samples, pos, 'label')
+    def getTestLabelData(self, pos):
+        return self._getDataFromSamples(self._test_samples, pos, 'label')
 
     def getReferenceReadIdData(self, pos):
-        return self._getDataFromSamples(self.reference_samples, pos, 'read_ids')
+        return self._getDataFromSamples(self._reference_samples, pos, 'read_ids')
 
     def getTestReadIdData(self, pos):
-        return self._getDataFromSamples(self.test_samples, pos, 'read_ids')
+        return self._getDataFromSamples(self._test_samples, pos, 'read_ids')
 
     def closeAllDbs(self):
         for sample in self._reference_samples + self._test_samples:

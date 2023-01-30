@@ -14,7 +14,7 @@ class Eventalign_DB():
         if self._is_connected():
             self._cursor.close()
             self._connection.close()
-            sys.stderr.write(f"Connection to {self._db_path} is closed\n")
+            sys.stderr.write(f"Closed the connection to {self._db_path}\n")
         else:
             sys.stderr.write(f"{self._db_path} is not connected")
 
@@ -30,7 +30,7 @@ class Eventalign_DB():
         if os.path.isfile(self._db_path):
             self._connection = sql.connect(self._db_path)
             self._cursor = self._connection.cursor()
-            sys.stderr.write(f"connected to {self._db_path}\n")
+            sys.stderr.write(f"Connected to {self._db_path}\n")
         else:
             sys.stderr.write(f"{self._db_path} is not a file")
             sys.exit()

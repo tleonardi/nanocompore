@@ -67,13 +67,13 @@ class Sample():
                 valid_positions.append(pos)
         return set(valid_positions)
 
-    def getReadIds(self, pos):
+    def getKmerReadIds(self, pos):
         return self._data[pos][self._read_ids_key]
 
     def getKmerIntensityData(self, pos):
         return self._data[pos][self._intensities_key]
 
-    def getKmerDwelldata(self, pos):
+    def getKmerDwellData(self, pos):
         return (self._data[pos][self._dwell_times_key])
 
     def getKmerLabelData(self, pos):
