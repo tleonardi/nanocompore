@@ -1,0 +1,265 @@
+import sqlite3 as sql
+from tkinter.messagebox import YES
+from tkinter.tix import COLUMN
+import os, collections, sys
+
+from loguru import logger
+import pandas as pd
+import numpy as np
+
+from common import *
+
+
+class SampComp_DB():
+
+    def __init__ (self, outpath='', prefix='', overwrite=False):
+        if outpath:
+            self._outpath = outpath
+        else:
+            self._outpath = os.getcwd()
+
+        self._prefix = prefix
+        self._db_path = os.path.join(self._outpath, f"{self._prefix}sampComp_sql.db")
+
+        self._enterDB(overwrite)
+
+        self._create_tables()
+
+    ################## Public methods ##################
+    def _checkIfLabelsExist(self, test_results, table=''):
+        if not table:
+            table = self._default_storage_table
+        
+        labels = self._create_test_labels(test_results)
+
+        info = self._cursor.execute(f"SELECT * FROM {table}")
+        columns = [item[0] for item in info.description]
+        try:
+            for label, label_type in labels:
+                if label not in columns:
+                    if label_type == float or label_type == np.float64:
+                        label_type = 'FLOAT'
+                    elif label_type == str:
+                        label_type = 'VARCHR'
+                    elif label_type == int:
+                        label_type = 'INTEGER'
+                    else:
+                        label_type = 'VARCHAR'
+
+                    update_query = f"ALTER TABLE {table} ADD COLUMN {label} {label_type}"
+                    self._connection.execute(update_query)
+                    columns.append(label)
+                    self._connection.commit()
+                    logger.trace(f"Added {label} to {table}")
+        except:
+            raise NanocomporeError(f"Database error: Failed to insert at least one of {labels} new labels into {table} of {self._db_path}")
+
+    def _create_test_labels(self, test_results):
+        labels = set()
+        for pos in test_results:
+            for test in test_results[pos]:
+                test_type = type(test_results[pos][test])
+                labels.add((test, test_type))
+        return labels
+
+    def _makes_values(self, pos=0, tx_id=0, results_dict={}, kmer_table_headers=[]):
+        if results_dict:
+            kmer_seq_id = self._insert_query_and_get_id(query=results_dict['kmer_seq'], table='kmer_seqs', column='sequence')
+            values = [tx_id, pos, kmer_seq_id]
+            for test_type in kmer_table_headers:
+                if results_dict[test_type]:
+                    values.append(results_dict[test_type])
+                else:
+                    values.append(np.nan)
+            return values
+        else:
+            raise NanocomporeError(f"No results for position {pos}")
+    
+    def store_test_results(self, tx_name, test_results, table=''):
+        if self._is_connected():
+            tx_id = self._insert_query_and_get_id(query=tx_name, table='transcripts', column='name')
+            self._checkIfLabelsExist(test_results, table=table)
+
+            kmer_table_headers = self.get_kmer_table_headers()
+            if len(kmer_table_headers) < 1:
+                raise NanocomporeError('DataBaseError: Error collecting kmer_stats column headers')
+            else:
+                table_cols = "transcript_id, pos, kmer_seq_id, {}".format(', '.join(kmer_table_headers))
+            for pos in sorted(test_results):
+                results_dict = test_results[pos]
+                try:
+                    values=self._makes_values(pos, tx_id, results_dict, kmer_table_headers)
+                except:
+                    raise NanocomporeError("DataBaseError: Error gathering values for entry into the database")
+
+                try:
+                    table_values = ', '.join(['?'] * len(values))
+                    insert_querry = f"INSERT INTO kmer_stats ({table_cols}) VALUES ({table_values})"
+                    self._cursor.execute(insert_querry, values)
+                except:
+                    self._exitDB()
+                    raise NanocomporeError(f"Error storing statistics for transcript '{tx_name}', pos {pos}")
+            self._connection.commit()
+            logger.debug(f"Results for {tx_name} added to the database")
+        else:
+            raise NanocomporeError("Not connected to the Database")
+
+    def get_kmer_table_headers(self):
+        table_headers = self._cursor.execute('''SELECT * FROM kmer_stats''')
+        headers = []
+        for x in table_headers.description:
+            header = x[0]
+            if header not in ['id', 'pos', 'transcript_id', 'kmer_seq_id']:
+                headers.append(header)
+        return headers
+
+    def getAllData(self):
+        data_query = self._make_query()
+        data = pd.read_sql(data_query, self._connection)
+
+        return data
+
+    def closeDB(self):
+        self._exitDB()
+
+    
+    ################## Private methods ##################
+    def _enterDB(self, overwrite):
+        if overwrite:
+            if os.path.isfile(self._db_path):
+                os.remove(self._db_path)
+                #sys.stderr.write(f"Removed existing database file '{self._db_path}'\n")
+                logger.debug(f"Removed existing database file '{self._db_path}'")
+            self._connect_to_db()
+
+        else:
+            if os.path.isfile(self._db_path):
+                raise NanocomporeError(f"database file '{self._db_path}' exists and overwrite is False")
+            else:
+                self._connect_to_db()
+
+    def _connect_to_db(self):
+        self._connection = sql.connect(self._db_path)
+        self._connection.execute('PRAGMA foreign_keys = ON')
+        self._cursor = self._connection.cursor()
+        logger.debug(f"Connected to {self._db_path}")
+
+    def _exitDB(self):
+        if self._is_connected():
+            self._cursor.close()
+            self._connection.close()
+            logger.debug(f"Closed the connection to {self._db_path}")
+        else:
+            logger.debug(f"{self._db_path} is not connected")
+
+    def _is_connected(self):
+     try:
+        self._connection.cursor()
+        return True
+     except Exception as ex:
+        return False
+
+    def _create_tables(self):
+        # TODO
+        # "parameters" table:
+        '''
+        table_def_parameters = ["univariate_test VARCHAR CHECK (univariate_test in ('ST', 'MW', 'KS'))",
+                                "gmm_covariance_type VARCHAR",
+                                "gmm_test VARCHAR CHECK (gmm_test in ('anova', 'logit'))"]
+        '''
+
+        # "transcripts" table:
+        table_def_transcripts = ["id INTEGER PRIMARY KEY AUTOINCREMENT",
+                                "name VARCHAR NOT NULL UNIQUE"]
+
+        #TODO
+        # "samples" table:
+        '''
+        table_def_samples = ["id INTEGER PRIMARY KEY AUTOINCREMENT",    
+                             "name VARCHAR NOT NULL UNIQUE",
+                             "db_path VARCHAR NOT NULL"]
+        '''
+
+        #TODO
+        # "kmer_seqs" table:
+        table_def_kmer_seqs = ["id INTEGER PRIMARY KEY AUTOINCREMENT",    
+                               "sequence VARCHAR NOT NULL UNIQUE"]
+
+        #TODO
+        # "whitelist" table:
+        '''
+        table_def_whitelist = ["transcript_id INTEGER NOT NULL",
+                            "sample_id INTEGER NOT NULL UNIQUE",    
+                            "read_id INTEGER NOT NULL", # foreign key for "reads" table in EventAlign DB
+                            "UNIQUE (sample_id, read_id)"
+                            "FOREIGN KEY (transcript_id) REFERENCES transcripts(id)",
+                            "FOREIGN KEY (sample_id) REFERENCES samples(id)"]
+        '''
+
+        # "kmer_stats" table:
+        table_def_kmer_stats = ["id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL",
+                                "transcript_id INTEGER NOT NULL",
+                                "kmer_seq_id INTEGER NOT NULL",
+                                "pos INTEGER NOT NULL",
+                                "UNIQUE (transcript_id, pos)",
+                                "FOREIGN KEY(transcript_id) REFERENCES transcripts(id)",
+                                "FOREIGN KEY(kmer_seq_id) REFERENCES kmer_seqs(id)"]
+
+        table_defs = collections.OrderedDict([('transcripts', table_def_transcripts),
+                                              ('kmer_seqs', table_def_kmer_seqs),
+                                              ('kmer_stats', table_def_kmer_stats)])
+
+        for table in table_defs:
+            table_headers = ', '.join(table_defs[table])
+            construction_querry = f"CREATE TABLE {table} ({table_headers})"
+            try:
+                self._cursor.execute(construction_querry)
+                self._connection.commit()
+                logger.debug(f"created {table}")
+            except:
+                logger.error(f"Error creating {table} table")
+                raise
+        
+        self._index_database()
+        logger.debug("Created all table indexes")
+        self._default_storage_table = 'kmer_stats'
+
+    def _insert_query_and_get_id(self, query='', table='', column=''):
+        if all(map(lambda x: bool(x), [query, table, column])):
+            try:
+                self._cursor.execute(f"SELECT id FROM {table} WHERE {column} = ?", [query])
+                row = self._cursor.fetchone()
+                if row is not None:
+                    return row[0]
+                else:
+                    self._cursor.execute(f"INSERT INTO {table} ({column}) VALUES (?)", [query])
+                    self._connection.commit()
+                    return self._cursor.lastrowid
+            except:
+                raise NanocomporeError(f"Failed to insert/look up {table}, {column}, {query}")
+        else:
+            raise NanocomporeError(f"At least one input was empty query={query}, table={table}, column={column}")
+
+    def _make_query(self):
+        table_cols = ['kmer_stats.pos', 'tx.name', 'kmer_seqs.sequence']
+
+        for header in self.get_kmer_table_headers():
+            table_cols.append(f"kmer_stats.{header}")
+        table_cols = ', '.join(table_cols)
+
+        data_query = f"SELECT {table_cols} FROM kmer_stats kmer_stats LEFT JOIN transcripts tx ON tx.id = kmer_stats.transcript_id LEFT JOIN kmer_seqs kmer_seqs ON kmer_stats.kmer_seq_id = kmer_seqs.id"
+        return data_query
+
+    def _index_database(self):
+        index_queries = []
+        index_queries.append("CREATE INDEX kmer_stats_tx_id_index ON kmer_stats (transcript_id)")
+        index_queries.append("CREATE INDEX kmer_stats_kmer_id_index ON kmer_stats (kmer_seq_id)")
+        index_queries.append("CREATE UNIQUE INDEX transcripts_index ON transcripts (id, name)")
+        index_queries.append("CREATE UNIQUE INDEX kmer_seqs_index ON kmer_seqs (id, sequence)")
+
+        for index_query in index_queries:
+            try:
+                self._cursor.execute(index_query)
+            except:
+                index = index_query.split('ON')[0].split('INDEX')[1].strip()
+                raise NanocomporeError(f"Error creating index {index}")
