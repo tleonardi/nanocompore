@@ -1,16 +1,17 @@
 #!/usr/bin/env python 
 from crypt import methods
-import sqlite3
-import Data_DB_manager as db_mng
-import Eventalign_DB as db
-import SampComp_SQLDB as results_db
-import TranscriptObject
-import Sample
-import TxComp
-import SampComp
-import SampCompResultsmanager as SampCompResultsmanager
-from common import *
+import sqlite3, pytest
+import nanocompore.Data_DB_manager as db_mng
+import nanocompore.Eventalign_DB as db
+import nanocompore.SampComp_SQLDB as results_db
+import nanocompore.TranscriptObject as TranscriptObject
+import nanocompore.Sample as Sample
+import nanocompore.TxComp as TxComp
+import nanocompore.SampComp as SampComp
+import nanocompore.SampCompResultsmanager as SampCompResultsmanager
+from nanocompore.common import *
 import pandas as pd
+import numpy as np
 
 from loguru import logger
 
@@ -32,10 +33,8 @@ tx_length = 852
 max_coverage = float('inf')
 min_coverage = 10
 pos_0 = 1
-test_methods = ['KS']
-#test_methods = ['KS', 'GMM']
+test_methods = ['KS', 'GMM']
 
-#bed_fn = '/hps/nobackup/birney/users/logan/nanocompore_rewrite/sk1_rna_corrected.bed6'
 bed_fn = ''
 fasta_fn = "/nfs/research/birney/users/logan/refs/yeast/demo_yeast.fa"
 
@@ -68,6 +67,27 @@ def two_sample_per_condition():
 
     return test_reference_samples, test_test_samples
 
+def make_transcript_object(samples_per_cond = 1):
+    if samples_per_cond == 2:
+        test_reference_samples, test_test_samples = two_sample_per_condition()
+    else:
+        test_reference_samples, test_test_samples = one_sample_per_condition()
+    
+    test_transcript_data = TranscriptObject.Transcript_Data(test_tx_name, test_reference_samples, test_test_samples, tx_length, max_coverage, min_coverage)
+    test_transcript_data.closeAllDbs()
+    return test_transcript_data
+
+def make_txComp_results(samples_per_cond=1, weights='harmonic', context=0):
+    txComp_object = TxComp.TxComp(num_reference_samples = 1,
+                                  num_test_samples = 1, 
+                                  methods=test_methods,
+                                  sequence_context=context,
+                                  sequence_context_weights=weights)
+
+    test_transcript_data = make_transcript_object(samples_per_cond=samples_per_cond)
+    total_results_dict = txComp_object.txCompare(test_transcript_data)
+    return total_results_dict
+
 def test_db_manager():
       #test that db is properly opened
     for label in test_samples:
@@ -78,38 +98,39 @@ def test_db_manager():
         test_data = test_db.getData(test_tx_name)
 
         #test that the correct number of positions and reads for a particular position are correct
-        print(label)
-        print('number of positions', len(test_data.keys()))
-        print('dwell_times', len(test_data[pos_0]['dwell_times']))
-        print('intensities', len(test_data[pos_0]['intensities']))
+        if label == 'KO1':
+            assert len(test_data.keys()) == 847
+            assert len(test_data[pos_0]['dwell_times']) == 89
+            assert len(test_data[pos_0]['intensities']) == 89
+        elif label == 'WT1':
+            assert len(test_data.keys()) == 847
+            assert len(test_data[pos_0]['dwell_times']) == 95
+            assert len(test_data[pos_0]['intensities']) == 95
 
         #test that the db can be closed
         test_db.closeDB()
-        print()
-
 
 def test_sample_object():
     #test that a sample object is created properly
-    print()
     for sample_label in test_samples:
         cond_label = sample2condition[sample_label]
         db_path = test_samples[sample_label]
 
-        sample = Sample.Sample(cond_label, sample_label, db_path, tx[0], max_coverage)
+        sample = Sample.Sample(cond_label, sample_label, db_path, test_tx_name, max_coverage)
         valid_positions = sample.getValidPositions(min_coverage)
-        print('sample label', sample.sample_label, 'condition label', sample.condition_label)
-        print('valid positions', len(valid_positions))
-        if pos_0 in valid_positions:
-            print(f"pos {pos_0}")
-            print('read_ids', len(sample.getKmerReadIds(pos_0)), sample.getKmerReadIds(pos_0)[0:10])
-            print('intensities', len(sample.getKmerIntensityData(pos_0)), sample.getKmerIntensityData(pos_0)[0:10])
-            print('dwell_times', len(sample.getKmerDwellData(pos_0)), sample.getKmerDwellData(pos_0)[0:10])
-            print('sample_ids', len(sample.getKmerLabelData(pos_0)), sample.getKmerLabelData(pos_0)[0:10])
+
+        assert pos_0 in valid_positions
+        assert len(valid_positions) == 847
+        assert len(sample.getKmerIntensityData(pos_0)) == len(sample.getKmerDwellData(pos_0))
+        assert len(sample.getKmerIntensityData(pos_0)) == len(sample.getKmerLabelData(pos_0))
+
+        if sample.condition_label == 'KO':
+            assert len(sample.getKmerIntensityData(pos_0)) == 89
+        elif sample.condition_label == 'WT':
+            assert len(sample.getKmerIntensityData(pos_0)) == 95
 
         #test that a sample object closes the db properly
         sample.closeDB()
-        print('\n')
-
 
 def test_transcript_object():
     #test that a transcript object functions as expected
@@ -118,80 +139,42 @@ def test_transcript_object():
 
     test_transcript_data = TranscriptObject.Transcript_Data(test_tx_name, test_reference_samples, test_test_samples, tx_length, max_coverage, min_coverage)
 
-    print("transcript object public variables")
-    print(f"transcirpt name: {test_transcript_data.name}")
-    print(f"transcript length: {test_transcript_data.length}")
-    print("transcript object private variables")
-    print(f"reference samples: \n{test_transcript_data._reference_samples}")
-    print(f"test samples: \n{test_transcript_data._test_samples}")
-    print(f"all sample labels: \n{test_transcript_data._all_sample_labels}")
-    print(f"min coverage: {test_transcript_data._min_coverage}")
-    for coverage_level in [min_coverage, 50, 10000]:
-        if test_transcript_data.enoughTxCoverage(coverage_level):
-            print(f'Greater than {coverage_level} reads')
-        else:
-            print(f'Less than {coverage_level} reads')
+    assert test_transcript_data.name == 'YCR010C_mRNA'
+    assert test_transcript_data.length == 852
+    assert test_transcript_data._all_sample_labels == set(['WT1', 'KO1'])
+    assert test_transcript_data.enoughTxCoverage(min_coverage) == True
+    assert test_transcript_data.enoughTxCoverage(50) == True
+    assert test_transcript_data.enoughTxCoverage(10000) == False
+    assert len(test_transcript_data.getValidPositions()) == 847
+    assert len(test_transcript_data.getReferenceIntensityData(pos_0)) == 89
+    assert len(test_transcript_data.getReferenceIntensityData(pos_0)) == len(test_transcript_data.getReferenceDwellData(pos_0))
+    assert len(test_transcript_data.getReferenceIntensityData(pos_0)) == len(test_transcript_data.getReferenceLabelData(pos_0))
 
-        print("number of valid positions", len(test_transcript_data.getValidPositions()))
-        print("Reference intensity data")
-        print(len(test_transcript_data.getReferenceIntensityData(pos_0)))
-        print(type(test_transcript_data.getReferenceIntensityData(pos_0)))
-        print("Test intensity data")
-        print(len(test_transcript_data.getTestIntensityData(pos_0)))
-        print(type(test_transcript_data.getTestIntensityData(pos_0)))
-
-        print("Reference dwell data")
-        print(len(test_transcript_data.getReferenceDwellData(pos_0)))
-        print(type(test_transcript_data.getReferenceDwellData(pos_0)))
-        print("Test dwell data")
-        print(len(test_transcript_data.getTestDwellData(pos_0)))
-        print(type(test_transcript_data.getTestDwellData(pos_0)))
-
-        print("Reference label data")
-        print(len(test_transcript_data.getReferenceLabelData(pos_0)))
-        print(type(test_transcript_data.getReferenceLabelData(pos_0)))
-        print("Test label data")
-        print(len(test_transcript_data.getTestLabelData(pos_0)))
-        print(type(test_transcript_data.getTestLabelData(pos_0)))
-
-        print("Reference Read Ids")
-        print(len(test_transcript_data.getReferenceReadIdData(pos_0)))
-        print(type(test_transcript_data.getReferenceReadIdData(pos_0)))
-        print("Test Read Ids")
-        print(len(test_transcript_data.getTestReadIdData(pos_0)))
-        print(type(test_transcript_data.getTestReadIdData(pos_0)))
-
+    assert len(test_transcript_data.getTestIntensityData(pos_0)) == 95
+    assert len(test_transcript_data.getTestIntensityData(pos_0)) == len(test_transcript_data.getTestDwellData(pos_0))
+    assert len(test_transcript_data.getTestIntensityData(pos_0)) == len(test_transcript_data.getTestLabelData(pos_0))
 
     test_transcript_data.closeAllDbs()
 
 
 def test_txComp():
     #test TxComp
-    test_reference_samples, test_test_samples = one_sample_per_condition()
-    #test_reference_samples, test_test_samples = two_sample_per_condition()
 
-    txComp_object = TxComp.TxComp(num_reference_samples = 1,
-                                  num_test_samples = 1, 
-                                  methods=test_methods)#,
-                                  #sequence_context=2,
-                                  #sequence_context_weights='harmonic')
-                                  
-    print('Made a txcomp object')
-    test_transcript_data = TranscriptObject.Transcript_Data(test_tx_name, test_reference_samples, test_test_samples, tx_length, max_coverage, min_coverage)
-    total_results_dict = txComp_object.txCompare(test_transcript_data)
+    total_results_dict = pd.DataFrame(make_txComp_results()).T
 
+    assert len(total_results_dict) == 847
+    assert len(total_results_dict[total_results_dict['KS_intensity_pvalue'] <= 0.01]) == 8
+    assert len(total_results_dict[total_results_dict['GMM_logit_pvalue'] <= 0.01]) == 2
+    assert len(total_results_dict[abs(total_results_dict['logit_LOR']) >= 0.5]) == 94
+    assert len(total_results_dict[(total_results_dict['GMM_logit_pvalue'] <= 0.01) & (abs(total_results_dict['logit_LOR']) >= 0.5)]) == 2
 
-
-    test_transcript_data.closeAllDbs()
-    return total_results_dict
-
-def test_SampComp_SQLDB():
+def exicute_SampComp_SQLDB():
     overwrite = True
     outpath = '/hps/nobackup/birney/users/logan/nanocompore_rewrite/'
     prefix = 'testing'
     results_object = results_db.SampComp_DB(outpath=outpath, prefix=prefix, overwrite=overwrite)
 
-    total_results_dict = test_txComp()
+    total_results_dict = make_txComp_results()
 
     labels=set()
     for pos in total_results_dict:
@@ -202,11 +185,11 @@ def test_SampComp_SQLDB():
     results_object.store_test_results(test_tx_name, total_results_dict)
     results_object.closeDB()
 
-def test_resultsDbManager():
+def exicute_resultsDbManager():
     overwrite = True
     outpath = '/hps/nobackup/birney/users/logan/nanocompore_rewrite/'
     prefix = ''
-    db = SampCompResultsmanager.resultsDBmanager(outpath=outpath, prefix=prefix, overwrite=overwrite, bed_annotation=bed_fn)
+    db = SampCompResultsmanager.resultsManager(outpath=outpath, prefix=prefix, overwrite=overwrite, bed_annotation=bed_fn)
 
     test_results_dict = test_txComp()
     db.saveData(test_tx_name, test_results_dict)
@@ -214,34 +197,3 @@ def test_resultsDbManager():
     db.finish(valid_transcripts=set(tx))
 
     db.closeDB()
-
-def test_sampComp():
-    test_reference_samples, test_test_samples = one_sample_per_condition()
-    sampComp_object = SampComp.SampComp(reference_samples=test_reference_samples,
-                                        test_samples=test_test_samples,
-                                        fasta_fn=fasta_fn,
-                                        bed_fn=bed_fn,
-                                        outpath=outpath,
-                                        outprefix=prefix,
-                                        overwrite=True,
-                                        comparison_methods = test_methods,
-                                        logit = True,
-                                        anova = False,
-                                        allow_warnings = False,
-                                        sequence_context = 0,
-                                        sequence_context_weights = "uniform",
-                                        min_coverage = min_coverage,
-                                        min_ref_length = 100,
-                                        downsample_high_coverage = max_coverage,
-                                        nthreads = 2)
-    print('created samp comp object successfully')
-
-    sampComp_object()
-
-#test_db_manager()
-#test_sample_object()
-#test_transcript_object()
-#print(pd.DataFrame(test_txComp()).T)
-#test_SampComp_SQLDB()
-#test_resultsDbManager()
-test_sampComp()

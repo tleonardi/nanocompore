@@ -15,8 +15,8 @@ import numpy as np
 import pandas as pd
 
 # Local package
-from common import *
-import TranscriptObject
+from nanocompore.common import *
+import nanocompore.TranscriptObject as TranscriptObject
 
 def gmm_test(transcript, pos, random_state, anova=True, logit=False, verbose=True, allow_warnings=False):
     # Condition labels

@@ -1,4 +1,4 @@
-import Eventalign_DB
+import nanocompore.Eventalign_DB as Eventalign_DB
 
 class Data_DB_manager():
     def __init__ (self, sample_path):

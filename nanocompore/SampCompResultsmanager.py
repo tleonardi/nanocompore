@@ -1,15 +1,16 @@
-import SampComp_SQLDB as SampCompDb
-
+#Native packages
 import os, collections, sys
 
+#3rd party packages
 import numpy as np
 import pandas as pd
-
 from loguru import logger
 from bedparse import bedline
 from statsmodels.stats.multitest import multipletests
 
-from common import *
+#Local Packages
+from nanocompore.common import *
+import nanocompore.SampComp_SQLDB as SampCompDb
 
 class resultsManager():
     def __init__ (self, outpath, prefix='', overwrite=False, bed_annotation='', correction_method='fdr_bh'):

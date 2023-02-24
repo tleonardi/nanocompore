@@ -7,7 +7,7 @@ from loguru import logger
 import pandas as pd
 import numpy as np
 
-from common import *
+from nanocompore.common import *
 
 
 class SampComp_DB():

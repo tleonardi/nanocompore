@@ -13,14 +13,12 @@ import numpy as np
 from Bio import SeqIO
 
 # Local package
-from common import *
-#from Whitelist import Whitelist
+from nanocompore.common import *
+import nanocompore.SampCompResultsmanager as SampCompResultsmanager
+import nanocompore.TranscriptObject as TranscriptObject
+import nanocompore.TxComp as TxComp
 
-import SampCompResultsmanager
-import TranscriptObject
-import TxComp 
-
-#import nanocompore as pkg
+import nanocompore as pkg
 
 
 # Disable multithreading for MKL and openBlas

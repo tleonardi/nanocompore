@@ -3,7 +3,7 @@ import numpy as np
 import os, collections, sys
 
 from loguru import logger
-from common import *
+from nanocompore.common import *
 
 class Eventalign_DB():
     def __init__ (self, sample_path):

@@ -1,4 +1,4 @@
-import Data_DB_manager as db_manager
+import nanocompore.Data_DB_manager as db_manager
 import numpy as np
 import random
 

@@ -1,4 +1,5 @@
-import itertools, Sample
+import itertools
+import nanocompore.Sample as Sample
 from loguru import logger
 import numpy as np
 from collections import Counter

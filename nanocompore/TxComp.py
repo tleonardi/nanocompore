@@ -19,9 +19,9 @@ import numpy as np
 import pandas as pd
 
 # Local package
-from common import *
-import TranscriptObject
-import gmm_test as gmm
+from nanocompore.common import *
+import nanocompore.TranscriptObject as TranscriptObject
+import nanocompore.gmm_statistics as gmm
 
 class TxComp():
     def __init__(self,
