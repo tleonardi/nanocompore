@@ -28,12 +28,14 @@ class SampComp_DB():
     ################## Public methods ##################
     def _checkIfLabelsExist(self, test_results, table=''):
         if not table:
+            logger.debug(f"{table} doesn't exist in the database yet. Creating")
             table = self._default_storage_table
         
         labels = self._create_test_labels(test_results)
 
         info = self._cursor.execute(f"SELECT * FROM {table}")
         columns = [item[0] for item in info.description]
+        logger.trace(f"Adding data to table {table}")
         try:
             for label, label_type in labels:
                 if label not in columns:
@@ -60,11 +62,14 @@ class SampComp_DB():
             for test in test_results[pos]:
                 test_type = type(test_results[pos][test])
                 labels.add((test, test_type))
+        logger.trace(f'tests and test labels created for the table')
         return labels
 
     def _makes_values(self, pos=0, tx_id=0, results_dict={}, kmer_table_headers=[]):
         if results_dict:
+            logger.trace(f"Getting the kmer_seq id for each position of the ref_id")
             kmer_seq_id = self._insert_query_and_get_id(query=results_dict['kmer_seq'], table='kmer_seqs', column='sequence')
+            logger.trace(f"The kmer {results_dict['kmer_seq']} has the kmer_id {kmer_seq_id}")
             values = [tx_id, pos, kmer_seq_id]
             for test_type in kmer_table_headers:
                 if results_dict[test_type]:

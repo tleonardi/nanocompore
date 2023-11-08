@@ -32,10 +32,15 @@ class resultsManager():
         tests, shift_stats = self._getStatsTests()
         logger.debug("Gathering all the data for reporting")
         data = self._db.getAllData()
+        logger.debug("Data gathered")
         data = self._addGenomicPositions(data, valid_transcripts=valid_transcripts)
+        logger.debug("Added genomic positions to data")
         data = self._correct_pvalues(data, method=self._correction_method)
+        logger.debug("Corrected pvalues")
         self._writeResultsTSV(data, tests)
+        logger.debug("Wrote results TSV output file")
         self._writeResultsShiftStats(data, shift_stats)
+        logger.debug("Wrote shift stats output file")
         if (bed or bedgraph) and self._bed_fn:
             if bed:
                 self._writeBed(data, valid_transcripts=valid_transcripts, pvalue_threshold=pvalue_threshold)

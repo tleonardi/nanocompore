@@ -4,7 +4,7 @@ import sqlite3, pytest
 import nanocompore.Data_DB_manager as db_mng
 import nanocompore.Eventalign_DB as db
 import nanocompore.SampComp_SQLDB as results_db
-import nanocompore.TranscriptObject as TranscriptObject
+import Nanocompore_rewrite.nanocompore.Transcript as Transcript
 import nanocompore.Sample as Sample
 import nanocompore.TxComp as TxComp
 import nanocompore.SampComp as SampComp
@@ -73,7 +73,7 @@ def make_transcript_object(samples_per_cond = 1):
     else:
         test_reference_samples, test_test_samples = one_sample_per_condition()
     
-    test_transcript_data = TranscriptObject.Transcript_Data(test_tx_name, test_reference_samples, test_test_samples, tx_length, max_coverage, min_coverage)
+    test_transcript_data = Transcript.Transcript(test_tx_name, test_reference_samples, test_test_samples, tx_length, max_coverage, min_coverage)
     test_transcript_data.closeAllDbs()
     return test_transcript_data
 
@@ -137,7 +137,7 @@ def test_transcript_object():
     test_reference_samples, test_test_samples = one_sample_per_condition()
     #test_reference_samples, test_test_samples = two_sample_per_condition()
 
-    test_transcript_data = TranscriptObject.Transcript_Data(test_tx_name, test_reference_samples, test_test_samples, tx_length, max_coverage, min_coverage)
+    test_transcript_data = Transcript.Transcript(test_tx_name, test_reference_samples, test_test_samples, tx_length, max_coverage, min_coverage)
 
     assert test_transcript_data.name == 'YCR010C_mRNA'
     assert test_transcript_data.length == 852

@@ -10,13 +10,15 @@ from loguru import logger
 import yaml
 #from tqdm import tqdm
 import numpy as np
-from Bio import SeqIO
+from pyfaidx import Fasta
 
 # Local package
 from nanocompore.common import *
 import nanocompore.SampCompResultsmanager as SampCompResultsmanager
-import nanocompore.TranscriptObject as TranscriptObject
+import nanocompore.Transcript as Transcript
 import nanocompore.TxComp as TxComp
+import nanocompore.Whitelist as Whitelist
+import nanocompore.Experiment as Experiment
 
 import nanocompore as pkg
 
@@ -35,14 +37,13 @@ class SampComp(object):
     #~~~~~~~~~~~~~~FUNDAMENTAL METHODS~~~~~~~~~~~~~~#
 
     def __init__(self,
-        reference_samples:dict,
-        test_samples:dict,
+        in_tsv:str,
         fasta_fn:str,
         bed_fn:str = None,
         outpath:str = "results",
         outprefix:str = "out_",
         overwrite:bool = False,
-        #whitelist:Whitelist = None,
+        whitelist:Whitelist = None,
         comparison_methods:list = ["GMM", "KS"],
         logit:bool = True,
         anova:bool = False,
@@ -58,14 +59,25 @@ class SampComp(object):
         nthreads:int = 2,
         progress:bool = False):
 
+
         """
         Initialise a `SampComp` object and generates a white list of references with sufficient coverage for subsequent analysis.
         The retuned object can then be called to start the analysis.
-        * eventalign_fn_dict
-            Multilevel dictionnary indicating the condition_label, sample_label and file name of the eventalign_collapse output.
+        * fn_dict
+            Multilevel dictionnary indicating the condition_label, sample_label and 
+            the file name of the pod5 file with corresponding bam file
             2 conditions are expected and at least 2 sample replicates per condition are highly recommended.
-            One can also pass YAML file describing the samples instead.
-            Example `d = {"S1": {"R1":"path1.tsv", "R2":"path2.tsv"}, "S2": {"R1":"path3.tsv", "R2":"path4.tsv"}}`
+            One can also pass TSV file describing the samples instead in the format:
+
+            Cond_1\tSamp_0\tpath1.pod5\tpath1.bam
+            Cond_1\tSamp_1\tpath2.pod5\tpath2.bam
+            Cond_2\tSamp_0\tpath3.pod5\tpath3.bam
+            Cond_2\tSamp_1\tpath4.pod5\tpath4.bam
+
+            example d = {"S1": {"R1":{'pod5':"path1.pod5", 'bam':"path1.bam"},
+                                "R2":{'pod5':"path2.pod5", 'bam':"path2.bam"}}, 
+                         "S2": {"R1":{'pod5':"path3.pod5", 'bam':"path3.bam"},
+                                "R2":{'pod5':"path4.pod5", 'bam':"path4.bam"}}
         * outpath
             Path to the output folder.
         * outprefix
@@ -116,72 +128,93 @@ class SampComp(object):
         # Check if fasta and bed files exist
         if not access_file(fasta_fn):
             raise NanocomporeError("{} is not a valid FASTA file".format(fasta_fn))
+
+        self._test_open_fasta_file(fasta_fn)
+
         if bed_fn and not access_file(bed_fn):
             raise NanocomporeError("{} is not a valid BED file".format(bed_fn))
 
         # Check threads number
-        if nthreads < 2:
-            raise NanocomporeError("The minimum number of threads is 2")
+        if nthreads < 3:
+            raise NanocomporeError("The minimum number of threads is 3")
 
         # Parse comparison methods
         if comparison_methods:
-            if type(comparison_methods) == str:
-                comparison_methods = comparison_methods.split(",")
-            for i, method in enumerate(comparison_methods):
-                method = method.upper()
-                if method in ["MANN_WHITNEY", "MW"]:
-                    comparison_methods[i]="MW"
-                elif method in ["KOLMOGOROV_SMIRNOV", "KS"]:
-                    comparison_methods[i]="KS"
-                elif method in ["T_TEST", "TT"]:
-                    comparison_methods[i]="TT"
-                elif method in ["GAUSSIAN_MIXTURE_MODEL", "GMM"]:
-                    comparison_methods[i]="GMM"
-                else:
-                    raise NanocomporeError(f"Invalid comparison method {method}")
-
-
-        # Set private args
+            self._comparison_methods = self._format_comparison_methods(comparison_methods)
+        else:
+            raise NanocomporeError("No comparison methods listed")
 
         #set the output prefix
-        if outprefix and outprefix.endswith('_'):
-            self._outprefix = outprefix
-        elif outprefix and not outprefix.endswith('_'):
-            self._outprefix = f"{outprefix}_"
-        else:
-            self._outprefix = "out_"
+        self._outprefix = self._format_output_prefix(outprefix)
         
         #if no outpath was provided, make it the current working directory
-        if outpath:
-            self._outpath = outpath
-        else:
-            self._outpath = os.getcwd()
-        
-        self._reference_samples = reference_samples
-        self._test_samples = test_samples
+        self._set_outpath(outpath)
+
+        # Set private args
+        self._experiment = Experiment.Experiment(in_tsv)
 
         self._overwrite=overwrite
         self._min_coverage = min_coverage
         self._max_coverage = downsample_high_coverage
         self._min_ref_length = min_ref_length
-        self._reference_fasta = fasta_fn
         self._bed_fn = bed_fn
-        self._comparison_methods = comparison_methods
         self._logit = logit
         self._anova = anova
         self._allow_warnings = allow_warnings
         self._sequence_context = sequence_context
         self._sequence_context_weights = sequence_context_weights
-        self._nthreads = nthreads - 1
+        self._nthreads = nthreads - 2
         self._progress = progress
         self._select_ref_ids = select_ref_id
         self._exclude_ref_ids = exclude_ref_id
 
-        # Get number of samples
-        self._n_samples = len(self._reference_samples) + len(self._test_samples)
 
-        self._valid_transcripts = self._getValidTranscripts()
+        logger.info("Starting to whitelist the reference IDs")
+        self._Whitelist = Whitelist.Whitelist(experiment=self._experiment,
+                                    fasta_fn=self._fasta_fn,
+                                    min_coverage=self._min_coverage,
+                                    min_ref_length=self._min_coverage,
+                                    select_ref_id=self._select_ref_ids,
+                                    exclude_ref_id=self._exclude_ref_ids)
 
+        self._valid_transcripts = self._Whitelist.ref_id_list
+
+   #~~~~~~~~~~~~~~PRIVATE data processing METHODs~~~~~~~~~~~~~~#
+
+    def _set_outpath(self, outpath):
+        if outpath:
+            self._outpath = outpath
+        else:
+            self._outpath = os.getcwd()
+
+    def _format_output_prefix(self, outprefix):
+        if outprefix and outprefix.endswith('_'):
+            prefix = outprefix
+        elif outprefix and not outprefix.endswith('_'):
+            prefix = f"{outprefix}_"
+        else:
+            prefix = "out_"
+        return prefix
+
+    def _format_comparison_methods(self, comparison_methods): 
+        if type(comparison_methods) == str:
+            comparison_methods = comparison_methods.split(",")
+        for i, method in enumerate(comparison_methods):
+            method = method.upper()
+            if method in ["MANN_WHITNEY", "MW"]:
+                comparison_methods[i]="MW"
+            elif method in ["KOLMOGOROV_SMIRNOV", "KS"]:
+                comparison_methods[i]="KS"
+            elif method in ["T_TEST", "TT"]:
+                comparison_methods[i]="TT"
+            elif method in ["GAUSSIAN_MIXTURE_MODEL", "GMM"]:
+                comparison_methods[i]="GMM"
+            else:
+                raise NanocomporeError(f"Invalid comparison method {method}")
+        return comparison_methods
+
+
+    #~~~~~~~~~~~~~~Call METHOD~~~~~~~~~~~~~~#
     def __call__(self):
         """
         Run the analysis
@@ -194,15 +227,14 @@ class SampComp(object):
 
         for tx in self._valid_transcripts:
             in_q.put(tx)
-
+        
         self.resultsManager = SampCompResultsmanager.resultsManager(outpath=self._outpath, 
                                                                     prefix=self._outprefix, 
                                                                     overwrite=self._overwrite,
                                                                     bed_annotation=self._bed_fn,
                                                                     correction_method='fdr_bh')
 
-        self.txComp = TxComp.TxComp(num_reference_samples = len(self._reference_samples),
-                                    num_test_samples = len(self._test_samples), 
+        self.txComp = TxComp.TxComp(experiment=self._experiment,
                                     random_state = 26,
                                     methods=self._comparison_methods,
                                     sequence_context=self._sequence_context,
@@ -219,9 +251,9 @@ class SampComp(object):
             in_q.put(None)
             processes.append(mp.Process(target=self._processTx, args=(in_q, out_q, error_q)))
 
-        
         try:
             #Start all processes
+            self._fasta_fh = Fasta(self._fasta_fn)
             for p in processes:
                 p.start()
 
@@ -256,6 +288,7 @@ class SampComp(object):
             raise E
         finally:
             self.resultsManager.closeDB()
+            self._fasta_fh.close()
 
 
     #~~~~~~~~~~~~~~PRIVATE MULTIPROCESSING METHOD~~~~~~~~~~~~~~#
@@ -263,18 +296,18 @@ class SampComp(object):
         logger.debug("Worker thread started")
         try:
             n_tx = 0
-            for txid in iter(in_q.get, None):
-                logger.debug(f"Worker thread processing new item from in_q: {txid}")
-                tx_length = self._txid2length[txid]
-                transcript = TranscriptObject.Transcript_Data(txid, self._reference_samples, self._test_samples, tx_length, self._max_coverage, self._min_coverage)
-                if transcript.enoughTxCoverage(self._min_coverage):
+            for ref_id in iter(in_q.get, None):
+                logger.debug(f"Worker thread processing new item from in_q: {ref_id}")
+                ref_seq = str(self._fasta_fh[ref_id])
+                transcript = Transcript.Transcript(ref_id=ref_id, experiment=self._experiment, ref_seq=ref_seq,
+                                                   min_coverage=self._min_coverage, max_coverage=self._max_coverage)
+                try:
                     n_tx += 1
-                    logger.debug(f"Collecting data for {txid}")
+                    logger.debug(f"Collecting data for {ref_id}")
                     results = self.txComp.txCompare(transcript)
                     out_q.put((transcript.name, results))
-                else:
-                    logger.debug(f"Insufficent coverage for {txid} skipping transcript")
-                transcript.closeAllDbs()
+                except:
+                    logger.debug(f"Insufficent coverage for {ref_id} skipping transcript")
 
         except:
             logger.error("Error in Worker")
@@ -311,29 +344,6 @@ class SampComp(object):
             # Kill error queue with poison pill
             error_q.put(None)
 
-    def _getValidTranscripts(self):
-        self._txid2length = collections.defaultdict(int)
-        validTranscripts = set()
-
-        if self._select_ref_ids == self._exclude_ref_ids and (self._select_ref_ids or self._exclude_ref_ids):
-            raise NanocomporeError("All of the gene ids to be selected are the same as the ids to be exluded")
-        else:
-            for record in SeqIO.parse(self._reference_fasta, "fasta"):
-                transcript = record.id
-                if len(record.seq) >= self._min_ref_length:
-                    validTranscripts.add(transcript)
-                    self._txid2length[transcript] = len(record.seq)
-
-            if self._select_ref_ids:
-                validTranscripts = validTranscripts.intersection(set(self._select_ref_ids))
-
-            if self._exclude_ref_ids:
-                validTranscripts = validTranscripts.difference(set(self._exclude_ref_ids))
-        
-        if validTranscripts:
-            return list(validTranscripts)
-        else:
-            raise NanocomporeError("There are no valid transcripts")
     
     def _list_refid(self, in_q, error_q):
         """Add valid refid from whitelist to input queue to dispatch the data among the workers"""
@@ -354,3 +364,11 @@ class SampComp(object):
             for i in range (self._nthreads):
                 in_q.put(None)
             logger.debug(f"Parsed transcripts:{n_tx}")
+
+    def _test_open_fasta_file(self, fasta_fn):
+        # Test that Fasta can be opened
+        try:
+            with Fasta(fasta_fn):
+                self._fasta_fn = fasta_fn
+        except IOError:
+            raise NanocomporeError("The fasta file cannot be opened")

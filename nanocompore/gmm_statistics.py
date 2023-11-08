@@ -16,38 +16,22 @@ import pandas as pd
 
 # Local package
 from nanocompore.common import *
-import nanocompore.TranscriptObject as TranscriptObject
+import nanocompore.Transcript as Transcript
 
-def gmm_test(transcript, pos, random_state, anova=True, logit=False, verbose=True, allow_warnings=False):
-    # Condition labels
-    condition_labels = transcript.getConditionLabels()
-    # List of sample labels
-    sample_labels = transcript.getSampleLabels()
-
-    sample_2_condition = transcript.getSample2Condition()
+def gmm_test(kmer_data, transcript, random_state, anova=True, logit=False, verbose=True, allow_warnings=False):
     #Forcing conditionals for testing
     anova = False
     logit = True
 
-
-    if len(sample_labels) != len(set(sample_labels)):
-        #sys.stderr.write("Sample labels have to be unique and it looks like some are not.\n")
-        raise NanocomporeError("Sample labels have to be unique and it looks like some are not.")
-
-    if len(condition_labels) != 2:
-            #sys.stderr.write("gmm_test only supports two conditions\n")
-            raise NanocomporeError("gmm_test only supports two conditions")
-
-    # Merge the intensities and dwell times of all samples in a single array
-    intensity = np.concatenate([transcript.getReferenceIntensityData(pos)] + [transcript.getTestIntensityData(pos)])
-    dwell = np.concatenate([transcript.getReferenceDwellData(pos)] + [transcript.getTestDwellData(pos)])
-    dwell = np.log10(dwell)
+    if len(transcript.condition_labels) != 2:
+        #sys.stderr.write("gmm_test only supports two conditions\n")
+        raise NanocomporeError("gmm_test only supports two conditions")
 
     # Scale the intensity and dwell time arrays
-    X = StandardScaler().fit_transform([(i, d) for i,d in zip(intensity, dwell)])
+    X = StandardScaler().fit_transform([(i, d) for i,d in zip(kmer_data.intensity, kmer_data.dwell)])
 
     # Generate an array of sample labels
-    Y = transcript.getReferenceLabelData(pos) + transcript.getTestLabelData(pos)
+    Y = kmer_data.sample_labels
 
     gmm_fit = fit_best_gmm(X, max_components=2, cv_types=['full'], random_state=random_state)
     gmm_mod, gmm_type, gmm_ncomponents = gmm_fit
@@ -58,19 +42,20 @@ def gmm_test(transcript, pos, random_state, anova=True, logit=False, verbose=Tru
         y_pred = gmm_mod.predict(X)
         counters = dict()
         # Count how many reads in each cluster for each sample
-        for lab in sample_labels:
+        for lab in transcript.sample_labels:
             counters[lab] = Counter(y_pred[[i==lab for i in Y]])
         cluster_counts = count_reads_in_cluster(counters)
 
         if anova:
-            aov_results = gmm_anova_test(counters, sample_2_condition, condition_labels, gmm_ncomponents, allow_warnings)
+            aov_results = gmm_anova_test(counters, transcript.condition_labels, gmm_ncomponents, allow_warnings)
         else:
             aov_results=None
 
         if logit:
-            logit_results = gmm_logit_test(Y, y_pred, sample_2_condition, condition_labels)
+            logit_results = gmm_logit_test(Y, y_pred, kmer_data, transcript.condition_labels)
         else:
             logit_results=None
+
     elif gmm_ncomponents == 1:
         aov_results = {'pvalue': np.nan, 'delta_logit': np.nan, 'table': "NC", 'cluster_counts': "NC"}
         logit_results = {'pvalue': np.nan, 'coef': np.nan, 'model': "NC"}
@@ -101,13 +86,13 @@ def fit_best_gmm(X, random_state, max_components=2, cv_types=['spherical', 'tied
     return((best_gmm, best_gmm_type, best_gmm_ncomponents))
 
 
-def gmm_anova_test(counters, sample2condition, condition_labels, gmm_ncomponents, allow_warnings=False):
+def gmm_anova_test(counters, condition_labels, gmm_ncomponents, allow_warnings=False):
     labels= []
     logr = []
     allow_warnings = True
     for sample,counter in counters.items():
         # Save the condition label the corresponds to the current sample
-        labels.append(sample2condition[sample])
+        labels.append(sample)
         # The Counter dictionaries in counters are not ordered
         # The following line enforces the order and adds 1 to avoid empty clusters
         ordered_counter = [ counter[i]+1 for i in range(gmm_ncomponents)]
@@ -149,8 +134,8 @@ def gmm_anova_test(counters, sample2condition, condition_labels, gmm_ncomponents
     return(aov_results)
 
 
-def gmm_logit_test(Y, y_pred, sample2condition, condition_labels):
-    Y = [ sample2condition[i] for i in Y]
+def gmm_logit_test(Y, y_pred, kmer_data, condition_labels):
+    Y = kmer_data.condition_labels
     y_pred=np.append(y_pred, [0,0,1,1])
     Y.extend([condition_labels[0], condition_labels[1], condition_labels[0], condition_labels[1]])
     Y = pd.get_dummies(Y)

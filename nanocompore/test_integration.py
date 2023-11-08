@@ -1,0 +1,69 @@
+#!/usr/bin/env python3
+
+# Third party
+from re import T
+from loguru import logger
+
+# Local package
+from nanocompore.common import *
+import nanocompore.SampCompResultsmanager as SampCompResultsmanager
+import Nanocompore_rewrite.nanocompore.Transcript as Transcript
+import nanocompore.TxComp as TxComp
+
+import nanocompore as pkg
+
+set_logger('debug')
+data_base_dir = '/hps/nobackup/birney/users/logan/nanocompore_demo_data/data'
+kd_1_dir = f'{data_base_dir}/KD_1'
+kd_2_dir = f'{data_base_dir}/KD_2'
+wt_1_dir = f'{data_base_dir}/WT_1'
+wt_2_dir = f'{data_base_dir}/WT_2'
+
+
+pod5_list1 = f"{kd_1_dir}/pod5/output.pod5"
+pod5_list2 = f"{wt_1_dir}/pod5/output.pod5"
+
+bam_list1 = f"{kd_1_dir}/basecalled_pod5.bam"
+bam_list2 = f"{wt_1_dir}/basecalled_pod5.bam"
+
+fasta_fn = '/nfs/research/birney/users/logan/refs/human/gencode.v36.transcripts.fa'
+ref_id = 'ENST00000646664.1|ENSG00000075624.17|OTTHUMG00000023268|OTTHUMT00000495815.1|ACTB-217|ACTB|1812|protein_coding|'
+ref_seq = 'NNNNNNNAGACCGCGTCCGCCCCGCGAGCACAGAGCCTCGCCTTTGCCGATCCGCCGCCCGTCCACACCCGCCGCCAGCTCACCATGGATGATGATATCGCCGCGCTCGTCGTCGACAACGGCTCCGGCATGTGCAAGGCCGGCTTCGCGGGCGACGATGCCCCCCGGGCCGTCTTCCCCTCCATCGTGGGGCGCCCCAGGCACCAGGGCGTGATGGTGGGCATGGGTCAGAAGGATTCCTATGTGGGCGACGAGGCCCAGAGCAAGAGAGGCATCCTCACCCTGAAGTACCCCATCGAGCACGGCATCGTCACCAACTGGGACGACATGGAGAAAATCTGGCACCACACCTTCTACAATGAGCTGCGTGTGGCTCCCGAGGAGCACCCCGTGCTGCTGACCGAGGCCCCCCTGAACCCCAAGGCCAACCGCGAGAAGATGACCCAGATCATGTTTGAGACCTTCAACACCCCAGCCATGTACGTTGCTATCCAGGCTGTGCTATCCCTGTACGCCTCTGGCCGTACCACTGGCATCGTGATGGACTCCGGTGACGGGGTCACCCACACTGTGCCCATCTACGAGGGGTATGCCCTCCCCCATGCCATCCTGCGTCTGGACCTGGCTGGCCGGGACCTGACTGACTACCTCATGAAGATCCTCACCGAGCGCGGCTACAGCTTCACCACCACGGCCGAGCGGGAAATCGTGCGTGACATTAAGGAGAAGCTGTGCTACGTCGCCCTGGACTTCGAGCAAGAGATGGCCACGGCTGCTTCCAGCTCCTCCCTGGAGAAGAGCTACGAGCTGCCTGACGGCCAGGTCATCACCATTGGCAATGAGCGGTTCCGCTGCCCTGAGGCACTCTTCCAGCCTTCCTTCCTGGGCATGGAGTCCTGTGGCATCCACGAAACTACCTTCAACTCCATCATGAAGTGTGACGTGGACATCCGCAAAGACCTGTACGCCAACACAGTGCTGTCTGGCGGCACCACCATGTACCCTGGCATTGCCGACAGGATGCAGAAGGAGATCACTGCCCTGGCACCCAGCACAATGAAGATCAAGATCATTGCTCCTCCTGAGCGCAAGTACTCCGTGTGGATCGGCGGCTCCATCCTGGCCTCGCTGTCCACCTTCCAGCAGATGTGGATCAGCAAGCAGGAGTATGACGAGTCCGGCCCCTCCATCGTCCACCGCAAATGCTTCTAGGCGGACTATGACTTAGTTGCGTTACACCCTTTCTTGACAAAACCTAACTTGCGCAGAAAACAAGATGAGATTGGCATGGCTTTATTTGTTTTTTTTGTTTTGTTTTGGTTTTTTTTTTTTTTTTGGCTTGACTCAGGATTTAAAAACTGGAACGGTGAAGGTGACAGCAGTCGGTTGGAGCGAGCATCCCCCAAAGTTCACAATGTGGCCGAGGACTTTGATTGCACATTGTTGTTTTTTTAATAGTCATTCCAAATATGAGATGCGTTGTTACAGGAAGTCCCTTGCCATCCTAAAAGCCACCCCACTTCTCTCTAAGGAGAATGGCCCAGTCCTCTCCCAAGTCCACACAGGGGAGGTGATAGCATTGCTTTCGTGTAAATTATGTAATGCAAAATTTTTTTAATCTTCGCCTTAATACTTTTTTATTTTGTTTTATTTTGAATGATGAGCCTTCGTGCCCCCCCTTCCCCCTTTTTTGTCCCCCAACTTGAGATGTATGAAGGCTTTTGGTCTCCCTGGGAGTGGGTGGAGGCAGCCAGGGCTTACCTGTACACTGACTTGAGACCAGTTGAATAAAAGTGCACACCTTAAAAATGA'
+fn_dict = build_eventalign_fn_dict(pod5_list1, bam_list1, pod5_list2, bam_list2, 'KD', 'WT')
+bed_fn = '/nfs/research/birney/users/logan/refs/human/gencode.v36.annotation.bed'
+
+resultsManager = SampCompResultsmanager.resultsManager(outpath='/hps/nobackup/birney/users/logan/nanocompore_demo_data/data', 
+                                                       prefix='testing_rewrite', 
+                                                       overwrite=True,
+                                                       bed_annotation='',
+                                                       correction_method='fdr_bh')
+
+TxComp_Obj = TxComp.TxComp(
+                 fn_dict, 
+                 random_state = 26,
+                 methods=['KS', 'GMM'],
+                 sequence_context=0,
+                 min_coverage=30,
+                 sequence_context_weights="uniform",
+                 anova=False,
+                 logit=True,
+                 allow_warnings=False)
+
+Transcript_Obj = Transcript.Transcript(ref_id=ref_id,
+                 fn_dict = fn_dict,
+                 ref_seq=ref_seq,
+                 min_coverage=30,
+                 max_coverage=1000)
+
+results = TxComp_Obj.txCompare(Transcript_Obj)
+
+try:
+    resultsManager.saveData(ref_id, results)
+    resultsManager.finish()
+except:
+    logger.debug('There was an error')
+finally:
+    resultsManager.closeDB()
+
+
+

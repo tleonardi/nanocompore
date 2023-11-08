@@ -20,13 +20,12 @@ import pandas as pd
 
 # Local package
 from nanocompore.common import *
-import nanocompore.TranscriptObject as TranscriptObject
+import nanocompore.Transcript as Transcript
 import nanocompore.gmm_statistics as gmm
 
 class TxComp():
     def __init__(self,
-                 num_reference_samples,
-                 num_test_samples, 
+                 experiment, 
                  random_state = 26,
                  methods=None,
                  sequence_context=0,
@@ -43,148 +42,169 @@ class TxComp():
         self._min_coverage = min_coverage
         self._sequence_context_weights = sequence_context_weights
         self._anova = anova
-        self._logit =  logit
+        self._logit = logit
         self._allow_warnings = allow_warnings
 
         if self._sequence_context_weights != "uniform" and self._sequence_context_weights != "harmonic":
             raise NanocomporeError("Invalid sequence_context_weights (uniform or harmonic)")
 
         # If we have less than 2 replicates in any condition skip anova and force logit method
-        if num_reference_samples < 2 or num_test_samples < 2:
+        if self._any_condition_with_fewer_than_2_samples(experiment):
+            logger.info("At least one condition only has 1 sample, using logit method")
             self._anova = False
             self._logit = True
 
+    def _any_condition_with_fewer_than_2_samples(self, experiment):
+        condition_counts = defaultdict(int)
+        for condition in experiment.get_condtion_labels():
+            condition_counts[condition] = len(experiment.condition_to_samples(condition))
+        if len(condition_counts) == 2:
+            if any(count < 2 for cond, count in condition_counts.items()):
+                return True
+            else:
+                return False
+        else:
+            raise NanocomporeError (f"There are not exactly two condition labels")
 
     def txCompare(self, transcript):
-        if transcript.enoughTxCoverage():
-            logger.debug(f"TxCompare starting for {transcript.name}")
-            total_results_dict = defaultdict()
-            tests = set()
-            valid_positions = transcript.getValidPositions()
-            for pos in valid_positions:
-                results_dict = {}
-                results_dict['kmer_seq'] = transcript.getKmerSeq(pos)
-                for method in self._methods:
-                    if method.upper() in ['MW', 'KS', 'TT']:
-                        try:
-                            pvalues = self._nonparametric_test(transcript, pos, method=method)
-                        except:
-                            raise NanocomporeError(f"Error doing {method} test on {transcript.name} at pos {pos}")
-                        results_dict[f"{method}_intensity_pvalue"] = pvalues[0]
-                        results_dict[f"{method}_dwell_pvalue"] = pvalues[1]
+        logger.info(f"TxCompare starting for {transcript.name}")
+        total_results_dict = defaultdict(None)
+        tests = set()
+        valid_positions = []
+        condition_label_1 = transcript.condition_labels[0]
+        condition_label_2 = transcript.condition_labels[1]
+        for kmer_data in transcript.generate_data():
+            valid_positions.append(kmer_data.pos)
+            results_dict = {}
+            results_dict['kmer_seq'] = kmer_data.kmer
+            for method in self._methods:
+                if method.upper() in ['MW', 'KS', 'TT']:
+                    try:
+                        intensity_data_1 = kmer_data.get_condition_kmer_intensity_data(condition_label_1)
+                        intensity_data_2 = kmer_data.get_condition_kmer_intensity_data(condition_label_2)
+                        intensity_pvalue = self._nonparametric_test(intensity_data_1, intensity_data_2, method=method)
+                        results_dict[f"{method}_intensity_pvalue"] = intensity_pvalue
                         tests.add(f"{method}_intensity_pvalue")
+                    except:
+                        raise NanocomporeError(f"Error doing {method} intensity test on {transcript.name} at pos {kmer_data.pos}")
+                    
+                    try:
+                        dwell_data_1 = kmer_data.get_condition_kmer_dwell_data(condition_label_1)
+                        dwell_data_2 = kmer_data.get_condition_kmer_dwell_data(condition_label_2)
+                        dwell_pvalue = self._nonparametric_test(dwell_data_1, dwell_data_2, method=method)
+                        results_dict[f"{method}_dwell_pvalue"] = dwell_pvalue
                         tests.add(f"{method}_dwell_pvalue")
-                    
-                    elif method == "GMM":
-                        try:
-                            gmm_results = gmm.gmm_test(transcript, pos, anova=self._anova, logit=self._logit, allow_warnings=self._allow_warnings, random_state=self._random_state)
-                        except:
-                            raise NanocomporeError(f"Error doing GMM test on {transcript.name}")
-                        #results_dict["GMM_model"] = gmm_results['gmm']
-                        results_dict["cluster_counts"] = gmm_results['gmm']['cluster_counts']
-                        tests.add("cluster_counts")
-                        results_dict['GMM_n_clust'] = gmm_results['gmm']['n_componets']
-                        tests.add('GMM_n_clust')
-                        results_dict['GMM_cov_type'] = gmm_results['gmm']['GMM_cov_type']
-                        tests.add('GMM_cov_type')
-
-                        if self._anova:
-                            results_dict["GMM_anova_pvalue"] = gmm_results['anova']['pvalue']
-                            results_dict["GMM_anova_model"] = gmm_results['anova']['model']
-                            tests.add("GMM_anova_pvalue")
-                            tests.add("GMM_anova_model")
-                        if self._logit:
-                            results_dict["GMM_logit_pvalue"] = gmm_results['logit']['pvalue']
-                            results_dict["logit_LOR"] = gmm_results['logit']['coef']
-                            tests.add("GMM_logit_pvalue")
-                            tests.add("logit_LOR")
+                    except:
+                        raise NanocomporeError(f"Error doing {method} dwell test on {transcript.name} at pos {kmer_data.pos}")
                     
                 
+                elif method == "GMM":
+                    try:
+                        gmm_results = gmm.gmm_test(kmer_data=kmer_data,
+                                                   transcript=transcript,
+                                                   anova=self._anova,
+                                                   logit=self._logit, 
+                                                   allow_warnings=self._allow_warnings, 
+                                                   random_state=self._random_state)
+                    except:
+                        raise NanocomporeError(f"Error doing GMM test on {transcript.name}")
+                    #results_dict["GMM_model"] = gmm_results['gmm']
+                    results_dict["cluster_counts"] = gmm_results['gmm']['cluster_counts']
+                    tests.add("cluster_counts")
+                    results_dict['GMM_n_clust'] = gmm_results['gmm']['n_componets']
+                    tests.add('GMM_n_clust')
+                    results_dict['GMM_cov_type'] = gmm_results['gmm']['GMM_cov_type']
+                    tests.add('GMM_cov_type')
+
+                    if self._anova:
+                        results_dict["GMM_anova_pvalue"] = gmm_results['anova']['pvalue']
+                        results_dict["GMM_anova_model"] = gmm_results['anova']['model']
+                        tests.add("GMM_anova_pvalue")
+                        tests.add("GMM_anova_model")
+                    if self._logit:
+                        results_dict["GMM_logit_pvalue"] = gmm_results['logit']['pvalue']
+                        results_dict["logit_LOR"] = gmm_results['logit']['coef']
+                        tests.add("GMM_logit_pvalue")
+                        tests.add("logit_LOR")
                 
-                # Calculate shift statistics
-                #sys.stderr.write(f"Calculatign shift stats for {pos} of {transcript.name}\n")
-                logger.trace(f"Calculatign shift stats for {pos} of {transcript.name}")
-                shift_stats = self._shift_stats(transcript, pos)
-                for stat in shift_stats:
-                    results_dict[stat] = shift_stats[stat]
-                # Save results in main
-                #sys.stderr.write(f"Saving test results for {pos}\n")
-                logger.trace(f"Saving test results for {pos}")
-                
-                total_results_dict[pos] = results_dict
+            
+            
+            # Calculate shift statistics
+            #sys.stderr.write(f"Calculatign shift stats for {pos} of {transcript.name}\n")
+            logger.trace(f"Calculatign shift stats for {kmer_data.pos} of {transcript.name}")
+            c1_intensity = kmer_data.get_condition_kmer_intensity_data(condition_label_1)
+            c2_intensity = kmer_data.get_condition_kmer_intensity_data(condition_label_2)
+            c1_dwell = kmer_data.get_condition_kmer_dwell_data(condition_label_1)
+            c2_dwell = kmer_data.get_condition_kmer_dwell_data(condition_label_2)
+            shift_stats = self._shift_stats(c1_intensity=c1_intensity, c1_dwell=c1_dwell,
+                                            c2_intensity=c2_intensity, c2_dwell=c2_dwell)
+            for stat in shift_stats:
+                results_dict[stat] = shift_stats[stat]
+            # Save results in main
+            #sys.stderr.write(f"Saving test results for {pos}\n")
+            logger.trace(f"Saving test results for {kmer_data.pos}")
+            
+            total_results_dict[kmer_data.pos] = results_dict
 
+        n_lowcov = transcript.length - len(valid_positions)
+        logger.debug(f"Skipped {n_lowcov} positions for {transcript.name} because not present in all samples with sufficient coverage")
 
-            n_lowcov = transcript.length - len(valid_positions)
-            logger.debug(f"Skipped {n_lowcov} positions for {transcript.name} because not present in all samples with sufficient coverage")
+        # Combine pvalue within a given sequence context
+        if self._sequence_context > 0:
+            logger.debug ("Calculate weighs and cross correlation matrices by tests")
+            if self._sequence_context_weights == "harmonic":
+                # Generate weights as a symmetrical harmonic series
+                weights = self._harmomic_series(self._sequence_context)
+            else:
+                weights = [1]*(2*self._sequence_context+1)
 
-            # Combine pvalue within a given sequence context
-            if self._sequence_context > 0:
-                logger.debug ("Calculate weighs and cross correlation matrices by tests")
-                if self._sequence_context_weights == "harmonic":
-                    # Generate weights as a symmetrical harmonic series
-                    weights = self._harmomic_series(self._sequence_context)
+            # Collect pvalue lists per tests
+            pval_list_dict = defaultdict(list)
+            for pos in range(1, transcript.length+1):
+                if pos in total_results_dict.keys():
+                    pos_dict = total_results_dict[pos]
+                    for test in tests:
+                        pval_list_dict[test].append(pos_dict[test])
                 else:
-                    weights = [1]*(2*self._sequence_context+1)
+                    for test in tests:
+                        pval_list_dict[test].append(np.nan)
 
-                # Collect pvalue lists per tests
-                pval_list_dict = defaultdict(list)
-                for pos in range(1, transcript.length+1):
-                    if pos in total_results_dict.keys():
-                        pos_dict = total_results_dict[pos]
-                        for test in tests:
-                            pval_list_dict[test].append(pos_dict[test])
-                    else:
-                        for test in tests:
-                            pval_list_dict[test].append(np.nan)
+            
+            # Compute cross correlation matrix per test
+            corr_matrix_dict = OrderedDict()
+            for test in tests:
+                if 'pvalue' in test:
+                    corr_matrix_dict[test] = self._cross_corr_matrix(pval_list_dict[test], self._sequence_context)
 
-                
-                # Compute cross correlation matrix per test
-                corr_matrix_dict = OrderedDict()
-                for test in tests:
-                    if 'pvalue' in test:
-                        corr_matrix_dict[test] = self._cross_corr_matrix(pval_list_dict[test], self._sequence_context)
-
-                logger.debug("Combine adjacent position pvalues with Hou's method position per position")
-                # Iterate over each positions in previously generated result dictionary
-                for mid_pos in range(len(total_results_dict)):
-                    # Perform test only if middle pos is valid
-                    if mid_pos in valid_positions:
-                        pval_list_dict = defaultdict(list)
-                        for pos in range(mid_pos-self._sequence_context, mid_pos+self._sequence_context+1):
-                            for test in tests:
-                                if 'pvalue' in test:
-                                    # If any of the positions are missing or any of the pvalues in the context is lowCov or NaN, consider it 1
-                                    if pos < 0 or pos >= len(total_results_dict) or pos not in valid_positions or np.isnan(total_results_dict[pos][test]):
-                                        pval_list_dict[test].append(1)
-                                    # else just extract the corresponding pvalue
-                                    else:
-                                        pval_list_dict[test].append(total_results_dict[pos][test])
-                        # Combine collected pvalues and add to dict
+            logger.debug("Combine adjacent position pvalues with Hou's method position per position")
+            # Iterate over each positions in previously generated result dictionary
+            for mid_pos in range(len(total_results_dict)):
+                # Perform test only if middle pos is valid
+                if mid_pos in valid_positions:
+                    pval_list_dict = defaultdict(list)
+                    for pos in range(mid_pos-self._sequence_context, mid_pos+self._sequence_context+1):
                         for test in tests:
                             if 'pvalue' in test:
-                                test_label = "{}_context_{}".format(test, self._sequence_context)
-                                # If the mid p-value is.nan, force to nan also the context p-value
-                                if np.isnan(total_results_dict[mid_pos][test]):
-                                    total_results_dict[mid_pos][test_label] = np.nan
+                                # If any of the positions are missing or any of the pvalues in the context is lowCov or NaN, consider it 1
+                                if pos < 0 or pos >= len(total_results_dict) or pos not in valid_positions or np.isnan(total_results_dict[pos][test]):
+                                    pval_list_dict[test].append(1)
+                                # else just extract the corresponding pvalue
                                 else:
-                                    total_results_dict[mid_pos][test_label] = self._combine_pvalues_hou(pval_list_dict[test], weights, corr_matrix_dict[test])
-
-            '''
-            for pos in range(1, transcript.length+1):
-                if pos not in total_results_dict.keys():
-                    results_dict = {}
-                    for test in tests.union(set(shift_stats.keys())):
-                        results_dict[test] = np.nan
-                    total_results_dict[pos] = results_dict
-            '''            
-            return total_results_dict
-
-        else:
-            logger.debug(f"Skipping {transcript.name} because there is insuffiecent coverage in all samples")
+                                    pval_list_dict[test].append(total_results_dict[pos][test])
+                    # Combine collected pvalues and add to dict
+                    for test in tests:
+                        if 'pvalue' in test:
+                            test_label = "{}_context_{}".format(test, self._sequence_context)
+                            # If the mid p-value is.nan, force to nan also the context p-value
+                            if np.isnan(total_results_dict[mid_pos][test]):
+                                total_results_dict[mid_pos][test_label] = np.nan
+                            else:
+                                total_results_dict[mid_pos][test_label] = self._combine_pvalues_hou(pval_list_dict[test], weights, corr_matrix_dict[test])
+        
+        return total_results_dict
             
             
-    def _nonparametric_test(self, transcript, pos, method=None):
-
+    def _nonparametric_test(self, data1, data2, method=None):
         if method in ["mann_whitney", "MW"]:
             stat_test = lambda x,y: mannwhitneyu(x, y, alternative='two-sided')
         elif method in ["kolmogorov_smirnov", "KS"]:
@@ -194,38 +214,29 @@ class TxComp():
         else:
             raise NanocomporeError("Invalid statistical method name (MW, KS, TT)")
 
-        pval_intensity = stat_test(transcript.getReferenceIntensityData(pos), transcript.getTestIntensityData(pos))[1]
-        if pval_intensity == 0:
-            pval_intensity = np.finfo(np.float).tiny
+        pval = stat_test(data1, data2)[1]
+        if pval == 0:
+            pval = np.finfo(np.float).tiny
 
-        pval_dwell = stat_test((transcript.getReferenceDwellData(pos)), (transcript.getTestDwellData(pos)))[1]
-        if pval_dwell == 0:
-            pval_dwell = np.finfo(np.float).tiny
-
-        return(pval_intensity, pval_dwell)
+        return pval
 
 
-    def _shift_stats(self, transcript, pos):
+    def _shift_stats(self, c1_intensity, c2_intensity, c1_dwell, c2_dwell):
         """Calculate shift statistics"""
-        reference_intensity = transcript.getReferenceIntensityData(pos)
-        test_intensity = transcript.getTestIntensityData(pos)
-
-        reference_dwell = np.log10(transcript.getReferenceDwellData(pos))
-        test_dwell = np.log10(transcript.getTestDwellData(pos))
 
         shift_stats = OrderedDict([
-            ('c1_mean_intensity', np.mean(reference_intensity)),
-            ('c2_mean_intensity', np.mean(test_intensity)),
-            ('c1_median_intensity', np.median(reference_intensity)),
-            ('c2_median_intensity', np.median(test_intensity)),
-            ('c1_sd_intensity', np.std(reference_intensity)),
-            ('c2_sd_intensity', np.std(test_intensity)),
-            ('c1_mean_dwell', np.mean(reference_dwell)),
-            ('c2_mean_dwell', np.mean(test_dwell)),
-            ('c1_median_dwell', np.median(reference_dwell)),
-            ('c2_median_dwell', np.median(test_dwell)),
-            ('c1_sd_dwell', np.std(reference_dwell)),
-            ('c2_sd_dwell', np.std(test_dwell))
+            ('c1_mean_intensity', np.mean(c1_intensity)),
+            ('c2_mean_intensity', np.mean(c2_intensity)),
+            ('c1_median_intensity', np.median(c1_intensity)),
+            ('c2_median_intensity', np.median(c2_intensity)),
+            ('c1_sd_intensity', np.std(c1_intensity)),
+            ('c2_sd_intensity', np.std(c2_intensity)),
+            ('c1_mean_dwell', np.mean(c1_dwell)),
+            ('c2_mean_dwell', np.mean(c2_dwell)),
+            ('c1_median_dwell', np.median(c1_dwell)),
+            ('c2_median_dwell', np.median(c2_dwell)),
+            ('c1_sd_dwell', np.std(c1_dwell)),
+            ('c2_sd_dwell', np.std(c2_dwell))
         ])
         return(shift_stats)
 
