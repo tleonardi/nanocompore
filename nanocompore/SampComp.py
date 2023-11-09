@@ -173,7 +173,7 @@ class SampComp(object):
         self._Whitelist = Whitelist.Whitelist(experiment=self._experiment,
                                     fasta_fn=self._fasta_fn,
                                     min_coverage=self._min_coverage,
-                                    min_ref_length=self._min_coverage,
+                                    min_ref_length=self._min_ref_length,
                                     select_ref_id=self._select_ref_ids,
                                     exclude_ref_id=self._exclude_ref_ids)
 
@@ -245,7 +245,8 @@ class SampComp(object):
                                     allow_warnings=self._allow_warnings)
         # Define processes
         processes = list()
-        processes.append(mp.Process(target=self._list_refid, args=(in_q, error_q)))
+        #TODO delete?
+        #processes.append(mp.Process(target=self._list_refid, args=(in_q, error_q)))
         processes.append(mp.Process(target=self._writeResults, args=(out_q, error_q)))
         for i in range(self._nthreads):
             in_q.put(None)
@@ -344,7 +345,7 @@ class SampComp(object):
             # Kill error queue with poison pill
             error_q.put(None)
 
-    
+    #TODO delete?
     def _list_refid(self, in_q, error_q):
         """Add valid refid from whitelist to input queue to dispatch the data among the workers"""
         n_tx = 0

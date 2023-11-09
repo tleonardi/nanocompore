@@ -32,16 +32,17 @@ class Experiment():
 
 ################### Private methods ###################
 
+    #TODO fail fast with exception
     def _build_input_data_df_from_tsv(self, infile):
-        if self._check_if_header_exists(infile):
+        if self._header_exists(infile):
             df = pd.read_csv(infile, sep='\t', header=0)
         else:
             df = pd.read_csv(infile, sep='\t', names=['Sample', 'Condition', 'pod5', 'bam'])
         return df
 
-    def _check_if_header_exists(self, infile):
+    def _header_exists(self, infile):
         with open(infile, 'r') as tsv:
-            line = tsv.readline()
+            line = tsv.readline().strip().lower()
             if line == 'Sample\tCondition\tpod5\tbam':
                 return True
             else:

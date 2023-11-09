@@ -136,12 +136,7 @@ def sampcomp_main(args):
         progress = args.progress)
 
     # Run SampComp
-    db = s()
-
-    # Save all reports
-    if(db):
-        db.save_all(pvalue_thr=args.pvalue_thr)
-
+    s()
 #~~~~~~~~~~~~~~CLI ENTRYPOINT~~~~~~~~~~~~~~#
 
 if __name__ == "__main__":
