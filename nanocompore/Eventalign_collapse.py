@@ -240,7 +240,7 @@ class Eventalign_collapse ():
                         n_reads+=1
 
                         # Define file header from first read and first kmer
-                        if byte_offset is 0:
+                        if byte_offset == 0:
                             idx_header_list = list(read_res_d.keys())+["byte_offset","byte_len"]
                             idx_header_str = "\t".join(idx_header_list)
                             data_header_list = list(kmer_res_l[0].keys())
