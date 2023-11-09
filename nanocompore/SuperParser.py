@@ -172,7 +172,7 @@ class SuperParser ():
         f_list = []
 
         # Standard input
-        if fn_list is 0:
+        if fn_list == 0:
             fn = "stdin"
             fp = open(0)
             return [(fn,fp)]
