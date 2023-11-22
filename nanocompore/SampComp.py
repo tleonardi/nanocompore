@@ -55,9 +55,9 @@ class SampComp(object):
 
         logger.info("Starting to whitelist the reference IDs")
         self._Whitelist = Whitelist.Whitelist(experiment=self._experiment,
-                                    fasta_fn=self._config.get_fasta_ref(),
-                                    min_coverage=self._config.get_min_coverage(),
-                                    min_ref_length=self._config.get_min_ref_length())
+                                              fasta_fn=self._config.get_fasta_ref(),
+                                              min_coverage=self._config.get_min_coverage(),
+                                              min_ref_length=self._config.get_min_ref_length())
 
         self._valid_transcripts = self._Whitelist.ref_id_list
 
@@ -76,8 +76,8 @@ class SampComp(object):
         for tx in self._valid_transcripts:
             in_q.put(tx)
         
-        self.resultsManager = SampCompResultsmanager.resultsManager(outpath=self._config.get_outpath(), 
-                                                                    prefix=self._config.get_outprefix(), 
+        self.resultsManager = SampCompResultsmanager.resultsManager(outpath=self._config.get_outpath(),
+                                                                    prefix=self._config.get_outprefix(),
                                                                     overwrite=self._config.get_overwrite(),
                                                                     bed_annotation=self._config.get_bed(),
                                                                     correction_method='fdr_bh')

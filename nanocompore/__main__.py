@@ -40,7 +40,7 @@ def main(args=None):
     try:
         mkdir(fn=config.get_outpath(), exist_ok=config.get_overwrite())
     except (NanocomporeError, FileExistsError) as E:
-        raise NanocomporeError("Could not create the output folder. Try using `overwrite: True` in the input configuration or use another directory")
+        raise NanocomporeError("Could not create the output folder. Try using `overwrite: true` in the input configuration or use another directory")
 
     # Set logger
     log_fn = os.path.join(config.get_outpath(), f"{config.get_outprefix()}_nanocompore.log")
