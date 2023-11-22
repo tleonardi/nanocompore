@@ -274,8 +274,10 @@ def is_valid_fasta(file):
     Returns a boolean indicating whether the given file is a valid FASTA file.
     """
     try:
-        with Fasta(file):
-            return True
+        with Fasta(file) as fasta:
+            # Fasta will return an empty iterator if the file is not properly
+            # formatted FASTA file.
+            return any(fasta)
     except IOError:
         # raise NanocomporeError("The fasta file cannot be opened")
         return False
