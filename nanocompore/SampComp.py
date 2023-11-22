@@ -60,6 +60,7 @@ class SampComp(object):
                                               min_ref_length=self._config.get_min_ref_length())
 
         self._valid_transcripts = self._Whitelist.ref_id_list
+        self._processing_threads = self._config.get_nthreads() - 2
 
 
     #~~~~~~~~~~~~~~Call METHOD~~~~~~~~~~~~~~#
@@ -88,7 +89,7 @@ class SampComp(object):
         # Define processes
         processes = list()
         processes.append(mp.Process(target=self._writeResults, args=(out_q, error_q)))
-        for _ in range(self._config.get_nthreads() - 2):
+        for _ in range(self._processing_threads):
             in_q.put(None)
             processes.append(mp.Process(target=self._processTx, args=(in_q, out_q, error_q)))
 
@@ -169,7 +170,7 @@ class SampComp(object):
         try:
             n_tx = 0
             n_pos = 0
-            for _ in range(self._config.get_nthreads() - 2):
+            for _ in range(self._processing_threads):
                 for tx, result in iter(out_q.get, None):
                     if result:
                         logger.debug(f"Writer thread adding results data from {tx}")

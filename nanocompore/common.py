@@ -20,13 +20,8 @@ from pyfaidx import Fasta
 class NanocomporeError (Exception):
     """ Basic exception class for nanocompore module """
     def __init__(self, message=""):
-        self._message = message
         logger.error(message)
         super().__init__(message)
-
-
-    def format(self, data):
-        return self._message + f": {data}"
 
 
 class NanocomporeWarning (Warning):
