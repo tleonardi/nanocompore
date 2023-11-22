@@ -11,6 +11,7 @@ import datetime
 
 # Third party imports
 from loguru import logger
+from pyfaidx import Fasta
 
 # Local imports
 #import nanocompore as pkg
@@ -19,8 +20,13 @@ from loguru import logger
 class NanocomporeError (Exception):
     """ Basic exception class for nanocompore module """
     def __init__(self, message=""):
+        self._message = message
         logger.error(message)
         super().__init__(message)
+
+
+    def format(self, data):
+        return self._message + f": {data}"
 
 
 class NanocomporeWarning (Warning):
@@ -41,7 +47,7 @@ def build_eventalign_fn_dict(pod5_list1, bam_list1, pod5_list2, bam_list2, label
     pod5_list2 = pod5_list2.split(",")
     bam_list2 = bam_list2.split(",")
 
-    if len(pod5_list1) == len(bam_list1) and len(pod5_list2) == len(bam_list2):           
+    if len(pod5_list1) == len(bam_list1) and len(pod5_list2) == len(bam_list2):
         d = defaultdict(dict)
         d[label1] = build_condition_dict(pod5_list1, bam_list1, label1)
         d[label2] = build_condition_dict(pod5_list2, bam_list2, label2)
@@ -260,3 +266,16 @@ def jhelp (f:"python function or method"):
 
     # Display in Jupyter
     display (Markdown(s))
+
+
+
+def is_valid_fasta(file):
+    """
+    Returns a boolean indicating whether the given file is a valid FASTA file.
+    """
+    try:
+        with Fasta(file):
+            return True
+    except IOError:
+        # raise NanocomporeError("The fasta file cannot be opened")
+        return False

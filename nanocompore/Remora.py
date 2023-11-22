@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 from __future__ import print_function
-from functools import total_ordering
 
-import os
 import pod5
 import pysam
 import numpy as np
@@ -13,26 +11,25 @@ import itertools
 from loguru import logger
 from pkg_resources import resource_filename
 
-from remora import io, refine_signal_map, util
+from remora import io, refine_signal_map
 
 from nanocompore.common import *
-import nanocompore as pkg
 
 class Remora:
-    def __init__(self, experiment,
+    def __init__(self,
+                 experiment,
+                 config,
                  ref_id='',
                  start=0,
                  end=1,
                  seq='',
-                 min_reads=30,
-                 max_reads=5000,
                  strand='+',
                  kit='RNA002'):
         
         ########## Private fields ##########
         self._experiment = experiment
         self._seq = seq
-        self._min_coverage = min_reads
+        self._min_coverage = config.get_min_coverage()
         self._ref_id = ref_id
         self._pod5_bam_tuples = []
         self._condition_labels = []
@@ -67,7 +64,7 @@ class Remora:
             raise NanocomporeError (f"failed to check for sampling rate. Likely something wrong with the pod5 file")
 
         try:
-            self._samples_metrics = self._remora_resquiggle(max_reads, kit)
+            self._samples_metrics = self._remora_resquiggle(config.get_downsample_high_coverage(), kit)
         except:
             raise NanocomporeError (f"failed to resquiggle with Remora")
 

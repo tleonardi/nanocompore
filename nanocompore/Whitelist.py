@@ -49,8 +49,6 @@ class Whitelist(object):
             if given, refid in the list will be excluded from the analysis
         """
 
-        # Test that bam and bam.bai files are accessable
-        experiment.check_bams_are_available()
         self._experiment = experiment
 
 
