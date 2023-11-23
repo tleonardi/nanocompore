@@ -23,8 +23,7 @@ class Remora:
                  start=0,
                  end=1,
                  seq='',
-                 strand='+',
-                 kit='RNA002'):
+                 strand='+'):
         
         ########## Private fields ##########
         self._experiment = experiment
@@ -43,8 +42,8 @@ class Remora:
         #This is defined as a singal refiner object in the Remora API
         #Without the signal refiner, it will not resquiggle, but instead merely return the ionic current stream  
         try:
-            self._sig_map_refiner = self._check_signal_refiner(kit=kit)
-        except:
+            self._sig_map_refiner = self._check_signal_refiner(kit=config.get_kit())
+        except Exception as e:
             raise NanocomporeError ("failed to create the signal map refiner. Check that the kmer model table is up-to-date")
         
         #Remora requires a specific region in the reference to focus the resquiggling algorithm
@@ -64,7 +63,7 @@ class Remora:
             raise NanocomporeError (f"failed to check for sampling rate. Likely something wrong with the pod5 file")
 
         try:
-            self._samples_metrics = self._remora_resquiggle(config.get_downsample_high_coverage(), kit)
+            self._samples_metrics = self._remora_resquiggle(config.get_downsample_high_coverage(), config.get_kit())
         except:
             raise NanocomporeError (f"failed to resquiggle with Remora")
 

@@ -9,8 +9,7 @@ class Transcript():
     def __init__(self, ref_id='',
                  experiment='',
                  config=None,
-                 ref_seq=0,
-                 kit='RNA002'):
+                 ref_seq=0):
 
         logger.trace(f"Creating transcript object for {ref_id}")
         self._experiment = experiment
@@ -24,8 +23,7 @@ class Transcript():
                                             start=0,
                                             end=self._length,
                                             seq=ref_seq,
-                                            strand='+',
-                                            kit=kit)
+                                            strand='+')
 
     ########## Public ##########
 

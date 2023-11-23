@@ -26,23 +26,17 @@ class Whitelist(object):
 
     #~~~~~~~~~~~~~~MAGIC METHODS~~~~~~~~~~~~~~#
     def __init__(self,
-        experiment,
-        fasta_fn,
-        min_coverage = 30,
-        min_ref_length = 100,
-        select_ref_id = [],
-        exclude_ref_id = []):
+                 experiment,
+                 config,
+                 select_ref_id = [],
+                 exclude_ref_id = []):
         """
         #########################################################
         * experiment
             object which contains methods relating to the sample and condition labels, 
             and the paths to the bam and pod5 files
-        * fasta_fn
-            Path to a fasta file corresponding to the reference used for read alignemnt
-        * min_coverage
-            minimal coverage required in both samples
-        * min_ref_length
-            minimal length of a reference transcript to be considered in the analysis
+        * config
+            the input configuration object provided by the user
         * select_ref_id
             if given, only reference ids in the list will be selected for the analysis
         * exclude_ref_id
@@ -50,24 +44,16 @@ class Whitelist(object):
         """
 
         self._experiment = experiment
+        self._fasta_fn = config.get_fasta_ref()
 
-
-        # Test that Fasta can be opened
-        self._test_fasta_file(fasta_fn)
 
         # Filtering at ref_id level
         logger.info("Filtering out references with low coverage")
-        self.ref_ids = self._select_ref(min_coverage=min_coverage,
-                                          min_ref_length=min_ref_length,
+        self.ref_ids = self._select_ref(min_coverage=config.get_min_coverage(),
+                                          min_ref_length=config.get_min_ref_length(),
                                           select_ref_ids=select_ref_id,
                                           exclude_ref_ids=exclude_ref_id)
 
-    def _test_fasta_file(self, fasta_fn):
-        try:
-            with Fasta(fasta_fn):
-                self._fasta_fn = fasta_fn
-        except IOError:
-            raise NanocomporeError("The fasta file cannot be opened")
 
     def __repr__(self):
         return "Whitelist: Number of references: {}".format(len(self))

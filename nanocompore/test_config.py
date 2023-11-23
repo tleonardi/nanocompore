@@ -106,6 +106,16 @@ class TestConfig:
         assert "did not validate 'unsupported_method'" in str(exception_info.value)
 
 
+    def test_comparison_method_is_case_sensitive(self):
+        yaml = copy.deepcopy(BASIC_VALID_CONFIG)
+        yaml['comparison_methods'] = ['gmm']
+
+        with pytest.raises(schema.SchemaError) as exception_info:
+            config = Config(yaml)
+
+        assert "did not validate 'gmm'" in str(exception_info.value)
+
+
     def test_incorrect_sequence_context(self):
         yaml = copy.deepcopy(BASIC_VALID_CONFIG)
         yaml['sequence_context'] = 5
@@ -124,3 +134,23 @@ class TestConfig:
             config = Config(yaml)
 
         assert "pvalue_threshold must be >= 0 and <= 1" == str(exception_info.value)
+
+
+    def test_unsupported_correction_method(self):
+        yaml = copy.deepcopy(BASIC_VALID_CONFIG)
+        yaml['correction_method'] = 'bonferroni'
+
+        with pytest.raises(schema.SchemaError) as exception_info:
+            config = Config(yaml)
+
+        assert "does not match 'bonferroni'" in str(exception_info.value)
+
+
+    def test_unsupported_kit(self):
+        yaml = copy.deepcopy(BASIC_VALID_CONFIG)
+        yaml['kit'] = 'RNA500'
+
+        with pytest.raises(schema.SchemaError) as exception_info:
+            config = Config(yaml)
+
+        assert "did not validate 'RNA500'" in str(exception_info.value)
