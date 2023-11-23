@@ -5,8 +5,9 @@
 
 # Standard library imports
 import argparse
-from collections import *
 import os
+import shutil
+import textwrap
 import yaml
 
 # Third party
@@ -25,10 +26,44 @@ def main(args=None):
     # General parser
     parser = argparse.ArgumentParser(description=package_description, formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument('--version', '-v', action='version', version='v'+package_version)
-    parser.add_argument('config', type=str)
+
+    subparser_description = textwrap.dedent("""
+            nanocompore implements the following subcommands
+            \t* init : Initialize a new input configuration file using the default template.
+            \t* sampcomp : Compare 2 samples and find significant signal differences.\n""")
+    subparsers = parser.add_subparsers(dest='subcommand',
+                                       required=True,
+                                       description=subparser_description)
+
+    # Sampcomp subparser
+    parser_sc = subparsers.add_parser('sampcomp',
+                                      formatter_class=argparse.RawDescriptionHelpFormatter,
+                                      description=textwrap.dedent("Compare 2 samples and find significant signal differences."))
+    parser_sc.add_argument('config', type=str)
+    parser_sc.set_defaults(func=sampcomp_subcommand)
+
+    # Init subparser
+    parser_init = subparsers.add_parser('init',
+                                        formatter_class=argparse.RawDescriptionHelpFormatter,
+                                        description=textwrap.dedent("Initialize a new input configuration file using the default template."))
+    parser_init.add_argument('--overwrite', '-o', action='store_true', help="Overwrite existing config file.")
+    parser_init.add_argument('path', type=str)
+    parser_init.set_defaults(func=init_subcommand)
 
     # Parse agrs and
-    args = parser.parse_args()
+    args = parser.parse_args(args=None if sys.argv[1:] else ['--help'])
+
+    # Call relevant subcommand function
+    args.func(args)
+
+
+#~~~~~~~~~~~~~~SUBCOMMAND FUNCTIONS~~~~~~~~~~~~~~#
+
+def sampcomp_subcommand(args):
+    """
+    Runs the sample comparison subcommand.
+    """
+    logger.warning("Running SampComp")
 
     # Read the input config file
     with open(args.config, 'r') as f:
@@ -42,25 +77,24 @@ def main(args=None):
     except (NanocomporeError, FileExistsError) as E:
         raise NanocomporeError("Could not create the output folder. Try using `overwrite: true` in the input configuration or use another directory")
 
-    # Set logger
-    log_fn = os.path.join(config.get_outpath(), f"{config.get_outprefix()}_nanocompore.log")
-
-    set_logger(config.get_log_level(), log_fn=log_fn)
-
-    # Run the comparison
-    sampcomp_main(config)
-
-#~~~~~~~~~~~~~~SUBCOMMAND FUNCTIONS~~~~~~~~~~~~~~#
-
-def sampcomp_main(config):
-    """"""
-    logger.warning("Running SampComp")
 
     # Init SampComp
     s = SampComp(config)
 
     # Run SampComp
     s()
+
+
+def init_subcommand(args):
+    """
+    Initializes a new input configuration file using the default template.
+    """
+    template = os.path.join(os.path.dirname(__file__), 'template_config.yaml')
+    if os.path.isfile(args.path) and not args.overwrite:
+        raise NanocomporeError("Output file already exists. Use --overwrite to overwrite it.")
+    shutil.copyfile(template, args.path)
+
+
 #~~~~~~~~~~~~~~CLI ENTRYPOINT~~~~~~~~~~~~~~#
 
 if __name__ == "__main__":
