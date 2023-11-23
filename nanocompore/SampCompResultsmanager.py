@@ -12,13 +12,14 @@ from statsmodels.stats.multitest import multipletests
 from nanocompore.common import *
 import nanocompore.SampComp_SQLDB as SampCompDb
 
+
 class resultsManager():
-    def __init__ (self, outpath, prefix='', overwrite=False, bed_annotation='', correction_method='fdr_bh'):
-        self._outpath = outpath
-        self._prefix = prefix
-        self._overwrite = overwrite
-        self._bed_fn = bed_annotation
-        self._correction_method = correction_method
+    def __init__ (self, config):
+        self._outpath = config.get_outpath()
+        self._prefix = config.get_outprefix()
+        self._overwrite = config.get_overwrite()
+        self._bed_fn = config.get_bed()
+        self._correction_method = config.get_correction_method()
         
         self._db = SampCompDb.SampComp_DB(outpath=self._outpath, prefix=self._prefix, overwrite=self._overwrite)
     

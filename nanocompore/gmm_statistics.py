@@ -1,12 +1,9 @@
-from collections import OrderedDict, Counter, defaultdict
-from email.policy import default
+from collections import Counter
 import warnings, sys
 
 
 # Third party
-from loguru import logger
-from scipy.stats import mannwhitneyu, ttest_ind, chi2, f_oneway
-from scipy.stats.mstats import ks_twosamp
+from scipy.stats import f_oneway
 import statsmodels.discrete.discrete_model as dm
 from statsmodels.tools.sm_exceptions import ConvergenceWarning
 from sklearn.preprocessing import StandardScaler
@@ -16,10 +13,11 @@ import pandas as pd
 
 # Local package
 from nanocompore.common import *
-import nanocompore.Transcript as Transcript
+
 
 def gmm_test(kmer_data, transcript, random_state, anova=True, logit=False, verbose=True, allow_warnings=False):
     #Forcing conditionals for testing
+    # TODO: this should be removed probably
     anova = False
     logit = True
 

@@ -2,51 +2,28 @@
 
 #~~~~~~~~~~~~~~IMPORTS~~~~~~~~~~~~~~#
 # Std lib
-from collections import OrderedDict, Counter, defaultdict
-from email.policy import default
-import warnings, sys
+from collections import OrderedDict, defaultdict
 
 
 # Third party
 from loguru import logger
-from scipy.stats import mannwhitneyu, ttest_ind, chi2, f_oneway
+from scipy.stats import mannwhitneyu, ttest_ind, chi2
 from scipy.stats.mstats import ks_twosamp
-import statsmodels.discrete.discrete_model as dm
-from statsmodels.tools.sm_exceptions import ConvergenceWarning
-from sklearn.preprocessing import StandardScaler
-from sklearn.mixture import GaussianMixture
 import numpy as np
-import pandas as pd
 
 # Local package
 from nanocompore.common import *
-import nanocompore.Transcript as Transcript
 import nanocompore.gmm_statistics as gmm
 
 class TxComp():
     def __init__(self,
                  experiment, 
-                 random_state = 26,
-                 methods=None,
-                 sequence_context=0,
-                 min_coverage=30,
-                 sequence_context_weights="uniform",
-                 anova=False,
-                 logit=True,
-                 allow_warnings=False):
+                 config,
+                 random_state = 26):
         logger.debug("TxCompare object created")
 
+        self._config = config
         self._random_state = random_state
-        self._methods = methods
-        self._sequence_context = sequence_context
-        self._min_coverage = min_coverage
-        self._sequence_context_weights = sequence_context_weights
-        self._anova = anova
-        self._logit = logit
-        self._allow_warnings = allow_warnings
-
-        if self._sequence_context_weights != "uniform" and self._sequence_context_weights != "harmonic":
-            raise NanocomporeError("Invalid sequence_context_weights (uniform or harmonic)")
 
         # If we have less than 2 replicates in any condition skip anova and force logit method
         if self._any_condition_with_fewer_than_2_samples(experiment):
@@ -77,7 +54,7 @@ class TxComp():
             valid_positions.append(kmer_data.pos)
             results_dict = {}
             results_dict['kmer_seq'] = kmer_data.kmer
-            for method in self._methods:
+            for method in self._config.get_comparison_methods():
                 if method.upper() in ['MW', 'KS', 'TT']:
                     try:
                         intensity_data_1 = kmer_data.get_condition_kmer_intensity_data(condition_label_1)
@@ -102,9 +79,9 @@ class TxComp():
                     try:
                         gmm_results = gmm.gmm_test(kmer_data=kmer_data,
                                                    transcript=transcript,
-                                                   anova=self._anova,
-                                                   logit=self._logit, 
-                                                   allow_warnings=self._allow_warnings, 
+                                                   anova=self._config.get_anova(),
+                                                   logit=self._config.get_logit(), 
+                                                   allow_warnings=self._config.get_allow_warnings(), 
                                                    random_state=self._random_state)
                     except:
                         raise NanocomporeError(f"Error doing GMM test on {transcript.name}")
@@ -116,12 +93,12 @@ class TxComp():
                     results_dict['GMM_cov_type'] = gmm_results['gmm']['GMM_cov_type']
                     tests.add('GMM_cov_type')
 
-                    if self._anova:
+                    if self._config.get_anova():
                         results_dict["GMM_anova_pvalue"] = gmm_results['anova']['pvalue']
                         results_dict["GMM_anova_model"] = gmm_results['anova']['model']
                         tests.add("GMM_anova_pvalue")
                         tests.add("GMM_anova_model")
-                    if self._logit:
+                    if self._config.get_logit():
                         results_dict["GMM_logit_pvalue"] = gmm_results['logit']['pvalue']
                         results_dict["logit_LOR"] = gmm_results['logit']['coef']
                         tests.add("GMM_logit_pvalue")
@@ -150,13 +127,13 @@ class TxComp():
         logger.debug(f"Skipped {n_lowcov} positions for {transcript.name} because not present in all samples with sufficient coverage")
 
         # Combine pvalue within a given sequence context
-        if self._sequence_context > 0:
+        if self._config.get_sequence_context() > 0:
             logger.debug ("Calculate weighs and cross correlation matrices by tests")
-            if self._sequence_context_weights == "harmonic":
+            if self._config.get_sequence_context_weights() == "harmonic":
                 # Generate weights as a symmetrical harmonic series
-                weights = self._harmomic_series(self._sequence_context)
+                weights = self._harmomic_series(self._config.get_sequence_context())
             else:
-                weights = [1]*(2*self._sequence_context+1)
+                weights = [1]*(2*self._config.get_sequence_context()+1)
 
             # Collect pvalue lists per tests
             pval_list_dict = defaultdict(list)
@@ -174,7 +151,8 @@ class TxComp():
             corr_matrix_dict = OrderedDict()
             for test in tests:
                 if 'pvalue' in test:
-                    corr_matrix_dict[test] = self._cross_corr_matrix(pval_list_dict[test], self._sequence_context)
+                    corr_matrix_dict[test] = self._cross_corr_matrix(pval_list_dict[test],
+                                                                     self._config.get_sequence_context())
 
             logger.debug("Combine adjacent position pvalues with Hou's method position per position")
             # Iterate over each positions in previously generated result dictionary
@@ -182,7 +160,8 @@ class TxComp():
                 # Perform test only if middle pos is valid
                 if mid_pos in valid_positions:
                     pval_list_dict = defaultdict(list)
-                    for pos in range(mid_pos-self._sequence_context, mid_pos+self._sequence_context+1):
+                    for pos in range(mid_pos-self._sequence_context,
+                                     mid_pos+self._config.get_sequence_context()+1):
                         for test in tests:
                             if 'pvalue' in test:
                                 # If any of the positions are missing or any of the pvalues in the context is lowCov or NaN, consider it 1
@@ -194,7 +173,7 @@ class TxComp():
                     # Combine collected pvalues and add to dict
                     for test in tests:
                         if 'pvalue' in test:
-                            test_label = "{}_context_{}".format(test, self._sequence_context)
+                            test_label = "{}_context_{}".format(test, self._config.get_sequence_context())
                             # If the mid p-value is.nan, force to nan also the context p-value
                             if np.isnan(total_results_dict[mid_pos][test]):
                                 total_results_dict[mid_pos][test_label] = np.nan
