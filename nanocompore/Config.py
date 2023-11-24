@@ -34,6 +34,7 @@ CONFIG_SCHEMA = Schema({
     Optional('sequence_context_weights'): Or('uniform', 'harmonic'),
     Optional('pvalue_threshold'): And(float, lambda n: n >= 0 and n <= 1, error='pvalue_threshold must be >= 0 and <= 1'),
     Optional('logit'): bool,
+    Optional('anova'): bool,
     Optional('bool'): bool,
     Optional('allow_warnings'): bool,
     Optional('outpath'): str,
