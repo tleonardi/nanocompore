@@ -59,4 +59,6 @@ class Transcript():
     def generate_data(self):
         logger.trace(f"Iterating through kmer data positions for {self._name}")
         for kmer_data in self._remora_object.kmer_data_generator():
-            yield kmer_data
+            # Yield the kmer only if it contains any intensity and dwell data
+            if len(kmer_data.intensity) > 0 and len(kmer_data.dwell) > 0:
+                yield kmer_data
