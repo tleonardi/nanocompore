@@ -143,8 +143,8 @@ class SampComp(object):
                     logger.debug(f"Collecting data for {ref_id}")
                     results = self.txComp.txCompare(transcript)
                     out_q.put((transcript.name, results))
-                except:
-                    logger.debug(f"Insufficent coverage for {ref_id} skipping transcript")
+                except Exception as e:
+                    logger.error(f"Error in Worker for {ref_id}: {e}")
 
         except:
             logger.error("Error in Worker")
