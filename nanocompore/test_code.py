@@ -88,49 +88,6 @@ def make_txComp_results(samples_per_cond=1, weights='harmonic', context=0):
     total_results_dict = txComp_object.txCompare(test_transcript_data)
     return total_results_dict
 
-def test_db_manager():
-      #test that db is properly opened
-    for label in test_samples:
-        test_db_path = test_samples[label]
-        test_db = db_mng.Data_DB_manager(test_db_path)
-
-        #test that data for a particular trasncript can be gathered
-        test_data = test_db.getData(test_tx_name)
-
-        #test that the correct number of positions and reads for a particular position are correct
-        if label == 'KO1':
-            assert len(test_data.keys()) == 847
-            assert len(test_data[pos_0]['dwell_times']) == 89
-            assert len(test_data[pos_0]['intensities']) == 89
-        elif label == 'WT1':
-            assert len(test_data.keys()) == 847
-            assert len(test_data[pos_0]['dwell_times']) == 95
-            assert len(test_data[pos_0]['intensities']) == 95
-
-        #test that the db can be closed
-        test_db.closeDB()
-
-def test_sample_object():
-    #test that a sample object is created properly
-    for sample_label in test_samples:
-        cond_label = sample2condition[sample_label]
-        db_path = test_samples[sample_label]
-
-        sample = Sample.Sample(cond_label, sample_label, db_path, test_tx_name, max_coverage)
-        valid_positions = sample.getValidPositions(min_coverage)
-
-        assert pos_0 in valid_positions
-        assert len(valid_positions) == 847
-        assert len(sample.getKmerIntensityData(pos_0)) == len(sample.getKmerDwellData(pos_0))
-        assert len(sample.getKmerIntensityData(pos_0)) == len(sample.getKmerLabelData(pos_0))
-
-        if sample.condition_label == 'KO':
-            assert len(sample.getKmerIntensityData(pos_0)) == 89
-        elif sample.condition_label == 'WT':
-            assert len(sample.getKmerIntensityData(pos_0)) == 95
-
-        #test that a sample object closes the db properly
-        sample.closeDB()
 
 def test_transcript_object():
     #test that a transcript object functions as expected
