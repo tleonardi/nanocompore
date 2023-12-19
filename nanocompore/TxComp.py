@@ -10,14 +10,19 @@ from loguru import logger
 from scipy.stats import mannwhitneyu, ttest_ind, chi2
 from scipy.stats.mstats import ks_twosamp
 import numpy as np
+import pandas as pd
 
 # Local package
 from nanocompore.common import *
 import nanocompore.gmm_statistics as gmm
 
+
+READ_LEVEL_DATA_COLS = ['intensity', 'dwell', 'sample', 'condition', 'transcript', 'pos', 'kmer']
+
+
 class TxComp():
     def __init__(self,
-                 experiment, 
+                 experiment,
                  config,
                  random_state = 26):
         logger.debug("TxCompare object created")
@@ -50,10 +55,18 @@ class TxComp():
         valid_positions = []
         condition_label_1 = transcript.condition_labels[0]
         condition_label_2 = transcript.condition_labels[1]
+        # read_pos_data_point: (condition, sample, transcript, read, pos, kmer, intensity, dwell)
+        total_read_data = []
         for kmer_data in transcript.generate_data():
             valid_positions.append(kmer_data.pos)
             results_dict = {}
             results_dict['kmer_seq'] = kmer_data.kmer
+
+            read_data = kmer_data._data
+            read_data['pos'] = kmer_data.pos
+            read_data['kmer'] = kmer_data.kmer
+            total_read_data.append(read_data)
+
             for method in self._config.get_comparison_methods():
                 if method.upper() in ['MW', 'KS', 'TT']:
                     try:
@@ -64,7 +77,7 @@ class TxComp():
                         tests.add(f"{method}_intensity_pvalue")
                     except:
                         raise NanocomporeError(f"Error doing {method} intensity test on {transcript.name} at pos {kmer_data.pos}")
-                    
+
                     try:
                         dwell_data_1 = kmer_data.get_condition_kmer_dwell_data(condition_label_1)
                         dwell_data_2 = kmer_data.get_condition_kmer_dwell_data(condition_label_2)
@@ -73,39 +86,23 @@ class TxComp():
                         tests.add(f"{method}_dwell_pvalue")
                     except:
                         raise NanocomporeError(f"Error doing {method} dwell test on {transcript.name} at pos {kmer_data.pos}")
-                    
-                
+
+
                 elif method == "GMM":
                     try:
                         gmm_results = gmm.gmm_test(kmer_data=kmer_data,
                                                    transcript=transcript,
                                                    anova=self._config.get_anova(),
-                                                   logit=self._config.get_logit(), 
-                                                   allow_warnings=self._config.get_allow_warnings(), 
+                                                   logit=self._config.get_logit(),
+                                                   allow_warnings=self._config.get_allow_warnings(),
                                                    random_state=self._random_state)
                     except:
                         raise NanocomporeError(f"Error doing GMM test on {transcript.name}")
-                    #results_dict["GMM_model"] = gmm_results['gmm']
-                    results_dict["cluster_counts"] = gmm_results['gmm']['cluster_counts']
-                    tests.add("cluster_counts")
-                    results_dict['GMM_n_clust'] = gmm_results['gmm']['n_componets']
-                    tests.add('GMM_n_clust')
-                    results_dict['GMM_cov_type'] = gmm_results['gmm']['GMM_cov_type']
-                    tests.add('GMM_cov_type')
+                    relevant_gmm_results, gmm_tests = self._extract_gmm_results(gmm_results)
+                    results_dict.update(relevant_gmm_results)
+                    gmm_tests.update(gmm_tests)
 
-                    if self._config.get_anova():
-                        results_dict["GMM_anova_pvalue"] = gmm_results['anova']['pvalue']
-                        results_dict["GMM_anova_model"] = gmm_results['anova']['model']
-                        tests.add("GMM_anova_pvalue")
-                        tests.add("GMM_anova_model")
-                    if self._config.get_logit():
-                        results_dict["GMM_logit_pvalue"] = gmm_results['logit']['pvalue']
-                        results_dict["logit_LOR"] = gmm_results['logit']['coef']
-                        tests.add("GMM_logit_pvalue")
-                        tests.add("logit_LOR")
-                
-            
-            
+
             # Calculate shift statistics
             #sys.stderr.write(f"Calculatign shift stats for {pos} of {transcript.name}\n")
             logger.trace(f"Calculatign shift stats for {kmer_data.pos} of {transcript.name}")
@@ -120,7 +117,7 @@ class TxComp():
             # Save results in main
             #sys.stderr.write(f"Saving test results for {pos}\n")
             logger.trace(f"Saving test results for {kmer_data.pos}")
-            
+
             total_results_dict[kmer_data.pos] = results_dict
 
         n_lowcov = transcript.length - len(valid_positions)
@@ -146,7 +143,7 @@ class TxComp():
                     for test in tests:
                         pval_list_dict[test].append(np.nan)
 
-            
+
             # Compute cross correlation matrix per test
             corr_matrix_dict = OrderedDict()
             for test in tests:
@@ -179,10 +176,37 @@ class TxComp():
                                 total_results_dict[mid_pos][test_label] = np.nan
                             else:
                                 total_results_dict[mid_pos][test_label] = self._combine_pvalues_hou(pval_list_dict[test], weights, corr_matrix_dict[test])
-        
-        return total_results_dict
-            
-            
+
+        total_read_data = pd.concat(total_read_data, axis=0)
+
+        return total_results_dict, total_read_data
+
+
+    def _extract_gmm_results(self, gmm_results):
+        results = {}
+        tests = set()
+
+        #results["GMM_model"] = gmm_results['gmm']
+        results["cluster_counts"] = gmm_results['gmm']['cluster_counts']
+        tests.add("cluster_counts")
+        results['GMM_n_clust'] = gmm_results['gmm']['n_componets']
+        tests.add('GMM_n_clust')
+        results['GMM_cov_type'] = gmm_results['gmm']['GMM_cov_type']
+        tests.add('GMM_cov_type')
+
+        if self._config.get_anova():
+            results["GMM_anova_pvalue"] = gmm_results['anova']['pvalue']
+            results["GMM_anova_model"] = gmm_results['anova']['model']
+            tests.add("GMM_anova_pvalue")
+            tests.add("GMM_anova_model")
+        if self._config.get_logit():
+            results["GMM_logit_pvalue"] = gmm_results['logit']['pvalue']
+            results["logit_LOR"] = gmm_results['logit']['coef']
+            tests.add("GMM_logit_pvalue")
+            tests.add("logit_LOR")
+
+        return results, tests
+
     def _nonparametric_test(self, data1, data2, method=None):
         if method in ["mann_whitney", "MW"]:
             stat_test = lambda x,y: mannwhitneyu(x, y, alternative='two-sided')

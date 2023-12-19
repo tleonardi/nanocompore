@@ -24,7 +24,8 @@ class resultsManager():
         self._db = SampCompDb.SampComp_DB(outpath=self._outpath, prefix=self._prefix, overwrite=self._overwrite)
     
     def saveData(self, transcript, test_results, table=''):
-        self._db.store_test_results(tx_name=transcript, test_results=test_results, table=table)
+        self._db.store_test_results(tx_name=transcript, test_results=test_results[0], table=table)
+        self._db.store_read_level_data(tx_name=transcript, read_data=test_results[1])
 
     def closeDB(self):
         self._db.closeDB()

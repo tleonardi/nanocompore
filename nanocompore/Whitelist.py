@@ -50,9 +50,9 @@ class Whitelist(object):
         # Filtering at ref_id level
         logger.info("Filtering out references with low coverage")
         self.ref_ids = self._select_ref(min_coverage=config.get_min_coverage(),
-                                          min_ref_length=config.get_min_ref_length(),
-                                          select_ref_ids=select_ref_id,
-                                          exclude_ref_ids=exclude_ref_id)
+                                        min_ref_length=config.get_min_ref_length(),
+                                        select_ref_ids=select_ref_id,
+                                        exclude_ref_ids=exclude_ref_id)
 
 
     def __repr__(self):

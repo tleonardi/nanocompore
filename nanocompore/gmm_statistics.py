@@ -16,23 +16,22 @@ from nanocompore.common import *
 
 
 def gmm_test(kmer_data, transcript, random_state, anova=True, logit=False, verbose=True, allow_warnings=False):
-    #Forcing conditionals for testing
-    # TODO: this should be removed probably
-    anova = False
-    logit = True
-
     if len(transcript.condition_labels) != 2:
         #sys.stderr.write("gmm_test only supports two conditions\n")
         raise NanocomporeError("gmm_test only supports two conditions")
 
     # Scale the intensity and dwell time arrays
-    X = StandardScaler().fit_transform([(i, d) for i,d in zip(kmer_data.intensity, kmer_data.dwell)])
-
-    # Generate an array of sample labels
-    Y = kmer_data.sample_labels
+    X = StandardScaler().fit_transform([(i, d) for i, d in zip(kmer_data.intensity, kmer_data.dwell)])
 
     gmm_fit = fit_best_gmm(X, max_components=2, cv_types=['full'], random_state=random_state)
     gmm_mod, gmm_type, gmm_ncomponents = gmm_fit
+
+    if gmm_ncomponents > 2:
+        raise NanocomporeError("GMM models with n_component>2 are not supported")
+
+    aov_results = {'pvalue': np.nan, 'delta_logit': np.nan, 'table': "NC", 'cluster_counts': "NC"}
+    logit_results = {'pvalue': np.nan, 'coef': np.nan, 'model': "NC"}
+    cluster_counts = "NC"
 
     # If the best GMM has 2 clusters do an anova test on the log odd ratios
     if gmm_ncomponents == 2:
@@ -41,27 +40,26 @@ def gmm_test(kmer_data, transcript, random_state, anova=True, logit=False, verbo
         counters = dict()
         # Count how many reads in each cluster for each sample
         for lab in transcript.sample_labels:
-            counters[lab] = Counter(y_pred[[i==lab for i in Y]])
+            counters[lab] = Counter(y_pred[[i==lab for i in kmer_data.sample_labels]])
         cluster_counts = count_reads_in_cluster(counters)
 
         if anova:
-            aov_results = gmm_anova_test(counters, transcript.condition_labels, gmm_ncomponents, allow_warnings)
-        else:
-            aov_results=None
+            aov_results = gmm_anova_test(counters,
+                                         transcript.condition_labels,
+                                         gmm_ncomponents,
+                                         allow_warnings)
 
         if logit:
-            logit_results = gmm_logit_test(Y, y_pred, kmer_data, transcript.condition_labels)
-        else:
-            logit_results=None
+            logit_results = gmm_logit_test(y_pred,
+                                           kmer_data,
+                                           transcript.condition_labels)
 
-    elif gmm_ncomponents == 1:
-        aov_results = {'pvalue': np.nan, 'delta_logit': np.nan, 'table': "NC", 'cluster_counts': "NC"}
-        logit_results = {'pvalue': np.nan, 'coef': np.nan, 'model': "NC"}
-        cluster_counts = "NC"
-    else:
-        raise NanocomporeError("GMM models with n_component>2 are not supported")
-
-    return({'anova':aov_results, 'logit': logit_results, 'gmm':{'GMM_cov_type':gmm_type, 'n_componets':gmm_ncomponents, 'model': gmm_mod, 'cluster_counts': cluster_counts}})
+    return({'anova': aov_results,
+            'logit': logit_results,
+            'gmm': {'GMM_cov_type': gmm_type,
+                    'n_componets': gmm_ncomponents,
+                    'model': gmm_mod,
+                    'cluster_counts': cluster_counts}})
 
 
 def fit_best_gmm(X, random_state, max_components=2, cv_types=['spherical', 'tied', 'diag', 'full']):
@@ -132,13 +130,13 @@ def gmm_anova_test(counters, condition_labels, gmm_ncomponents, allow_warnings=F
     return(aov_results)
 
 
-def gmm_logit_test(Y, y_pred, kmer_data, condition_labels):
+def gmm_logit_test(y_pred, kmer_data, condition_labels):
     Y = kmer_data.condition_labels
-    y_pred=np.append(y_pred, [0,0,1,1])
+    y_pred=np.append(y_pred, [0, 0, 1, 1])
     Y.extend([condition_labels[0], condition_labels[1], condition_labels[0], condition_labels[1]])
     Y = pd.get_dummies(Y)
-    Y['intercept']=1
-    logit = dm.Logit(y_pred,Y[['intercept',condition_labels[1]]] )
+    Y['intercept'] = 1
+    logit = dm.Logit(y_pred, Y[['intercept', condition_labels[1]]] )
     with warnings.catch_warnings():
         warnings.filterwarnings('error')
         try:
