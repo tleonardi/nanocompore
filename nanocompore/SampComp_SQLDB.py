@@ -312,7 +312,6 @@ class SampComp_DB():
         VALUES ({','.join(['?'] * len(columns))})
         ON CONFLICT DO NOTHING
         """
-        print(insert_query)
         self._cursor.executemany(insert_query, values)
 
 
@@ -348,6 +347,8 @@ class SampComp_DB():
         index_queries.append("CREATE INDEX kmer_stats_kmer_id_index ON kmer_stats (kmer_seq_id)")
         index_queries.append("CREATE UNIQUE INDEX transcripts_index ON transcripts (id, name)")
         index_queries.append("CREATE UNIQUE INDEX kmer_seqs_index ON kmer_seqs (id, sequence)")
+        index_queries.append("CREATE INDEX read_level_data_read_id_index ON read_level_data (read_id)")
+        index_queries.append("CREATE INDEX reads_transcript_id_index ON reads (transcript_id)")
 
         for index_query in index_queries:
             try:

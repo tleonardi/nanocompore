@@ -169,7 +169,7 @@ class SampComp(object):
                         logger.debug(f"Writer thread adding results data from {tx}")
                         n_tx += 1
                         n_pos = len([x for x in result if type(x) == int])
-                        self.resultsManager.saveData(tx, result)
+                        self.resultsManager.saveData(tx, result, self._config)
             self.resultsManager.finish()
         except:
             logger.error("Error writing results to database")

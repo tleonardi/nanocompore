@@ -103,3 +103,14 @@ fasta: "/path/to/reference.fa"
 
 # Display a progress bar during execution
 # progress: False
+
+# Save read level data to database.
+# (That means the intensity/dwell-time measurements
+# for every position of every read will be stored.)
+# Warning: This can take up a lot of space.
+# read_level_data: False
+
+# If read_level_data is True, only save read level data for these transcripts.
+# The transcript ids must match the RNAME field from the bam file.
+# Note: empty list means all transcripts
+# read_level_data_transcripts: []
