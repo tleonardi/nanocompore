@@ -43,6 +43,8 @@ CONFIG_SCHEMA = Schema({
     Optional('log_level'): Or('warning', 'info', 'debug'),
     Optional('progress'): bool,
     Optional('correction_method'): 'fdr_bh',
+    Optional('read_level_data'): bool,
+    Optional('read_level_data_transcripts'): And(list, lambda l: len(l) > 0),
 })
 
 
@@ -65,6 +67,8 @@ DEFAULT_OVERWRITE = False
 DEFAULT_LOG_LEVEL = 'info'
 DEFAULT_PROGRESS = False
 DEFAULT_CORRECTION_METHOD = 'fdr_bh'
+DEFAULT_READ_LEVEL_DATA = False
+DEFAULT_READ_LEVEL_DATA_TRANSCRIPTS = []
 
 
 class Config:
@@ -224,3 +228,22 @@ class Config:
         Get the multiple test correction method.
         """
         return self._config.get('correction_method', DEFAULT_CORRECTION_METHOD)
+
+
+    def get_read_level_data(self):
+        """
+        Save read level data to database.
+        (That means the intensity/dwell-time measurements
+        for every position of every read will be stored.)
+        Warning: This can take up a lot of space.
+        """
+        return self._config.get('read_level_data', DEFAULT_READ_LEVEL_DATA)
+
+
+    def get_read_level_data_transcripts(self):
+        """
+        If read_level_data is True, only save read level data for these transcripts.
+        The transcript ids must match the RNAME field from the bam file.
+        Note: empty list means all transcripts
+        """
+        return self._config.get('read_level_data_transcripts', DEFAULT_READ_LEVEL_DATA_TRANSCRIPTS)

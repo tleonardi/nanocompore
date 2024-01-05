@@ -23,8 +23,13 @@ class resultsManager():
         
         self._db = SampCompDb.SampComp_DB(outpath=self._outpath, prefix=self._prefix, overwrite=self._overwrite)
     
-    def saveData(self, transcript, test_results, table=''):
-        self._db.store_test_results(tx_name=transcript, test_results=test_results, table=table)
+    def saveData(self, transcript, test_results, config, table=''):
+        self._db.store_test_results(tx_name=transcript, test_results=test_results[0], table=table)
+        if config.get_read_level_data():
+            save_transcript = len(config.get_read_level_data_transcripts()) == 0 \
+                              or transcript in config.get_read_level_data_transcripts()
+            if save_transcript:
+                self._db.store_read_level_data(tx_name=transcript, read_data=test_results[1])
 
     def closeDB(self):
         self._db.closeDB()

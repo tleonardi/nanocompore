@@ -24,7 +24,7 @@ class Remora:
                  end=1,
                  seq='',
                  strand='+'):
-        
+
         ########## Private fields ##########
         self._experiment = experiment
         self._seq = seq
@@ -36,16 +36,16 @@ class Remora:
 
         logger.trace(f"Creating Remora object for {ref_id}")
         self._build_pod5_bam_tuple()
-        logger.trace(f"All pod5 and bam files were properly opened for {ref_id}")        
+        logger.trace(f"All pod5 and bam files were properly opened for {ref_id}")
 
         #Remora requires a kmer model file to resquiggle the data (Signal to sequence alignment)
         #This is defined as a singal refiner object in the Remora API
-        #Without the signal refiner, it will not resquiggle, but instead merely return the ionic current stream  
+        #Without the signal refiner, it will not resquiggle, but instead merely return the ionic current stream
         try:
             self._sig_map_refiner = self._check_signal_refiner(kit=config.get_kit())
         except Exception as e:
             raise NanocomporeError ("failed to create the signal map refiner. Check that the kmer model table is up-to-date")
-        
+
         #Remora requires a specific region in the reference to focus the resquiggling algorithm
         #This is part of the Remora API for creating the reference region
         try:
@@ -55,7 +55,7 @@ class Remora:
 
         #TODO test Nanocompore accuracy using seconds per kmer or samples per kmer
         #Remora returns the number of datapoints per kmer, not the number of seconds the kmer persisted in the
-        #sensitive region of the nanopore. This function uses the pod5 api to convert the sampling rate of the 
+        #sensitive region of the nanopore. This function uses the pod5 api to convert the sampling rate of the
         #sequencing (hz) to time per sample (seconds)
         try:
             self._time_per_sample = self._get_time_per_sample()
@@ -63,7 +63,9 @@ class Remora:
             raise NanocomporeError (f"failed to check for sampling rate. Likely something wrong with the pod5 file")
 
         try:
-            self._samples_metrics = self._remora_resquiggle(config.get_downsample_high_coverage(), config.get_kit())
+            self._samples_metrics, self._bam_reads = self._remora_resquiggle(
+                config.get_downsample_high_coverage(),
+                config.get_kit())
         except:
             raise NanocomporeError (f"failed to resquiggle with Remora")
 
@@ -73,7 +75,7 @@ class Remora:
                 pod5_fh = pod5.Reader(pod5_fn)
             except:
                 raise NanocomporeError (f"failed to open pod5 file {pod5}")
-            
+
             try:
                 bam_fh = pysam.AlignmentFile(bam)
             except:
@@ -109,7 +111,7 @@ class Remora:
             RNA = True
         else:
             RNA = False
-        
+
         logger.info(f"Starting to resquiggle data with Remora API for {self._ref_reg.ctg}")
         samples_metrics, all_bam_reads = io.get_ref_reg_samples_metrics(
             self._ref_reg,
@@ -120,7 +122,7 @@ class Remora:
             reverse_signal=RNA
         )
         logger.info(f"Data resquiggled")
-        return samples_metrics
+        return samples_metrics, all_bam_reads
 
     def _kmer_model_selector(self, kit=('RNA002')):#, 'RNA004', 'DNA260', 'DNA400')):
         if kit not in ('RNA002'):#, 'RNA004', 'DNA260', 'DNA400')
@@ -155,6 +157,7 @@ class Remora:
             dwell = []
             sample_labels = []
             condition_labels = []
+            reads = []
             for i, sample in enumerate(self._samples_metrics):
                 sample_label = self._sample_labels[i]
                 condition_label = self._experiment.sample_to_condition(sample_label)
@@ -165,24 +168,26 @@ class Remora:
                 sample_labels.append([sample_label]*len(sample['trimmean'][:, pos]))
                 condition_labels.append([condition_label]*len(sample['trimmean'][:, pos]))
 
+                reads.append([read.qname for read in self._bam_reads[i]])
+
             intensity = np.array(self._unpack_list(intensity))
             dwell = np.array(self._unpack_list(dwell)) * self._time_per_sample
             sample_labels = self._unpack_list(sample_labels)
             condition_labels = self._unpack_list(condition_labels)
+            reads = self._unpack_list(reads)
 
-            dataframe = self._build_dataframe(intensity, dwell, sample_labels, condition_labels)
+            dataframe = self._build_dataframe(intensity, dwell, sample_labels, condition_labels, reads)
             if self._check_condition_counts_threshold(dataframe):
                 kmer_data = Remora._Kmer_Data(pos, kmer_seq, dataframe)
                 yield kmer_data
             else:
                 logger.trace(f'Skipping position {pos} due to insuffient coverage in both conditions')
 
-    def _build_dataframe(self, intensity, dwell, sample_labels, condition_labels):
-        dataframe = pd.DataFrame([intensity, dwell, sample_labels, condition_labels]).transpose()
-        dataframe.columns = ('intensity', 'dwell', 'sample', 'condition')
+    def _build_dataframe(self, intensity, dwell, sample_labels, condition_labels, reads):
+        dataframe = pd.DataFrame([intensity, dwell, sample_labels, condition_labels, reads]).transpose()
+        dataframe.columns = ('intensity', 'dwell', 'sample', 'condition', 'read')
         dataframe.dropna(inplace=True)
 
-        dataframe.dwell = dataframe.dwell.apply(math.log10)
         return dataframe
 
     def _unpack_list(self, list_of_lists):
@@ -190,7 +195,7 @@ class Remora:
 
     def _check_condition_counts_threshold(self, data_frame, condition='condition'):
         condition_counts = data_frame[condition].value_counts()
-        return all(count >= self._min_coverage for count in condition_counts)  
+        return all(count >= self._min_coverage for count in condition_counts)
 
     def _make_kmer_seq(self, pos):
         kmer = self._seq[pos:pos + self._kmer_size]
@@ -199,7 +204,7 @@ class Remora:
         if len(kmer) > self._kmer_size:
             raise NanocomporeError (f'{kmer} is longer than the modeled kmer size {self._kmer_size}')
         else:
-            return kmer 
+            return kmer
 
     @property
     def kmer_size(self):
