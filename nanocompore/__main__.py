@@ -29,21 +29,21 @@ def main(args=None):
 
     subparser_description = textwrap.dedent("""
             nanocompore implements the following subcommands
-            \t* init : Initialize a new input configuration file using the default template.
-            \t* sampcomp : Compare 2 samples and find significant signal differences.\n""")
+            \t* template : Initialize a new input configuration file using the default template.
+            \t* run : Compare 2 samples and find significant signal differences.\n""")
     subparsers = parser.add_subparsers(dest='subcommand',
                                        required=True,
                                        description=subparser_description)
 
     # Sampcomp subparser
-    parser_sc = subparsers.add_parser('sampcomp',
+    parser_sc = subparsers.add_parser('run',
                                       formatter_class=argparse.RawDescriptionHelpFormatter,
                                       description=textwrap.dedent("Compare 2 samples and find significant signal differences."))
     parser_sc.add_argument('config', type=str)
     parser_sc.set_defaults(func=sampcomp_subcommand)
 
     # Init subparser
-    parser_init = subparsers.add_parser('init',
+    parser_init = subparsers.add_parser('template',
                                         formatter_class=argparse.RawDescriptionHelpFormatter,
                                         description=textwrap.dedent("Initialize a new input configuration file using the default template."))
     parser_init.add_argument('--overwrite', '-o', action='store_true', help="Overwrite existing config file.")
