@@ -501,7 +501,7 @@ class SampCompDB(object):
             tests = sorted(list(tests_set))
 
         # Collect data for interval in a numpy array
-        array = np.zeros(end-start, dtype=[(test, np.float) for test in tests])
+        array = np.zeros(end-start, dtype=[(test, np.float64) for test in tests])
         for id, row in df.iterrows():
             for test in tests:
                 if np.isnan(row[test]):
