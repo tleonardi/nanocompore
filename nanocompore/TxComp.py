@@ -164,11 +164,11 @@ def nonparametric_test(condition1_intensity, condition2_intensity, condition1_dw
 
     pval_intensity = stat_test(condition1_intensity, condition2_intensity)[1]
     if pval_intensity == 0: 
-        pval_intensity = np.finfo(np.float).tiny
+        pval_intensity = np.finfo(np.float64).tiny
 
     pval_dwell = stat_test(condition1_dwell, condition2_dwell)[1]
     if pval_dwell == 0: 
-        pval_dwell = np.finfo(np.float).tiny
+        pval_dwell = np.finfo(np.float64).tiny
     return(pval_intensity, pval_dwell)
 
 
@@ -269,7 +269,7 @@ def gmm_anova_test(counters, sample_condition_labels, condition_labels, gmm_ncom
             raise NanocomporeError("While doing the Anova test we found a sample with within variance = 0. Use --allow_warnings to ignore.")
         else:
             aov_table = "Within variance is 0"
-            aov_pvalue = np.finfo(np.float).tiny
+            aov_pvalue = np.finfo(np.float64).tiny
     else:
         with warnings.catch_warnings():
             # Convert warnings to errors in order to catch them
@@ -283,7 +283,7 @@ def gmm_anova_test(counters, sample_condition_labels, condition_labels, gmm_ncom
                 else:
                     warnings.filterwarnings('default')
                     aov_table = f_oneway(logr_s1, logr_s2)
-                    aov_pvalue = np.finfo(np.float).tiny
+                    aov_pvalue = np.finfo(np.float64).tiny
     if aov_pvalue == 0:
         raise NanocomporeError("The Anova test returned a p-value of 0. This is most likely an error somewhere")
     # Calculate the delta log odds ratio, i.e. the difference of the means of the log odds ratios between the two conditions
@@ -306,7 +306,7 @@ def gmm_logit_test(Y, y_pred, sample_condition_labels, condition_labels):
         except ConvergenceWarning:
             logit_mod, logit_pvalue, logit_coef = "NC", 1, "NC"
     if logit_pvalue == 0:
-        logit_pvalue = np.finfo(np.float).tiny
+        logit_pvalue = np.finfo(np.float64).tiny
     logit_results = {'pvalue': logit_pvalue, 'coef': logit_coef, 'model': logit_mod}
     return(logit_results)
 
@@ -403,7 +403,7 @@ def combine_pvalues_hou(pvalues, weights, cor_mat):
     combined_p_value = chi2.sf(tau/c,f)
     # Return a very small number if pvalue = 0
     if combined_p_value == 0:
-        combined_p_value = np.finfo(np.float).tiny
+        combined_p_value = np.finfo(np.float64).tiny
     return combined_p_value
 
 def harmomic_series(sequence_context):

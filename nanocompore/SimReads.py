@@ -212,8 +212,8 @@ def simulate_ref_mod_context(
 
     # Create empty arrays to store reads intensity and dwell
     n_kmers = len(ref_seq)-4
-    intensity_array = np.empty(shape=(n_kmers, nreads), dtype=np.float)
-    dwell_array = np.empty(shape=(n_kmers, nreads), dtype=np.float)
+    intensity_array = np.empty(shape=(n_kmers, nreads), dtype=np.float64)
+    dwell_array = np.empty(shape=(n_kmers, nreads), dtype=np.float64)
     mod_pos_list = []
     nreads_mod = 0
 

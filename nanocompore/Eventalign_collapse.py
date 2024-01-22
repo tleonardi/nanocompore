@@ -77,7 +77,7 @@ class Eventalign_collapse ():
         # Input file field selection typing and renaming
         self.__select_colnames = ["contig", "read_name", "position", "reference_kmer", "model_kmer", "event_length", "samples"]
         self.__change_colnames = {"contig":"ref_id" ,"position":"ref_pos", "read_name":"read_id", "samples":"sample_list", "event_length":"dwell_time"}
-        self.__cast_colnames = {"ref_pos":int, "dwell_time":np.float32, "sample_list":lambda x: [float(i) for i in x.split(",")]}
+        self.__cast_colnames = {"ref_pos":int, "dwell_time":np.float64, "sample_list":lambda x: [float(i) for i in x.split(",")]}
 
     def __call__(self):
         """
@@ -418,7 +418,7 @@ class Kmer ():
             return "mismatch"
 
     def get_results(self):
-        sample_array = np.array(self.sample_list, dtype=np.float32)
+        sample_array = np.array(self.sample_list, dtype=np.float64)
         d = OrderedDict()
         d["ref_pos"] = self.ref_pos
         d["ref_kmer"] = self.ref_kmer
