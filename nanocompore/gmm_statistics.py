@@ -136,12 +136,13 @@ def gmm_logit_test(y_pred, kmer_data, condition_labels):
     Y.extend([condition_labels[0], condition_labels[1], condition_labels[0], condition_labels[1]])
     Y = pd.get_dummies(Y)
     Y['intercept'] = 1
-    logit = dm.Logit(y_pred, Y[['intercept', condition_labels[1]]] )
+    X = Y[['intercept', condition_labels[0]]].astype(int)
+    logit = dm.Logit(y_pred, X)
     with warnings.catch_warnings():
         warnings.filterwarnings('error')
         try:
             logit_mod=logit.fit(disp=0)
-            logit_pvalue, logit_coef = logit_mod.pvalues[1], logit_mod.params[1]
+            logit_pvalue, logit_coef = logit_mod.pvalues.iloc[1], logit_mod.params.iloc[1]
         except ConvergenceWarning:
             logit_mod, logit_pvalue, logit_coef = "NC", 1, "NC"
     if logit_pvalue == 0:
