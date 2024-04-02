@@ -22,6 +22,8 @@ import nanocompore.Experiment as Experiment
 
 import nanocompore as pkg
 
+from concurrent.futures import ProcessPoolExecutor, as_completed
+
 
 # Disable multithreading for MKL and openBlas
 os.environ["MKL_NUM_THREADS"] = "1"
@@ -57,7 +59,7 @@ class SampComp(object):
         self._Whitelist = Whitelist.Whitelist(self._experiment, self._config)
 
         self._valid_transcripts = self._Whitelist.ref_id_list
-        self._processing_threads = self._config.get_nthreads() - 2
+        self._processing_threads = self._config.get_nthreads() - 1
 
 
     #~~~~~~~~~~~~~~Call METHOD~~~~~~~~~~~~~~#
@@ -67,94 +69,45 @@ class SampComp(object):
         """
         logger.info("Starting data processing")
 
-        in_q = mp.Queue(maxsize = 100)
-        out_q = mp.Queue(maxsize = 100)
-        error_q = mp.Queue(maxsize = 100)
-
-        for tx in self._valid_transcripts:
-            in_q.put(tx)
-        
-        self.resultsManager = SampCompResultsmanager.resultsManager(self._config)
-
-        self.txComp = TxComp.TxComp(experiment=self._experiment,
-                                    config=self._config,
-                                    random_state = 26)
-        # Define processes
-        processes = list()
-        processes.append(mp.Process(target=self._writeResults, args=(out_q, error_q)))
-        for _ in range(self._processing_threads):
-            in_q.put(None)
-            processes.append(mp.Process(target=self._processTx, args=(in_q, out_q, error_q)))
-
+        resultsManager = SampCompResultsmanager.resultsManager(self._config)
         try:
-            #Start all processes
-            self._fasta_fh = Fasta(self._config.get_fasta_ref())
-            for p in processes:
-                p.start()
-
-            # Monitor error queue
-            for tb in iter(error_q.get, None):
-                logger.trace("Error caught from error_q")
-                raise NanocomporeError(tb)
-            logger.debug("Error queue was closed")
-            
-            # Soft processes and queues stopping
-            logger.debug("Waiting for all processes to be joined")
-            for p in processes:
-                p.join()
-            logger.debug("All processes joined successfully")
-
-            logger.debug("Closing all queues")
-            for q in (in_q, out_q, error_q):
-                q.close()
-            logger.debug("All queues were closed")
-
-            self.resultsManager.finish()
-
-        except Exception as E:
-            logger.error("An error occured. Killing all processes and closing queues\n")
-            try:
-                for p in processes:
-                    p.terminate()
-                for q in (in_q, out_q, error_q):
-                    q.close()
-            except:
-                logger.error("An error occured while trying to kill processes\n")
-            raise E
+            with ProcessPoolExecutor(max_workers=self._processing_threads) as executor:
+                futures = [executor.submit(self._processTx, ref_id)
+                           for ref_id in self._valid_transcripts]
+                for future in as_completed(futures):
+                    ref_id, results = future.result()
+                    try:
+                        resultsManager.saveData(ref_id, results, self._config)
+                    except Exception:
+                        logger.error("Error writing results to database")
+                        raise NanocomporeError(traceback.format_exc())
+            resultsManager.finish()
         finally:
-            self.resultsManager.closeDB()
-            self._fasta_fh.close()
+            resultsManager.closeDB()
 
 
     #~~~~~~~~~~~~~~PRIVATE MULTIPROCESSING METHOD~~~~~~~~~~~~~~#
-    def _processTx(self, in_q, out_q, error_q):
-        logger.debug("Worker thread started")
+
+
+    def _processTx(self, ref_id):
+        logger.debug(f"Worker thread processing new item from in_q: {ref_id}")
+        fasta_fh = Fasta(self._config.get_fasta_ref())
+        ref_seq = str(fasta_fh[ref_id])
+        txComp = TxComp.TxComp(experiment=self._experiment,
+                               config=self._config,
+                               random_state = 26)
+        transcript = Transcript.Transcript(ref_id=ref_id,
+                                           experiment=self._experiment,
+                                           ref_seq=ref_seq,
+                                           config=self._config)
         try:
-            n_tx = 0
-            for ref_id in iter(in_q.get, None):
-                logger.debug(f"Worker thread processing new item from in_q: {ref_id}")
-                ref_seq = str(self._fasta_fh[ref_id])
-                transcript = Transcript.Transcript(ref_id=ref_id,
-                                                   experiment=self._experiment,
-                                                   ref_seq=ref_seq,
-                                                   config=self._config)
-                try:
-                    n_tx += 1
-                    logger.debug(f"Collecting data for {ref_id}")
-                    results = self.txComp.txCompare(transcript)
-                    out_q.put((transcript.name, results))
-                except Exception as e:
-                    logger.error(f"Error in Worker for {ref_id}: {e}")
+            results = txComp.txCompare(transcript)
+            return ref_id, results
+        except Exception as e:
+            import traceback
+            traceback.print_stack(e)
+            logger.error(f"Error in Worker for {ref_id}: {e}")
 
-        except:
-            logger.error("Error in Worker")
-            error_q.put(NanocomporeError(traceback.format_exc()))
-
-        # Deal poison pill and close file pointer
-        finally:
-            logger.debug(f"Processed Transcrits: {n_tx}")
-            logger.debug("Adding poison pill to out_q")
-            out_q.put(None)
 
     def _writeResults(self, out_q, error_q):
         #TODO need to determine if this is necessary
@@ -181,23 +134,3 @@ class SampComp(object):
             # Kill error queue with poison pill
             error_q.put(None)
 
-    #TODO delete?
-    def _list_refid(self, in_q, error_q):
-        """Add valid refid from whitelist to input queue to dispatch the data among the workers"""
-        n_tx = 0
-        try:
-            for tx in self._valid_transcripts:
-                logger.debug(f"Adding {tx} to in_q")
-                in_q.put((tx))
-                n_tx+=1
-
-        # Manage exceptions and add error trackback to error queue
-        except Exception:
-            logger.debug("Error in Reader")
-            error_q.put(traceback.format_exc())
-
-        # Deal poison pills
-        finally:
-            for i in range (self._nthreads):
-                in_q.put(None)
-            logger.debug(f"Parsed transcripts:{n_tx}")

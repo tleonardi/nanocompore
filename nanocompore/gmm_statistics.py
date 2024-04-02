@@ -106,7 +106,7 @@ def gmm_anova_test(counters, condition_labels, gmm_ncomponents, allow_warnings=F
             #raise NanocomporeError("While doing the Anova test we found a sample with within variance = 0. Use --allow_warnings to ignore.")
         else:
             aov_table = "Within variance is 0"
-            aov_pvalue = np.finfo(np.float).tiny
+            aov_pvalue = np.finfo(float).tiny
     else:
         with warnings.catch_warnings():
             # Convert warnings to errors in order to catch them
@@ -120,7 +120,7 @@ def gmm_anova_test(counters, condition_labels, gmm_ncomponents, allow_warnings=F
                 #else:
                 #    warnings.filterwarnings('default')
                 #    aov_table = f_oneway(logr_s1, logr_s2)
-                #    aov_pvalue = np.finfo(np.float).tiny
+                #    aov_pvalue = np.finfo(float).tiny
     if aov_pvalue == 0:
         sys.stderr.write("The Anova test returned a p-value of 0. This is most likely an error somewhere\n")
         #raise NanocomporeError("The Anova test returned a p-value of 0. This is most likely an error somewhere")
@@ -146,7 +146,7 @@ def gmm_logit_test(y_pred, kmer_data, condition_labels):
         except ConvergenceWarning:
             logit_mod, logit_pvalue, logit_coef = "NC", 1, "NC"
     if logit_pvalue == 0:
-        logit_pvalue = np.finfo(np.float).tiny
+        logit_pvalue = np.finfo(float).tiny
     logit_results = {'pvalue': logit_pvalue, 'coef': logit_coef, 'model': logit_mod}
     return(logit_results)
 

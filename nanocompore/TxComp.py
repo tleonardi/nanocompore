@@ -219,7 +219,7 @@ class TxComp():
 
         pval = stat_test(data1, data2)[1]
         if pval == 0:
-            pval = np.finfo(np.float).tiny
+            pval = np.finfo(float).tiny
 
         return pval
 
@@ -316,5 +316,5 @@ class TxComp():
         combined_p_value = chi2.sf(tau/c,f)
         # Return a very small number if pvalue = 0
         if combined_p_value == 0:
-            combined_p_value = np.finfo(np.float).tiny
+            combined_p_value = np.finfo(float).tiny
         return combined_p_value
