@@ -16,6 +16,10 @@ from pyfaidx import Fasta
 # Local imports
 #import nanocompore as pkg
 
+
+VAR_ORDER = ['dwell', 'trimmean']
+
+
 #~~~~~~~~~~~~~~CUSTOM EXCEPTION CLASS~~~~~~~~~~~~~~#
 class NanocomporeError (Exception):
     """ Basic exception class for nanocompore module """
