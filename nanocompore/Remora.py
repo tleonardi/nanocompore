@@ -15,7 +15,11 @@ from collections import Counter
 from remora import io, refine_signal_map
 from kmer import KmerData
 
-from nanocompore.common import *
+from common import Kit, VAR_ORDER, NanocomporeError
+
+
+RNA002_LEVELS_FILE = "kmer_models/rna002_5mer_levels_v1.txt"
+RNA004_LEVELS_FILE = "kmer_models/rna004_9mer_levels_v1.txt"
 
 
 class Remora:
@@ -122,11 +126,8 @@ class Remora:
         return time_per_sample
 
 
-    def _remora_resquiggle(self, max_reads, kit='RNA002'):
-        if 'RNA' in kit.upper():
-            RNA = True
-        else:
-            RNA = False
+    def _remora_resquiggle(self, max_reads, kit):
+        RNA = 'RNA' in kit.name.upper()
 
         logger.info(f"Starting to resquiggle data with Remora API for {self._ref_reg.ctg}")
         samples_metrics, all_bam_reads = io.get_ref_reg_samples_metrics(
@@ -138,25 +139,17 @@ class Remora:
             reverse_signal=RNA,
             signal_type='norm',
         )
-        logger.info(f"Data resquiggled")
+        logger.info(f"Data for {self._ref_reg.ctg} resquiggled")
         return samples_metrics, all_bam_reads
 
 
-    def _kmer_model_selector(self, kit=('RNA002')):#, 'RNA004', 'DNA260', 'DNA400')):
-        if kit not in ('RNA002'):#, 'RNA004', 'DNA260', 'DNA400')
-            raise NanocomporeError (f'Unsupported kit, exiting')
-
-        #TODO make the kmer_models path work
+    def _kmer_model_selector(self, kit):
+        if kit == Kit.RNA002:
+            level_table = resource_filename('nanocompore', RNA002_LEVELS_FILE)
+        elif kit == Kit.RNA004:
+            level_table = resource_filename('nanocompore', RNA004_LEVELS_FILE)
         else:
-            if kit == 'RNA002':
-                level_table = resource_filename("nanocompore", "rna002_5mer_levels_v1.txt")
-                #level_table = resource_filename("nanocompore/kmer_models/rna_r9.4_180mv_70bps", "5mer_levels_v1.txt")
-            elif kit == 'RNA004':
-                level_table = resource_filename("nanocompore/kmer_models/rna004", "9mer_levels_v1.txt")
-            elif kit == 'DNA260':
-                level_table = resource_filename("nanocompore/kmer_models/dna_r10.4.1_e8.2_260bps", "9mer_levels_v1.txt")
-            elif kit == 'DNA400':
-                level_table = resource_filename("nanocompore/kmer_models/dna_r10.4.1_e8.2_400bps", "9mer_levels_v1.txt")
+            raise NotImplementedError(f"Kit {kit} not implemented yet.")
 
         return level_table
 

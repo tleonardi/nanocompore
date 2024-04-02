@@ -3,6 +3,7 @@
 #~~~~~~~~~~~~~~IMPORTS~~~~~~~~~~~~~~#
 # Standard library imports
 from email.policy import default
+from enum import Enum
 import sys
 import os
 from collections import *
@@ -18,6 +19,8 @@ from pyfaidx import Fasta
 
 
 VAR_ORDER = ['dwell', 'trimmean']
+
+Kit = Enum('Kit', ['RNA002', 'RNA004'])
 
 
 #~~~~~~~~~~~~~~CUSTOM EXCEPTION CLASS~~~~~~~~~~~~~~#
