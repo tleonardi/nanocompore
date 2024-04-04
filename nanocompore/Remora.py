@@ -18,8 +18,8 @@ from kmer import KmerData
 from common import Kit, VAR_ORDER, NanocomporeError
 
 
-RNA002_LEVELS_FILE = "kmer_models/rna002_5mer_levels_v1.txt"
-RNA004_LEVELS_FILE = "kmer_models/rna004_9mer_levels_v1.txt"
+RNA002_LEVELS_FILE = "models/rna002_5mer_levels_v1.txt"
+RNA004_LEVELS_FILE = "models/rna004_9mer_levels_v1.txt"
 
 
 class Remora:
