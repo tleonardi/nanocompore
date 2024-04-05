@@ -35,6 +35,8 @@ class resultsManager():
         self._db.closeDB()
 
     def finish(self, valid_transcripts=set(), bed=False, bedgraph=False, pvalue_threshold=0):
+        self._db._index_database()
+        logger.debug("Created all table indexes")
         tests, shift_stats = self._getStatsTests()
         logger.debug("Gathering all the data for reporting")
         data = self._db.getAllData()
