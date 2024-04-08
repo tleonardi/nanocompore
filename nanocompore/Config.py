@@ -1,6 +1,8 @@
 from schema import Schema, And, Or, Optional
 from nanocompore.common import is_valid_fasta
 
+from common import Kit
+
 
 CONFIG_SCHEMA = Schema({
     'data': And(
@@ -15,7 +17,7 @@ CONFIG_SCHEMA = Schema({
         And(lambda d: len(d) == 2, error='Only two conditions allowed')
     ),
     'fasta': And(is_valid_fasta, error='Invalid fasta file'),
-    Optional('kit'): Or('RNA002', 'RNA004'),
+    'kit': Or(*[v.name for v in Kit]),
     Optional('bed'): And(lambda f: open(f, 'r'), error='Invalid bed file'),
     Optional('nthreads'): And(lambda n: n >= 2, error='nthreads must be >= 2'),
     Optional('min_coverage'): And(int, lambda n: n >= 0, error='min_coverage must be >= 0'),
@@ -87,7 +89,12 @@ class Config:
 
 
     def get_kit(self):
-        return self._config.get('kit', DEFAULT_KIT)
+        """
+        Returns an instance of the Kit enum representing
+        the sequencing kit, e.g. RNA002.
+        """
+        kit_name = self._config.get('kit', DEFAULT_KIT)
+        return Kit[kit_name]
 
 
     def get_nthreads(self):

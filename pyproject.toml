@@ -14,7 +14,8 @@ classifiers = [
         'License :: OSI Approved :: GNU General Public License v3 (GPLv3)',
         'Programming Language :: Python :: 3'
 ]
-include = ["nanocompore/models/kmers_model_RNA_r9.4_180mv.tsv"]
+include = ["nanocompore/models/rna002_5mer_levels_v1.txt",
+           "nanocompore/models/rna004_9mer_levels_v1.txt"]
 
 [tool.poetry.scripts]
 nanocompore = 'nanocompore.__main__:main'
