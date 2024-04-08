@@ -1,6 +1,4 @@
 import sqlite3 as sql
-from tkinter.messagebox import YES
-from tkinter.tix import COLUMN
 import os, collections, sys
 
 from loguru import logger

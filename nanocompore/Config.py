@@ -17,7 +17,7 @@ CONFIG_SCHEMA = Schema({
     'fasta': And(is_valid_fasta, error='Invalid fasta file'),
     Optional('kit'): Or('RNA002', 'RNA004'),
     Optional('bed'): And(lambda f: open(f, 'r'), error='Invalid bed file'),
-    Optional('nthreads'): And(lambda n: n >= 3, error='nthreads must be >= 3'),
+    Optional('nthreads'): And(lambda n: n >= 2, error='nthreads must be >= 2'),
     Optional('min_coverage'): And(int, lambda n: n >= 0, error='min_coverage must be >= 0'),
     Optional('downsample_high_coverage'): And(int, lambda n: n >= 0, error='downsample_high_coverage must be >= 0'),
     Optional('min_ref_length'): And(int, lambda n: n >= 0, error='min_ref_length must be >= 0'),
