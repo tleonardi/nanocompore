@@ -62,10 +62,14 @@ class TxComp():
             results_dict = {}
             results_dict['kmer_seq'] = kmer_data.kmer
 
-            read_data = kmer_data._data
-            read_data['pos'] = kmer_data.pos
-            read_data['kmer'] = kmer_data.kmer
-            total_read_data.append(read_data)
+            if self._config.get_read_level_data():
+                read_data = pd.DataFrame(kmer_data._data, columns=['dwell', 'intensity'])
+                read_data['pos'] = kmer_data.pos
+                read_data['kmer'] = kmer_data.kmer
+                read_data['sample'] = kmer_data.sample_labels
+                read_data['condition'] = kmer_data.condition_labels
+                read_data['read'] = kmer_data.reads
+                total_read_data.append(read_data)
 
             for method in self._config.get_comparison_methods():
                 if method.upper() in ['MW', 'KS', 'TT']:
@@ -157,7 +161,7 @@ class TxComp():
                 # Perform test only if middle pos is valid
                 if mid_pos in valid_positions:
                     pval_list_dict = defaultdict(list)
-                    for pos in range(mid_pos-self._sequence_context,
+                    for pos in range(mid_pos-self._config.get_sequence_context(),
                                      mid_pos+self._config.get_sequence_context()+1):
                         for test in tests:
                             if 'pvalue' in test:
@@ -177,7 +181,8 @@ class TxComp():
                             else:
                                 total_results_dict[mid_pos][test_label] = self._combine_pvalues_hou(pval_list_dict[test], weights, corr_matrix_dict[test])
 
-        total_read_data = pd.concat(total_read_data, axis=0)
+        if self._config.get_read_level_data():
+            total_read_data = pd.concat(total_read_data, axis=0)
 
         return total_results_dict, total_read_data
 
