@@ -121,8 +121,8 @@ class SampComp_DB():
             kmer_to_id = self._get_or_create_kmer_ids('kmer_seqs', 'sequence', read_data['kmer'])
 
             # Write the read ids to the reads table
-            reads = read_data[['sample', 'read']]
-            reads.loc[:, 'transcript_id'] = tx_id
+            reads = read_data[['sample', 'read']].copy()
+            reads['transcript_id'] = tx_id
             reads.rename(columns={'read': 'id'}, inplace=True)
             self._insert_missing('reads', reads.columns, list(reads.itertuples(index=False)))
 
@@ -134,7 +134,9 @@ class SampComp_DB():
             read_data.to_sql('read_level_data',
                              self._connection,
                              if_exists='append',
-                             index=False)
+                             index=False,
+                             method='multi',
+                             chunksize=32000)
 
             logger.debug(f"Read level data for {tx_name} added to the database")
         else:
@@ -178,6 +180,8 @@ class SampComp_DB():
     def _connect_to_db(self):
         self._connection = sql.connect(self._db_path)
         self._connection.execute('PRAGMA foreign_keys = ON')
+        self._connection.execute('PRAGMA journal_mode = wal')
+        self._connection.execute('PRAGMA synchronous = NORMAL')
         self._cursor = self._connection.cursor()
         logger.debug(f"Connected to {self._db_path}")
 
@@ -278,8 +282,6 @@ class SampComp_DB():
                 logger.error(f"Error creating {table} table")
                 raise
 
-        self._index_database()
-        logger.debug("Created all table indexes")
         self._default_storage_table = 'kmer_stats'
 
 
