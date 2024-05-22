@@ -37,7 +37,7 @@ pyyaml = "~5"
 loguru = "~0.5"
 pod5 = "^0.3.6"
 pysam = "^0.22.0"
-ont-remora = "^3.1"
+ont-remora = "3.2"
 schema = "^0.7.5"
 
 [tool.poetry.dev-dependencies]
