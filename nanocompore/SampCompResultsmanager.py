@@ -178,17 +178,32 @@ class resultsManager():
                 # Get the p-values from the column
                 pvals = df[column].values
 
-                # Replace NaN values with a large number so that they are not considered for correction
-                nan_indices = np.isnan(pvals)
-                pvals[nan_indices] = 1.0
-
-                # Correct the p-values using the Benjamini-Hochberg method
-                corrected_pvals = multipletests(pvals, method=method)[1]
+                # Correct the p-values using the Benjamini-Hochberg method.
+                # We'll ignore NaNs when performing the correction.
+                corrected_pvals = self.__multipletests_filter_nan(pvals, method)
 
                 # Replace the original p-values with the corrected p-values in the dataframe
                 df[column] = corrected_pvals
 
-                # Replace the NaN values back in the dataframe
-                df.loc[nan_indices, column] = np.nan
                 logger.debug(f"pvalues for {column} have been corrected using {method}")
         return df
+
+
+    @staticmethod
+    def __multipletests_filter_nan(pvalues, method="fdr_bh"):
+        """
+        Performs p-value correction for multiple hypothesis testing
+        using the method specified. The pvalues list can contain
+        np.nan values, which are ignored during p-value correction.
+        test: input=[0.1, 0.01, np.nan, 0.01, 0.5, 0.4, 0.01, 0.001, np.nan, np.nan, 0.01, np.nan]
+        out: array([0.13333333, 0.016, nan, 0.016, 0.5, 0.45714286, 0.016, 0.008, nan, nan, 0.016, nan])
+        """
+        if all([np.isnan(p) for p in pvalues]):
+            return pvalues
+
+        pvalues_no_nan = [p for p in pvalues if not np.isnan(p)]
+        corrected_p_values = multipletests(pvalues_no_nan, method=method)[1]
+        for i, p in enumerate(pvalues):
+            if np.isnan(p):
+                corrected_p_values = np.insert(corrected_p_values, i, np.nan, axis=0)
+        return corrected_p_values
