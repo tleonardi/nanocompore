@@ -6,7 +6,6 @@ import pandas as pd
 import numpy as np
 
 from nanocompore.common import *
-from nanocompore.TxComp import READ_LEVEL_DATA_COLS
 
 
 class SampComp_DB():

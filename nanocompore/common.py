@@ -1,7 +1,5 @@
 # -*- coding: utf-8 -*-
 
-#~~~~~~~~~~~~~~IMPORTS~~~~~~~~~~~~~~#
-# Standard library imports
 from email.policy import default
 from enum import Enum
 import sys
@@ -10,20 +8,17 @@ from collections import *
 import inspect
 import datetime
 
-# Third party imports
+import numpy as np
+
 from loguru import logger
 from pyfaidx import Fasta
 
-# Local imports
-#import nanocompore as pkg
 
-
-VAR_ORDER = ['dwell', 'trimmean']
+VAR_ORDER = ['dwell', 'trimmean', 'trimsd']
 
 Kit = Enum('Kit', ['RNA002', 'RNA004'])
 
 
-#~~~~~~~~~~~~~~CUSTOM EXCEPTION CLASS~~~~~~~~~~~~~~#
 class NanocomporeError (Exception):
     """ Basic exception class for nanocompore module """
     def __init__(self, message=""):
@@ -34,8 +29,6 @@ class NanocomporeError (Exception):
 class NanocomporeWarning (Warning):
     """ Basic Warning class for nanocompore module """
     pass
-
-#~~~~~~~~~~~~~~FUNCTIONS~~~~~~~~~~~~~~#
 
 
 def build_eventalign_fn_dict(pod5_list1, bam_list1, pod5_list2, bam_list2, label1, label2):
@@ -62,11 +55,13 @@ def build_eventalign_fn_dict(pod5_list1, bam_list1, pod5_list2, bam_list2, label
         bam_list2_len = len(bam_list2)
         raise NanocomporeError (f"Mismatch in file list lengths:\npod5_list1 {pod5_list1_len}; bam_list1 {bam_list1_len}\npod5_list2 {pod5_list2_len}; bam_list2 {bam_list2_len}\n")
 
+
 def build_condition_dict(pod5_list, bam_list, label):
     condition_list = defaultdict()
     for i, (pod5, bam) in enumerate(zip(pod5_list, bam_list)):
         condition_list[f"{label}_{i}"] = {'pod5':pod5, 'bam':bam}
     return condition_list
+
 
 def build_eventalign_fn_dict_from_tsv(infile):
     fn_dict = defaultdict(dict)
@@ -86,6 +81,7 @@ def build_eventalign_fn_dict_from_tsv(infile):
 
     return fn_dict
 
+
 def set_logger (log_level, log_fn=None):
     log_level = log_level.upper()
     logger.remove()
@@ -95,6 +91,7 @@ def set_logger (log_level, log_fn=None):
             os.remove(log_fn)
         logger.add(log_fn, format="{time} {level} - {process.name} | {message}", enqueue=True, level="DEBUG")
 
+
 def log_init_state(loc):
     #logger.debug("\tpackage_name: {}".format(pkg.__name__))
     #logger.debug("\tpackage_version: {}".format(pkg.__version__))
@@ -103,6 +100,7 @@ def log_init_state(loc):
         if type(j) in [int, float, complex, list, dict, str, bool, set, tuple]: # Avoid non standard types
             logger.debug("\t{}: {}".format(i,j))
 
+
 def mkdir (fn, exist_ok=False):
     """ Create directory recursivelly. Raise IO error if path exist or if error at creation """
     try:
@@ -110,9 +108,11 @@ def mkdir (fn, exist_ok=False):
     except:
         raise NanocomporeError ("Error creating output folder `{}`".format(fn))
 
+
 def access_file (fn, **kwargs):
     """ Check if the file is readable """
     return os.path.isfile (fn) and os.access (fn, os.R_OK)
+
 
 def numeric_cast_list (l):
     """ Cast str values to integer or float from a list """
@@ -121,12 +121,14 @@ def numeric_cast_list (l):
         l2.append(numeric_cast(v))
     return l2
 
+
 def numeric_cast_dict (keys, values):
     """ Cast str values to integer or float from a list """
     d = OrderedDict()
     for k, v in zip(keys, values):
         d[k] = numeric_cast(v)
     return d
+
 
 def numeric_cast (v):
     if type(v)== str:
@@ -139,6 +141,7 @@ def numeric_cast (v):
                 pass
     return v
 
+
 def counter_to_str (c):
     """ Transform a counter dict to a tabulated str """
     m = ""
@@ -146,12 +149,14 @@ def counter_to_str (c):
         m += "\t{}: {:,}".format(i, j)
     return m
 
+
 def all_values_in (required_val_list, all_val_list):
     """Check that all values in required_val_list are found in all_val_list"""
     for v in required_val_list:
         if not v in all_val_list:
             return False
     return True
+
 
 def doc_func (func):
     """Parse the function description string"""
@@ -164,6 +169,7 @@ def doc_func (func):
             docstr_list.append(l)
 
     return "\n".join(docstr_list)
+
 
 def make_arg_dict (func):
     """Parse the arguments default value, type and doc"""
@@ -206,6 +212,7 @@ def make_arg_dict (func):
                 d[name]["help"] = " ".join(docstr_dict[name])
         return d
 
+
 def arg_opt (func, arg, **kwargs):
     """Get options corresponding to argumant name and deal with special cases"""
     arg_dict = make_arg_dict(func)[arg]
@@ -230,6 +237,7 @@ def arg_opt (func, arg, **kwargs):
         arg_dict["nargs"]='*'
 
     return arg_dict
+
 
 def jhelp (f:"python function or method"):
     """
@@ -270,7 +278,6 @@ def jhelp (f:"python function or method"):
     display (Markdown(s))
 
 
-
 def is_valid_fasta(file):
     """
     Returns a boolean indicating whether the given file is a valid FASTA file.
@@ -283,3 +290,82 @@ def is_valid_fasta(file):
     except IOError:
         # raise NanocomporeError("The fasta file cannot be opened")
         return False
+
+
+
+DROP_KMER_DATA_TABLE_QUERY = """
+DROP TABLE IF EXISTS kmer_data;
+"""
+CREATE_KMER_DATA_TABLE_QUERY = """
+CREATE TABLE kmer_data(
+    transcript TEXT NOT NULL,
+    pos INTEGER NOT NULL,
+    kmer TEXT NOT NULL,
+    samples BLOB NOT NULL,
+    reads BLOB NOT NULL,
+    intensity BLOB,
+    intensity_std BLOB,
+    dwell BLOB,
+    PRIMARY KEY(transcript, pos)
+);
+"""
+INSERT_KMER_DATA_QUERY = """
+INSERT INTO kmer_data VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+"""
+DROP_READS_TABLE_QUERY = """
+DROP TABLE IF EXISTS reads;
+"""
+CREATE_READS_TABLE_QUERY = """
+CREATE TABLE reads(
+    read TEXT NOT NULL,
+    id INTEGER NOT NULL,
+    PRIMARY KEY(read)
+);
+"""
+INSERT_READS_QUERY = """
+INSERT INTO reads VALUES(?, ?);
+"""
+
+READ_ID_TYPE = np.uint32
+SAMPLE_ID_TYPE = np.uint8
+REMORA_MEASUREMENT_TYPE = np.float32
+UNCALLED4_MEASUREMENT_TYPE = np.int16
+
+
+def get_measurement_type(resquiggler):
+    if resquiggler == 'remora':
+        return REMORA_MEASUREMENT_TYPE
+    elif resquiggler == 'uncalled4':
+        return UNCALLED4_MEASUREMENT_TYPE
+    else:
+        raise NotImplementedError(f"Unsupported resquiggler '{self._config.get_resquiggler()}'")
+
+
+class ReadIndexer:
+    def __init__(self):
+        self._read_ids = {}
+        self._current_id = 1
+
+
+    def add_reads(self, reads):
+        """
+        Add reads to the indexer.
+
+        All new reads will be assigned a unique index
+        and the new mappings will be returned to the
+        caller as a list of (read, id) pairs.
+        """
+        new_reads = [read
+                    for read in reads
+                    if read not in self._read_ids]
+        new_mappings = []
+        for read in new_reads:
+            self._read_ids[read] = self._current_id
+            new_mappings.append((read, self._current_id))
+            self._current_id += 1
+        return new_mappings
+
+
+    def get_ids(self, reads):
+        return [self._read_ids[read] for read in reads]
+

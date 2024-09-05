@@ -17,7 +17,7 @@ class Experiment():
         self._input_data_df = self._build_input_data_df_from_config(config)
 
         try:
-            assert self._check_unique_sample_labels
+            assert self._check_unique_sample_labels()
         except:
             raise NanocomporeError(f"One or more sample labels are not unique")
 
@@ -69,12 +69,15 @@ class Experiment():
     def condition_to_samples(self, condition_label):
         return self._condition_to_samples[condition_label]
 
-    def get_condtion_labels(self):
-        return self._condition_to_samples.keys()
+    def get_condition_labels(self):
+        return list(self._condition_to_samples.keys())
 
     def get_sample_labels(self):
-        return self._sample_to_condition.keys()
+        return list(self._sample_to_condition.keys())
 
+    def get_sample_ids(self):
+        labels = self.get_sample_labels()
+        return dict(zip(labels, range(len(labels))))
 
     def get_sample_pod5_bam_data(self):
         for sample, pod5, bam in self._get_input_data(data_labels=['Sample', 'pod5', 'bam']):

@@ -1,7 +1,7 @@
 from schema import Schema, And, Or, Optional
-from nanocompore.common import is_valid_fasta
 
-from common import Kit
+from nanocompore.common import is_valid_fasta
+from nanocompore.common import Kit
 
 
 CONFIG_SCHEMA = Schema({
@@ -17,6 +17,8 @@ CONFIG_SCHEMA = Schema({
         And(lambda d: len(d) == 2, error='Only two conditions allowed')
     ),
     'fasta': And(is_valid_fasta, error='Invalid fasta file'),
+    'kmer_data_db': str,
+    'resquiggler': Or('remora', 'uncalled4'),
     'kit': Or(*[v.name for v in Kit]),
     Optional('bed'): And(lambda f: open(f, 'r'), error='Invalid bed file'),
     Optional('nthreads'): And(lambda n: n >= 2, error='nthreads must be >= 2'),
@@ -86,6 +88,22 @@ class Config:
 
     def get_data(self):
         return self._config['data']
+
+
+    def get_kmer_data_db(self):
+        """
+        Returns the path where the kmer data should
+        be stored after resquiggling/preprocessing.
+        """
+        return self._config['kmer_data_db']
+
+
+    def get_resquiggler(self):
+        """
+        Returns the resquiggler software specified
+        by the user.
+        """
+        return self._config['resquiggler']
 
 
     def get_kit(self):

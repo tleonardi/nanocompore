@@ -2,15 +2,15 @@ from nanocompore.common import VAR_ORDER
 from nanocompore.common import NanocomporeError
 
 class KmerData():
-    def __init__(self, pos, kmer, data, sample_labels, reads, experiment):
+    def __init__(self, pos, kmer, sample_labels, reads, intensity, intensity_std, dwell, experiment):
         self._kmer = kmer
-        self._data = data
         self._pos = pos
         self._sample_labels = sample_labels
         self._reads = reads
+        self._intensity = intensity
+        self._intensity_std = intensity_std
+        self._dwell = dwell
         self._experiment = experiment
-
-    ########## Public ##########
 
 
     @property
@@ -25,17 +25,17 @@ class KmerData():
 
     @property
     def intensity(self):
-        return self._data[:, VAR_ORDER.index('trimmean')]
+        return self._intensity
 
 
     @property
     def dwell(self):
-        return self._data[:, VAR_ORDER.index('dwell')]
+        return self._dwell
 
 
     @property
     def sd(self):
-        return self._data[:, VAR_ORDER.index('trimsd')]
+        return self._intensity_std
 
 
     @property
@@ -50,14 +50,14 @@ class KmerData():
 
     @property
     def condition_labels(self):
-        return list(map(self._experiment.sample_to_condition, self._sample_labels))
+        return list(map(self._experiment.sample_to_condition, self.sample_labels))
 
 
-    def get_condition_kmer_data(self, condition_label, data_type=''):
-        if data_type not in ('intensity', 'dwell'):
-            raise NanocomporeError(f"{data_type} is not currently supported")
+    # def get_condition_kmer_data(self, condition_label, data_type=''):
+    #     if data_type not in ('intensity', 'dwell'):
+    #         raise NanocomporeError(f"{data_type} is not currently supported")
 
-        return self._data[self._data['condition'] == condition_label][data_type]
+    #     return self._data[self._data['condition'] == condition_label][data_type]
 
 
     def get_condition_kmer_intensity_data(self, condition_label):

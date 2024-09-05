@@ -24,6 +24,11 @@ data:
 # reference genome/transcriptome in fasta format
 fasta: "/path/to/reference.fa"
 
+# path to where the kmer data will be stored
+# after the preprocessing step
+kmer_data_db: "/path/to/kmer_data.sqlite"
+
+resquiggler: 'remora'
 
 # === OPTIONAL FIELDS ===
 

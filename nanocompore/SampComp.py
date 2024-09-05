@@ -1,28 +1,21 @@
-# -*- coding: utf-8 -*-
-
-#~~~~~~~~~~~~~~IMPORTS~~~~~~~~~~~~~~#
-# Std lib
 import collections, os, traceback, datetime
-import multiprocessing as mp
+import sqlite3
+from contextlib import closing
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
-# Third party
 from loguru import logger
-import yaml
 #from tqdm import tqdm
 import numpy as np
 from pyfaidx import Fasta
 
-# Local package
 from nanocompore.common import *
 import nanocompore.SampCompResultsmanager as SampCompResultsmanager
-import nanocompore.Transcript as Transcript
-import nanocompore.TxComp as TxComp
-import nanocompore.Whitelist as Whitelist
-import nanocompore.Experiment as Experiment
+from nanocompore.Transcript import Transcript
+from nanocompore.TxComp import TxComp
+from nanocompore.Experiment import Experiment
+from nanocompore.kmer import KmerData
 
 import nanocompore as pkg
-
-from concurrent.futures import ProcessPoolExecutor, as_completed
 
 
 # Disable multithreading for MKL and openBlas
@@ -32,11 +25,13 @@ os.environ["NUMEXPR_NUM_THREADS"] = "1"
 os.environ["OMP_NUM_THREADS"] = "1"
 os.environ['OPENBLAS_NUM_THREADS'] = '1'
 
-#~~~~~~~~~~~~~~MAIN CLASS~~~~~~~~~~~~~~#
 class SampComp(object):
-    """ Init analysis and check args"""
-
-    #~~~~~~~~~~~~~~FUNDAMENTAL METHODS~~~~~~~~~~~~~~#
+    """
+    SampComp reads the resquiggled and preprocessed data
+    and performs comparison between the samples of the two
+    conditions for each position on every whitelisted
+    transcript to detect the presence of likely modifications.
+    """
 
     def __init__(self, config):
         """
@@ -51,18 +46,10 @@ class SampComp(object):
         log_init_state(loc=locals())
 
         self._config = config
-
-        # Set private args
-        self._experiment = Experiment.Experiment(config)
-
-        logger.info("Starting to whitelist the reference IDs")
-        self._Whitelist = Whitelist.Whitelist(self._experiment, self._config)
-
-        self._valid_transcripts = self._Whitelist.ref_id_list
+        self._experiment = Experiment(config)
         self._processing_threads = self._config.get_nthreads() - 1
 
 
-    #~~~~~~~~~~~~~~Call METHOD~~~~~~~~~~~~~~#
     def __call__(self):
         """
         Run the analysis
@@ -70,10 +57,11 @@ class SampComp(object):
         logger.info("Starting data processing")
 
         resultsManager = SampCompResultsmanager.resultsManager(self._config)
+
         try:
             with ProcessPoolExecutor(max_workers=self._processing_threads) as executor:
                 futures = [executor.submit(self._processTx, ref_id)
-                           for ref_id in self._valid_transcripts]
+                           for ref_id in self._get_transcripts_for_processing()]
                 for future in as_completed(futures):
                     ref_id, results = future.result()
                     try:
@@ -86,51 +74,50 @@ class SampComp(object):
             resultsManager.closeDB()
 
 
-    #~~~~~~~~~~~~~~PRIVATE MULTIPROCESSING METHOD~~~~~~~~~~~~~~#
-
-
     def _processTx(self, ref_id):
         logger.debug(f"Worker thread processing new item from in_q: {ref_id}")
         fasta_fh = Fasta(self._config.get_fasta_ref())
         ref_seq = str(fasta_fh[ref_id])
-        txComp = TxComp.TxComp(experiment=self._experiment,
-                               config=self._config,
-                               random_state = 26)
-        transcript = Transcript.Transcript(ref_id=ref_id,
-                                           experiment=self._experiment,
-                                           ref_seq=ref_seq,
-                                           config=self._config)
+        txComp = TxComp(experiment=self._experiment,
+                        config=self._config,
+                        random_state=26)
+        transcript = Transcript(ref_id=ref_id,
+                                experiment=self._experiment,
+                                ref_seq=ref_seq,
+                                config=self._config)
+
+        kmer_data_list = self._read_transcript_kmer_data(ref_id)
         try:
-            results = txComp.txCompare(transcript)
+            results = txComp.txCompare(kmer_data_list, transcript)
             return ref_id, results
         except Exception as e:
-            import traceback
             traceback.print_stack(e)
             logger.error(f"Error in Worker for {ref_id}: {e}")
 
 
-    def _writeResults(self, out_q, error_q):
-        #TODO need to determine if this is necessary
-        #self.resultsManager.saveExperimentMetadata()
+    def _read_transcript_kmer_data(self, ref_id):
+        db = self._config.get_kmer_data_db()
+        with closing(sqlite3.connect(db)) as conn,\
+             closing(conn.cursor()) as cursor:
+            res = cursor.execute("SELECT * FROM kmer_data WHERE transcript = ?", (ref_id,))
+            sample_labels = self._experiment.get_sample_labels()
+            value_type = get_measurement_type(self._config.get_resquiggler())
+            return [KmerData(row[1], # pos
+                             row[2], # kmer
+                             [sample_labels[i]
+                              for i in np.frombuffer(row[3], dtype=SAMPLE_ID_TYPE)],
+                             None, # read ids are not necessary for sampcomp
+                             np.frombuffer(row[5], dtype=value_type), # intensity
+                             np.frombuffer(row[6], dtype=value_type), # sd
+                             np.frombuffer(row[7], dtype=value_type), # dwell
+                             self._experiment)
+                    for row in res.fetchall()]
 
-        try:
-            n_tx = 0
-            n_pos = 0
-            for _ in range(self._processing_threads):
-                for tx, result in iter(out_q.get, None):
-                    if result:
-                        logger.debug(f"Writer thread adding results data from {tx}")
-                        n_tx += 1
-                        n_pos = len([x for x in result if type(x) == int])
-                        self.resultsManager.saveData(tx, result, self._config)
-            self.resultsManager.finish()
-        except:
-            logger.error("Error writing results to database")
-            error_q.put(NanocomporeError(traceback.format_exc()))
-        finally:
-            logger.debug("Written Transcripts:{} Valid positions:{}".format(n_tx, n_pos))
-            self.resultsManager.closeDB()
-            logger.info ("All Done. Transcripts processed: {}".format(n_tx))
-            # Kill error queue with poison pill
-            error_q.put(None)
+
+    def _get_transcripts_for_processing(self):
+        db = self._config.get_kmer_data_db()
+        with closing(sqlite3.connect(db)) as conn,\
+             closing(conn.cursor()) as cursor:
+            return [row[0]
+                    for row in cursor.execute("SELECT DISTINCT transcript FROM kmer_data").fetchall()]
 

@@ -1,11 +1,9 @@
 from loguru import logger
 
 
-import nanocompore.Remora as Remora
-
-
 class Transcript():
-    def __init__(self, ref_id='',
+    def __init__(self,
+                 ref_id='',
                  experiment='',
                  config=None,
                  ref_seq=0):
@@ -16,13 +14,6 @@ class Transcript():
         self._ref_seq = ref_seq
         self._length = len(self._ref_seq)
 
-        self._remora_object = Remora.Remora(self._experiment,
-                                            config,
-                                            ref_id=ref_id,
-                                            start=0,
-                                            end=self._length,
-                                            seq=ref_seq,
-                                            strand='+')
 
     ########## Public ##########
 
@@ -43,7 +34,7 @@ class Transcript():
 
     @property
     def condition_labels(self):
-        return list(self._experiment.get_condtion_labels())
+        return list(self._experiment.get_condition_labels())
 
 
     @property
@@ -51,13 +42,7 @@ class Transcript():
         return self._experiment.get_sample_labels()
 
 
+    @property
     def sample_2_condition(self, sample_label):
         return self._experiment.sample_to_condition(sample_label)
 
-
-    def generate_data(self):
-        logger.trace(f"Iterating through kmer data positions for {self._name}")
-        for kmer_data in self._remora_object.kmer_data_generator():
-            # Yield the kmer only if it contains any intensity and dwell data
-            if len(kmer_data.intensity) > 0 and len(kmer_data.dwell) > 0:
-                yield kmer_data
