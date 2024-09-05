@@ -309,8 +309,23 @@ CREATE TABLE kmer_data(
     PRIMARY KEY(transcript, pos)
 );
 """
+CREATE_INTERMEDIARY_KMER_DATA_TABLE_QUERY = """
+CREATE TABLE kmer_data(
+    transcript TEXT NOT NULL,
+    pos INTEGER NOT NULL,
+    kmer TEXT NOT NULL,
+    reads BLOB NOT NULL,
+    intensity BLOB,
+    intensity_std BLOB,
+    dwell BLOB,
+    PRIMARY KEY(transcript, pos)
+);
+"""
 INSERT_KMER_DATA_QUERY = """
 INSERT INTO kmer_data VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+"""
+INSERT_INTERMEDIARY_KMER_DATA_QUERY = """
+INSERT INTO kmer_data VALUES (?, ?, ?, ?, ?, ?, ?);
 """
 DROP_READS_TABLE_QUERY = """
 DROP TABLE IF EXISTS reads;
@@ -330,6 +345,7 @@ READ_ID_TYPE = np.uint32
 SAMPLE_ID_TYPE = np.uint8
 REMORA_MEASUREMENT_TYPE = np.float32
 UNCALLED4_MEASUREMENT_TYPE = np.int16
+EVENTALIGN_MEASUREMENT_TYPE = np.float32
 
 
 def get_measurement_type(resquiggler):
@@ -337,6 +353,8 @@ def get_measurement_type(resquiggler):
         return REMORA_MEASUREMENT_TYPE
     elif resquiggler == 'uncalled4':
         return UNCALLED4_MEASUREMENT_TYPE
+    elif resquiggler == 'eventalign':
+        return EVENTALIGN_MEASUREMENT_TYPE
     else:
         raise NotImplementedError(f"Unsupported resquiggler '{self._config.get_resquiggler()}'")
 

@@ -10,7 +10,9 @@ CONFIG_SCHEMA = Schema({
             str: { # condition
                 str: { # sample (replicate)
                     'bam': lambda f: open(f, 'r'),
-                    'pod5': lambda f: open(f, 'r')
+                    'pod5': lambda f: open(f, 'r'),
+                    Optional('eventalign_tsv'): lambda f: open(f, 'r'),
+                    Optional('eventalign_db'): lambda f: open(f, 'r')
                 }
             }
         },
@@ -18,7 +20,7 @@ CONFIG_SCHEMA = Schema({
     ),
     'fasta': And(is_valid_fasta, error='Invalid fasta file'),
     'kmer_data_db': str,
-    'resquiggler': Or('remora', 'uncalled4'),
+    'resquiggler': Or('remora', 'uncalled4', 'eventalign'),
     'kit': Or(*[v.name for v in Kit]),
     Optional('bed'): And(lambda f: open(f, 'r'), error='Invalid bed file'),
     Optional('nthreads'): And(lambda n: n >= 2, error='nthreads must be >= 2'),

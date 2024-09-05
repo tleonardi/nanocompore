@@ -18,6 +18,7 @@ from nanocompore.Experiment import Experiment
 from nanocompore.Whitelist import Whitelist
 from nanocompore.Remora import Remora
 from nanocompore.uncalled4 import Uncalled4
+from nanocompore.eventalign_collapse import EventalignCollapser
 from nanocompore.kmer import KmerData
 from nanocompore.common import Kit
 from nanocompore.common import DROP_KMER_DATA_TABLE_QUERY
@@ -29,6 +30,7 @@ from nanocompore.common import INSERT_READS_QUERY
 from nanocompore.common import READ_ID_TYPE
 from nanocompore.common import SAMPLE_ID_TYPE
 from nanocompore.common import ReadIndexer
+from nanocompore.common import EVENTALIGN_MEASUREMENT_TYPE
 
 
 class Preprocessor:
@@ -196,4 +198,134 @@ class Uncalled4Preprocessor(Preprocessor):
                               ref_id,
                               ref_seq)
         return ref_id, list(uncalled4.kmer_data_generator())
+
+
+class EventalignPreprocessor(Preprocessor):
+    """
+    Takes the output of Nanopolish or F5C eventalign
+    command and prepares the data for nanocompore
+    by collapsing it and storing it in an SQLite DB
+    for later analysis.
+    """
+
+    def __init__(self, config):
+        super().__init__(config)
+
+        self._validate_eventalign_input()
+
+
+    def __call__(self):
+        self._reuse_collapsed_files()
+
+        # If any of the samples has a raw eventalign
+        # file as input, collapse it.
+        if any('eventalign_db' not in sample_def
+               for condition_def in self._config.get_data().values()
+               for sample_def in condition_def.values()):
+            self._collapse_eventaligns()
+
+        sample_dbs = {sample: sqlite3.connect(sample_def['eventalign_db'])
+                      for condition_def in self._config.get_data().values()
+                      for sample, sample_def in condition_def.items()}
+
+        sample_cursors = {sample: db.cursor()
+                          for sample, db in sample_dbs.items()}
+
+        sample_read_indices = {}
+        for sample, cursor in sample_cursors.items():
+            res = cursor.execute("SELECT * FROM reads")
+            sample_read_indices[sample] = {row[1]: row[0]
+                                           for row in res.fetchall()}
+
+        # Merge the information from the collapsed eventalign_dbs
+        for ref_id in self._valid_transcripts:
+            pos_data = defaultdict(list)
+            for sample, cursor in sample_cursors.items():
+                rows = cursor.execute("SELECT * FROM kmer_data WHERE transcript = ?", (ref_id,)).fetchall()
+                for row in rows:
+                    pos = row[1]
+                    pos_data[pos].append((sample, row))
+            kmers_list = self._merge_kmer_data_from_samples(pos_data, sample_read_indices)
+            self._write_to_db(ref_id, kmers_list)
+
+
+    def _merge_kmer_data_from_samples(self, pos_data, sample_read_indices):
+        kmers = []
+        for pos, rows in pos_data.items():
+            kmer = rows[0][1][2]
+            samples = np.concatenate([np.repeat(sample, len(np.frombuffer(row[3], dtype=READ_ID_TYPE)))
+                                      for sample, row in rows])
+            read_ids = self._merge_reads_from_rows(3, rows, sample_read_indices)
+            intensity = self._merge_measurements_from_rows(4, rows, EVENTALIGN_MEASUREMENT_TYPE)
+            sd = self._merge_measurements_from_rows(5, rows, EVENTALIGN_MEASUREMENT_TYPE)
+            dwell = self._merge_measurements_from_rows(6, rows, EVENTALIGN_MEASUREMENT_TYPE)
+
+            kmers.append(KmerData(pos, kmer, samples, read_ids, intensity, sd, dwell, self._experiment))
+        return kmers
+
+
+    def _merge_reads_from_rows(self, col, rows, sample_read_indices):
+        return np.array([sample_read_indices[sample][index]
+                         for sample, row in rows
+                         for index in np.frombuffer(row[col], dtype=READ_ID_TYPE)])
+
+
+    def _merge_measurements_from_rows(self, col, rows, dtype):
+        return np.array([value
+                         for sample, row in rows
+                         for value in np.frombuffer(row[col], dtype=dtype)])
+
+
+    def _reuse_collapsed_files(self):
+        for condition_def in self._config.get_data().values():
+            for sample, sample_def in condition_def.items():
+                if 'eventalign_db' in sample_def:
+                    continue
+
+                intermediary_db = self._get_intermediary_db_name(sample)
+                if os.path.isfile(intermediary_db):
+                    logger.warning(f"Sample {sample} seems to already have been collapsed. " +\
+                                   f"Reusing the existing file: {intermediary_db}")
+                    sample_def['eventalign_db'] = intermediary_db
+
+
+    def _collapse_eventaligns(self):
+        noncollapsed = {sample: sample_def['eventalign_tsv']
+                        for condition_def in self._config.get_data().values()
+                        for sample, sample_def in condition_def.items()
+                        if 'eventalign_db' not in sample_def}
+        logger.info(f"{len(noncollapsed)} samples have input eventalign files that need to be collapsed. Collapsing them now.")
+
+        num_processes = min(self._worker_processes, len(noncollapsed))
+        with ProcessPoolExecutor(max_workers=num_processes) as executor:
+            futures = [executor.submit(collapse_eventalign,
+                                       (sample,
+                                        file,
+                                        self._config.get_fasta_ref(),
+                                        self._get_intermediary_db_name(sample)))
+                       for sample, file in noncollapsed.items()]
+            for future in as_completed(futures):
+                sample, db = future.result()
+                logger.info(f"Input eventalign for sample {sample} has been collapsed and saved at {db}")
+                condition = self._experiment.sample_to_condition(sample)
+                self._config.get_data()[condition][sample]['eventalign_db'] = db
+
+
+    def _get_intermediary_db_name(self, sample):
+        kmer_db = self._config.get_kmer_data_db()
+        path = Path(kmer_db)
+        return str(path.with_name(path.stem + '_' + sample + path.suffix))
+
+
+    def _validate_eventalign_input(self):
+        for condition in self._config.get_data().values():
+            for sample in condition.values():
+                if 'eventalign_tsv' not in sample and 'eventalign_db' not in sample:
+                    raise ValueError('When using the "eventalign" preprocessor each sample must contain either the field "eventalign_tsv" with a path to the eventalign tsv file or "eventalign_db" with the alreday collapsed eventalign data.')
+
+
+def collapse_eventalign(params):
+    sample, eventalign, fasta_ref, output = params
+    EventalignCollapser(eventalign, fasta_ref, output)()
+    return sample, output
 
