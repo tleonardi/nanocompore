@@ -10,13 +10,17 @@ from pyfaidx import Fasta
 from nanocompore.kmer import KmerData
 from nanocompore.common import DROP_KMER_DATA_TABLE_QUERY
 from nanocompore.common import DROP_READS_TABLE_QUERY
+from nanocompore.common import DROP_TRANSCRIPTS_TABLE_QUERY
 from nanocompore.common import CREATE_INTERMEDIARY_KMER_DATA_TABLE_QUERY
 from nanocompore.common import CREATE_READS_TABLE_QUERY
+from nanocompore.common import CREATE_TRANSCRIPTS_TABLE_QUERY
 from nanocompore.common import INSERT_INTERMEDIARY_KMER_DATA_QUERY
 from nanocompore.common import INSERT_READS_QUERY
+from nanocompore.common import INSERT_TRANSCRIPTS_QUERY
 from nanocompore.common import READ_ID_TYPE
 from nanocompore.common import EVENTALIGN_MEASUREMENT_TYPE
-from nanocompore.common import ReadIndexer
+from nanocompore.common import Indexer
+from nanocompore.common import get_reads_invalid_kmer_ratio
 
 
 class EventalignCollapser:
@@ -40,7 +44,11 @@ class EventalignCollapser:
         self._db_cursor.execute(CREATE_INTERMEDIARY_KMER_DATA_TABLE_QUERY)
         self._db_cursor.execute(DROP_READS_TABLE_QUERY)
         self._db_cursor.execute(CREATE_READS_TABLE_QUERY)
-        self._read_indexer = ReadIndexer()
+        self._db_cursor.execute(DROP_TRANSCRIPTS_TABLE_QUERY)
+        self._db_cursor.execute(CREATE_TRANSCRIPTS_TABLE_QUERY)
+        self._current_transcript_id = 1
+        self._current_read_id = 1
+
         # transcript -> read -> pos -> data
         self._data = defaultdict(lambda: defaultdict(lambda: defaultdict(dict)))
 
@@ -141,7 +149,7 @@ class EventalignCollapser:
         kmer_data_list = []
         for pos in range(ref_len):
             valid_reads = ~np.isnan(intensity[:, pos])
-    
+
             if np.any(valid_reads):
                 kmer_data = KmerData(pos+1,
                                      kmers[pos],
@@ -163,22 +171,35 @@ class EventalignCollapser:
         self._db_conn.commit()
 
 
-    def _process_rows_for_writing(self, ref_id, kmer_data_list):
-        all_reads = {read
-                     for kmer in kmer_data_list
-                     for read in kmer.reads}
-        new_mappings = self._read_indexer.add_reads(all_reads)
-        self._db_cursor.executemany(INSERT_READS_QUERY, new_mappings)
+    def _process_rows_for_writing(self, ref_id, kmers_data):
+        ref_len = len(self._fasta_ref[ref_id])
 
-        for kmer_data in kmer_data_list:
-            kmer_read_ids = self._read_indexer.get_ids(kmer_data.reads)
+        read_invalid_kmer_ratios = get_reads_invalid_kmer_ratio(kmers_data, ref_len)
+
+        self._db_cursor.execute(INSERT_TRANSCRIPTS_QUERY,
+                                (ref_id, self._current_transcript_id))
+
+        read_indexer = Indexer(initial_index=self._current_read_id)
+        all_reads = {read
+                     for kmer in kmers_data
+                     for read in kmer.reads}
+        new_mappings = read_indexer.add(all_reads)
+        reads_data = [(read, idx, read_invalid_kmer_ratios[read])
+                      for read, idx in new_mappings]
+        self._db_cursor.executemany(INSERT_READS_QUERY, reads_data)
+
+        for kmer_data in kmers_data:
+            kmer_read_ids = read_indexer.get_ids(kmer_data.reads)
             read_ids = np.array(kmer_read_ids, dtype=READ_ID_TYPE)
 
-            yield (ref_id,
+            yield (self._current_transcript_id,
                    kmer_data.pos,
                    kmer_data.kmer,
                    read_ids.tobytes(),
                    kmer_data.intensity.tobytes(),
                    kmer_data.sd.tobytes(),
                    kmer_data.dwell.tobytes())
+
+        self._current_transcript_id += 1
+        self._current_read_id = read_indexer.current_id
 

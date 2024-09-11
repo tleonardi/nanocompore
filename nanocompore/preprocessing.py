@@ -23,14 +23,20 @@ from nanocompore.kmer import KmerData
 from nanocompore.common import Kit
 from nanocompore.common import DROP_KMER_DATA_TABLE_QUERY
 from nanocompore.common import DROP_READS_TABLE_QUERY
+from nanocompore.common import DROP_READS_ID_INDEX_QUERY
+from nanocompore.common import DROP_TRANSCRIPTS_TABLE_QUERY
 from nanocompore.common import CREATE_KMER_DATA_TABLE_QUERY
 from nanocompore.common import CREATE_READS_TABLE_QUERY
+from nanocompore.common import CREATE_READS_ID_INDEX_QUERY
+from nanocompore.common import CREATE_TRANSCRIPTS_TABLE_QUERY
 from nanocompore.common import INSERT_KMER_DATA_QUERY
 from nanocompore.common import INSERT_READS_QUERY
+from nanocompore.common import INSERT_TRANSCRIPTS_QUERY
 from nanocompore.common import READ_ID_TYPE
 from nanocompore.common import SAMPLE_ID_TYPE
-from nanocompore.common import ReadIndexer
+from nanocompore.common import Indexer
 from nanocompore.common import EVENTALIGN_MEASUREMENT_TYPE
+from nanocompore.common import get_reads_invalid_kmer_ratio
 
 
 class Preprocessor:
@@ -47,20 +53,33 @@ class Preprocessor:
         self._config = config
         self._experiment = Experiment(config)
         self._whitelist_transcripts()
+
         db = self._config.get_kmer_data_db()
         self._db_conn = sqlite3.connect(db)
         self._db_cursor = self._db_conn.cursor()
-        self._db_cursor.execute(DROP_KMER_DATA_TABLE_QUERY)
-        self._db_cursor.execute(CREATE_KMER_DATA_TABLE_QUERY)
-        self._db_cursor.execute(DROP_READS_TABLE_QUERY)
-        self._db_cursor.execute(CREATE_READS_TABLE_QUERY)
-        self._read_indexer = ReadIndexer()
+        self._setup_db()
+
         self._sample_ids = self._experiment.get_sample_ids()
+
+        self._current_transcript_id = 1
+        self._current_read_id = 1
+
         # The preprocessor will use the main process
         # and will spawn n - 1 worker processes in
         # order to make sure we use the number of
         # processes specified by the user in the config.
         self._worker_processes = self._config.get_nthreads() - 1
+
+
+    def _setup_db(self):
+        self._db_cursor.execute(DROP_KMER_DATA_TABLE_QUERY)
+        self._db_cursor.execute(CREATE_KMER_DATA_TABLE_QUERY)
+        self._db_cursor.execute(DROP_READS_TABLE_QUERY)
+        self._db_cursor.execute(CREATE_READS_TABLE_QUERY)
+        self._db_cursor.execute(DROP_READS_ID_INDEX_QUERY)
+        self._db_cursor.execute(CREATE_READS_ID_INDEX_QUERY)
+        self._db_cursor.execute(DROP_TRANSCRIPTS_TABLE_QUERY)
+        self._db_cursor.execute(CREATE_TRANSCRIPTS_TABLE_QUERY)
 
 
     def _whitelist_transcripts(self):
@@ -70,26 +89,49 @@ class Preprocessor:
         self._valid_transcripts = whitelist.ref_id_list
 
 
-    def _write_to_db(self, ref_id, kmer_data_generator):
-        self._db_cursor.executemany(
-                INSERT_KMER_DATA_QUERY,
-                list(self._process_rows_for_writing(ref_id, kmer_data_generator)))
+    def _write_to_db(self, ref_id, kmers_data):
+        rows = list(self._process_rows_for_writing(ref_id, kmers_data))
+        self._db_cursor.executemany(INSERT_KMER_DATA_QUERY, rows)
         self._db_conn.commit()
 
 
-    def _process_rows_for_writing(self, ref_id, kmer_data_generator):
-        for kmer_data in kmer_data_generator:
-            new_mappings = self._read_indexer.add_reads(kmer_data.reads)
-            self._db_cursor.executemany(INSERT_READS_QUERY, new_mappings)
+    def _process_rows_for_writing(self, ref_id, kmers_data):
+        fasta_fh = Fasta(self._config.get_fasta_ref())
+        ref_len = len(fasta_fh[ref_id])
 
-            read_ids = self._read_indexer.get_ids(kmer_data.reads)
+        read_invalid_kmer_ratios = get_reads_invalid_kmer_ratio(kmers_data, ref_len)
+
+        self._db_cursor.execute(INSERT_TRANSCRIPTS_QUERY,
+                                (ref_id, self._current_transcript_id))
+
+        # We assume that all reads for a single
+        # transcript would be processed in a single
+        # call, so we don't need to store all
+        # read ids for all transcripts for the
+        # whole execution of the preprocessor.
+        # Instead we create a new indexer for
+        # each transcript, but we make sure
+        # that ids are not repeated by making
+        # the new indexer starting from the last
+        # id of the previous indexer.
+        read_indexer = Indexer(initial_index=self._current_read_id)
+        all_reads = {read
+                     for kmer in kmers_data
+                     for read in kmer.reads}
+        new_mappings = read_indexer.add(all_reads)
+        reads_data = [(read, idx, read_invalid_kmer_ratios[read])
+                      for read, idx in new_mappings]
+        self._db_cursor.executemany(INSERT_READS_QUERY, reads_data)
+
+        for kmer_data in kmers_data:
+            read_ids = read_indexer.get_ids(kmer_data.reads)
             read_ids = np.array(read_ids, dtype=READ_ID_TYPE)
 
             sample_ids = [self._sample_ids[label]
                           for label in kmer_data.sample_labels]
             sample_ids = np.array(sample_ids, dtype=SAMPLE_ID_TYPE)
 
-            yield (ref_id,
+            yield (self._current_transcript_id,
                    kmer_data.pos,
                    kmer_data.kmer,
                    sample_ids.tobytes(),
@@ -97,6 +139,9 @@ class Preprocessor:
                    kmer_data.intensity.tobytes(),
                    kmer_data.sd.tobytes(),
                    kmer_data.dwell.tobytes())
+
+        self._current_transcript_id += 1
+        self._current_read_id = read_indexer.current_id
 
 
     def __del__(self):
@@ -124,7 +169,6 @@ class Preprocessor:
         # Remove the unpicklable entries.
         del state['_db_conn']
         del state['_db_cursor']
-        del state['_read_indexer']
         return state
 
 
@@ -186,8 +230,8 @@ class Uncalled4Preprocessor(Preprocessor):
             futures = [executor.submit(self._resquiggle, ref_id)
                        for ref_id in self._valid_transcripts]
             for future in as_completed(futures):
-                ref_id, kmer_data_generator = future.result()
-                self._write_to_db(ref_id, kmer_data_generator)
+                ref_id, kmers_data = future.result()
+                self._write_to_db(ref_id, kmers_data)
 
 
     def _resquiggle(self, ref_id):
@@ -241,7 +285,8 @@ class EventalignPreprocessor(Preprocessor):
         for ref_id in self._valid_transcripts:
             pos_data = defaultdict(list)
             for sample, cursor in sample_cursors.items():
-                rows = cursor.execute("SELECT * FROM kmer_data WHERE transcript = ?", (ref_id,)).fetchall()
+                transcript_id = cursor.execute("SELECT id FROM transcripts WHERE reference = ?", (ref_id,)).fetchone()[0]
+                rows = cursor.execute("SELECT * FROM kmer_data WHERE transcript_id = ?", (transcript_id,)).fetchall()
                 for row in rows:
                     pos = row[1]
                     pos_data[pos].append((sample, row))

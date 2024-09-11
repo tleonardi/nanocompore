@@ -292,13 +292,12 @@ def is_valid_fasta(file):
         return False
 
 
-
 DROP_KMER_DATA_TABLE_QUERY = """
 DROP TABLE IF EXISTS kmer_data;
 """
 CREATE_KMER_DATA_TABLE_QUERY = """
-CREATE TABLE kmer_data(
-    transcript TEXT NOT NULL,
+CREATE TABLE kmer_data (
+    transcript_id INTEGER NOT NULL,
     pos INTEGER NOT NULL,
     kmer TEXT NOT NULL,
     samples BLOB NOT NULL,
@@ -306,19 +305,19 @@ CREATE TABLE kmer_data(
     intensity BLOB,
     intensity_std BLOB,
     dwell BLOB,
-    PRIMARY KEY(transcript, pos)
+    PRIMARY KEY(transcript_id, pos)
 );
 """
 CREATE_INTERMEDIARY_KMER_DATA_TABLE_QUERY = """
-CREATE TABLE kmer_data(
-    transcript TEXT NOT NULL,
+CREATE TABLE kmer_data (
+    transcript_id INTEGER NOT NULL,
     pos INTEGER NOT NULL,
     kmer TEXT NOT NULL,
     reads BLOB NOT NULL,
     intensity BLOB,
     intensity_std BLOB,
     dwell BLOB,
-    PRIMARY KEY(transcript, pos)
+    PRIMARY KEY(transcript_id, pos)
 );
 """
 INSERT_KMER_DATA_QUERY = """
@@ -331,14 +330,35 @@ DROP_READS_TABLE_QUERY = """
 DROP TABLE IF EXISTS reads;
 """
 CREATE_READS_TABLE_QUERY = """
-CREATE TABLE reads(
+CREATE TABLE reads (
     read TEXT NOT NULL,
     id INTEGER NOT NULL,
+    invalid_kmers REAL,
     PRIMARY KEY(read)
 );
 """
 INSERT_READS_QUERY = """
-INSERT INTO reads VALUES(?, ?);
+INSERT INTO reads VALUES(?, ?, ?);
+"""
+DROP_READS_ID_INDEX_QUERY = """
+DROP INDEX IF EXISTS reads_id_index;
+"""
+CREATE_READS_ID_INDEX_QUERY = """
+CREATE INDEX IF NOT EXISTS reads_id_index ON reads (id);
+"""
+
+DROP_TRANSCRIPTS_TABLE_QUERY = """
+DROP TABLE IF EXISTS transcripts;
+"""
+CREATE_TRANSCRIPTS_TABLE_QUERY = """
+CREATE TABLE transcripts (
+    reference TEXT NOT NULL,
+    id INTEGER NOT NULL,
+    PRIMARY KEY(reference)
+);
+"""
+INSERT_TRANSCRIPTS_QUERY = """
+INSERT INTO transcripts VALUES(?, ?);
 """
 
 READ_ID_TYPE = np.uint32
@@ -359,31 +379,53 @@ def get_measurement_type(resquiggler):
         raise NotImplementedError(f"Unsupported resquiggler '{self._config.get_resquiggler()}'")
 
 
-class ReadIndexer:
-    def __init__(self):
-        self._read_ids = {}
-        self._current_id = 1
+class Indexer:
+    def __init__(self, initial_index=1):
+        self._ids = {}
+        self._current_id = initial_index
 
 
-    def add_reads(self, reads):
+    def add(self, elements):
         """
-        Add reads to the indexer.
+        Add elements to the indexer.
 
-        All new reads will be assigned a unique index
+        All new elements will be assigned a unique index
         and the new mappings will be returned to the
-        caller as a list of (read, id) pairs.
+        caller as a list of (element, id) pairs.
         """
-        new_reads = [read
-                    for read in reads
-                    if read not in self._read_ids]
+        new_elements = [element
+                        for element in elements
+                        if element not in self._ids]
         new_mappings = []
-        for read in new_reads:
-            self._read_ids[read] = self._current_id
-            new_mappings.append((read, self._current_id))
+        for element in new_elements:
+            self._ids[element] = self._current_id
+            new_mappings.append((element, self._current_id))
             self._current_id += 1
         return new_mappings
 
 
-    def get_ids(self, reads):
-        return [self._read_ids[read] for read in reads]
+    def get_ids(self, elements):
+        return [self._ids[element] for element in elements]
+
+
+    @property
+    def current_id(self):
+        return self._current_id
+
+
+def get_reads_invalid_kmer_ratio(kmers_data, ref_len):
+    """
+    Calculate the ratio of invalid kmers for all reads.
+
+    Returns a dictionary with read_id keys
+    and a 0-1 ratios as values.
+    """
+    read_counts = Counter([read
+                           for kmer in kmers_data
+                           for read in kmer.reads])
+    return {read: (ref_len - valid)/ref_len
+            for read, valid in read_counts.items()}
+
+
+TranscriptRow = namedtuple('TranscriptRow', 'ref_id id')
 

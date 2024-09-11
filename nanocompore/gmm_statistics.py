@@ -51,7 +51,7 @@ def gmm_test(kmer_data, transcript, random_state, anova=True, logit=False, verbo
 
         if logit:
             logit_results = gmm_logit_test(y_pred,
-                                           kmer_data.condition_labels.tolist(),
+                                           kmer_data.condition_labels,
                                            transcript.condition_labels)
 
     return({'anova': aov_results,
