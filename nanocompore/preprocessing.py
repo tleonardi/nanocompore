@@ -347,7 +347,8 @@ class EventalignPreprocessor(Preprocessor):
                                        (sample,
                                         file,
                                         self._config.get_fasta_ref(),
-                                        self._get_intermediary_db_name(sample)))
+                                        self._get_intermediary_db_name(sample),
+                                        self._config.get_kit()))
                        for sample, file in noncollapsed.items()]
             for future in as_completed(futures):
                 sample, db = future.result()
@@ -370,7 +371,7 @@ class EventalignPreprocessor(Preprocessor):
 
 
 def collapse_eventalign(params):
-    sample, eventalign, fasta_ref, output = params
-    EventalignCollapser(eventalign, fasta_ref, output)()
+    sample, eventalign, fasta_ref, output, kit = params
+    EventalignCollapser(eventalign, fasta_ref, output, kit)()
     return sample, output
 

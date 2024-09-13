@@ -18,6 +18,41 @@ VAR_ORDER = ['dwell', 'trimmean', 'trimsd']
 
 Kit = Enum('Kit', ['RNA002', 'RNA004'])
 
+# Center positions taken from the Uncalled4 paper
+# https://doi.org/10.1101/2024.03.05.583511 (Fig. 1a
+# for RNA002 and Supplementary Fig. 4 for RNA004).
+# The center position represents the base that
+# has the largest influence on the measured current
+# levels for the kmer.
+Kit.RNA002.len = 5
+Kit.RNA002.center = 4
+Kit.RNA004.len = 9
+Kit.RNA004.center = 6
+
+
+def is_valid_position(pos, seq_len, kit):
+    """
+    Takes a position (in 1-based transcriptomic coords),
+    the length of the reference transcript and the kit
+    used and returns whether the position is within the
+    trimmed range of the transcript.
+    """
+    if pos < kit.center or pos > seq_len - (kit.len - kit.center):
+        return False
+    return True
+
+
+def get_pos_kmer(pos, seq, kit):
+    """
+    Takes a position <pos> (in 1-based transcriptomic coords)
+    and the reference sequence and returns the kmer that
+    has its central (most influential) base at <pos>, depending
+    on the kit.
+    E.g. for RNA002, where the 4th base of the kmer is the center
+    it would return the seq[pos-3:pos+1].
+    """
+    return seq[pos - kit.center:(pos + kit.len - kit.center)]
+
 
 class NanocomporeError (Exception):
     """ Basic exception class for nanocompore module """

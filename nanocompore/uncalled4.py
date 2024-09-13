@@ -7,6 +7,8 @@ from loguru import logger
 from nanocompore.kmer import KmerData
 from nanocompore.common import NanocomporeError, Kit
 from nanocompore.common import UNCALLED4_MEASUREMENT_TYPE
+from nanocompore.common import is_valid_position
+from nanocompore.common import get_pos_kmer
 
 
 class Uncalled4:
@@ -26,14 +28,7 @@ class Uncalled4:
         A generator that yields one KmerData object
         per position in the transcript.
         """
-        if self._config.get_kit() == Kit.RNA002:
-            kmer_len = 5
-        elif self._config.get_kit() == Kit.RNA004:
-            kmer_len = 9
-        else:
-            raise NanocomporeError(f"Kit {self._config.get_kit()} not supported.")
-        kmer_radius = (kmer_len - 1) // 2
-
+        kit = self._config.get_kit()
         ref_len = len(self._seq)
 
         read_ids = []
@@ -53,7 +48,7 @@ class Uncalled4:
                 if read.is_secondary or read.is_supplementary:
                     continue
 
-                dwell, intensity, sd = self._get_signal(read, kmer_radius)
+                dwell, intensity, sd = self._get_signal(read)
 
                 reads_tensor[read_index, :, 0] = dwell
                 reads_tensor[read_index, :, 1] = intensity
@@ -73,15 +68,15 @@ class Uncalled4:
         sample_labels = np.array(sample_labels)
         condition_labels = np.array(condition_labels)
 
-        for pos in range(ref_len):
-            if pos < kmer_radius or pos >= ref_len - kmer_radius:
+        # iterate the transcript positions using 1-based indexing
+        for pos in range(1, ref_len + 1):
+            # Ignore positions where part of the k-mer is
+            # out of the range.
+            if not is_valid_position(pos, ref_len, kit):
                 continue
-            # Subtracting one to pos (to both start and end of the interval)
-            # to account for the 0-based indexing of the sequence.
-            # Adding one to the end of the slice to account for the exclusive nature of the end index.
-            # Together, the delta is [-1; 0].
-            kmer = self._seq[pos - kmer_radius - 1:pos + kmer_radius]
-            pos_data = reads_tensor[:, pos, :]
+
+            kmer = get_pos_kmer(pos, self._seq, kit)
+            pos_data = reads_tensor[:, pos - 1, :]
 
             # Remove reads that did not have data for the position.
             # non_zero_reads = ~(pos_data == 0).any(axis=1)
@@ -101,14 +96,18 @@ class Uncalled4:
                            self._experiment)
 
 
-    def _get_signal(self, read, kmer_radius):
+    def _get_signal(self, read):
         """
         Extracts the dwell, intensity and intensity std
         for a given read.
         """
+        kit = self._config.get_kit()
+
         # ur is a list of start, end pairs of aligned segments, e.g:
         # start1, end1, start2, end2
+        # ur uses 0-based indexing and [start,end) intervals
         ur = read.get_tag('ur')
+
         # The signal measurements are ordered in
         # 3' to 5' direction so we invert them.
         # uc is the signal's current intensity
@@ -123,30 +122,55 @@ class Uncalled4:
         intensity = []
         sd = []
         dwell = []
-        current_pos = 0
+        signal_pos = 0
         # We iterate through the segments and get the signal data
         # for each segment in order to merge them in the end.
         for seg_start_indx in range(0, len(read.get_tag('ur')), 2):
             seg_end_indx = seg_start_indx + 1
 
-            # Inclusive range for the region of the reference
-            # sequence that signal aligns to.
-            ref_start = ur[seg_start_indx] + kmer_radius
-            ref_end = ur[seg_end_indx] - kmer_radius
+            # Get the start and end of the region
+            # on the reference transcript to which
+            # the current signal segment aligns.
+            # This is a 0-based [start, end) interval.
+            ref_start = ur[seg_start_indx]
+            ref_end = ur[seg_end_indx]
 
-            next_pos = ref_end - ref_start
+            is_first_segment = seg_start_indx == 0
+            is_last_segment = seg_end_indx == len(ur) - 1
 
-            left_pad = ref_start if seg_start_indx == 0 else 0
-            if seg_end_indx == len(ur) - 1:
+            # The kmer acts as a sliding window of
+            # size > 1. This means that we have fewer
+            # measurements than the number of bases in
+            # the read. We attribute each measurement to
+            # the base that was more influential for the
+            # given kmer. For example in RNA002 the most
+            # influential base (which we call "center") is
+            # the fourth one. This means that the first three
+            # bases of the read and the last one would not
+            # have measurements (because the kmer cannot
+            # "slide out" of the read). Because Uncalled4
+            # includes in the reference regions (of the ur tag)
+            # all bases that have influenced the measurements
+            # of the electrical current we have to trim them.
+            if is_first_segment:
+                ref_start += kit.center - 1
+            if is_last_segment:
+                ref_end -= kit.len - kit.center
+
+            current_step = ref_end - ref_start
+            next_signal_pos = signal_pos + current_step
+
+            left_pad = ref_start if is_first_segment else 0
+            if is_last_segment:
                 right_pad = len(self._seq) - ref_end
             else:
-                next_start = ur[seg_end_indx + 1] + kmer_radius
+                next_start = ur[seg_end_indx + 1]
                 right_pad = next_start - ref_end
 
-            intensity.append(self._pad(uc[current_pos:next_pos], left_pad, right_pad))
-            sd.append(self._pad(ud[current_pos:next_pos], left_pad, right_pad))
-            dwell.append(self._pad(ul[current_pos:next_pos], left_pad, right_pad))
-            next_pos = current_pos
+            intensity.append(self._pad(uc[signal_pos:next_signal_pos], left_pad, right_pad))
+            sd.append(self._pad(ud[signal_pos:next_signal_pos], left_pad, right_pad))
+            dwell.append(self._pad(ul[signal_pos:next_signal_pos], left_pad, right_pad))
+            signal_pos = next_signal_pos
 
         return np.concatenate(dwell), np.concatenate(intensity), np.concatenate(sd)
 
