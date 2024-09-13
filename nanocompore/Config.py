@@ -27,6 +27,7 @@ CONFIG_SCHEMA = Schema({
     Optional('min_coverage'): And(int, lambda n: n >= 0, error='min_coverage must be >= 0'),
     Optional('downsample_high_coverage'): And(int, lambda n: n >= 0, error='downsample_high_coverage must be >= 0'),
     Optional('min_ref_length'): And(int, lambda n: n >= 0, error='min_ref_length must be >= 0'),
+    Optional('max_invalid_kmers_freq'): And(float, lambda n: n >= 0, error='max_invalid_kmers_freq must be in the [0, 1] range'),
     Optional('comparison_methods'): And(['GMM',
                                          'KS',
                                          'TT',
@@ -60,6 +61,7 @@ DEFAULT_MIN_COVERAGE = 30
 DEFAULT_MAX_READS = 5000
 DEFAULT_DOWNSAMPLE_HIGH_COVERAGE = 5000
 DEFAULT_MIN_REF_LENGTH = 100
+DEFAULT_MAX_INVALID_KMERS_FREQ = 0.5
 DEFAULT_COMPARISON_METHODS = ['GMM', 'KS']
 DEFAULT_SEQUENCE_CONTEXT = 0
 DEFAULT_SEQUENCE_CONTEXT_WEIGHTS = 'uniform'
@@ -154,6 +156,13 @@ class Config:
         Minimum length of a reference transcript to include it in the analysis.
         """
         return self._config.get('min_ref_length', DEFAULT_MIN_REF_LENGTH)
+
+
+    def get_max_invalid_kmers_freq(self):
+        """
+        Maximum allowed ratio of invalid kmers in the read.
+        """
+        return self._config.get('max_invalid_kmers_freq', DEFAULT_MAX_INVALID_KMERS_FREQ)
 
 
     def get_comparison_methods(self):
