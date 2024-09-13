@@ -50,7 +50,8 @@ class KmerData():
 
     @property
     def condition_labels(self):
-        return list(map(self._experiment.sample_to_condition, self.sample_labels))
+        return [self._experiment.sample_to_condition(s)
+                for s in self.sample_labels]
 
 
     # def get_condition_kmer_data(self, condition_label, data_type=''):

@@ -13,6 +13,8 @@ from nanocompore import __description__ as package_description
 from nanocompore.SampComp import SampComp
 from nanocompore.preprocessing import RemoraPreprocessor
 from nanocompore.preprocessing import Uncalled4Preprocessor
+from nanocompore.preprocessing import EventalignPreprocessor
+from nanocompore.eventalign_collapse import EventalignCollapser
 from nanocompore.Config import Config
 from nanocompore.common import *
 
@@ -26,6 +28,7 @@ def main(args=None):
             nanocompore implements the following subcommands
             \t* template : Initialize a new input configuration file using the default template.
             \t* preprocess : Preprocess the resquiggling data to prepare it for the subsequent analysis step.\n
+            \t* eventalign_collapse : Parse eventalign data to process and store it to an intermediary efficient database for later analysis.\n
             \t* run : Compare 2 samples and find significant signal differences.\n""")
     subparsers = parser.add_subparsers(dest='subcommand',
                                        required=True,
@@ -44,6 +47,15 @@ def main(args=None):
                                       description=textwrap.dedent("Compare 2 samples and find significant signal differences."))
     parser_sc.add_argument('config', type=str)
     parser_sc.set_defaults(func=sampcomp_subcommand)
+
+    # preprocess eventalign_collapse
+    parser_sc = subparsers.add_parser('eventalign_collapse',
+                                      formatter_class=argparse.RawDescriptionHelpFormatter,
+                                      description=textwrap.dedent("Parse eventalign data to process and store it to an intermediary efficient database for later analysis."))
+    parser_sc.add_argument('--ref', '-r', help="Transcriptome fasta reference.")
+    parser_sc.add_argument('--in', '-i', help="Path to input eventalign file. If not provided, the input is read from stdin (useful for piping nanopolish/f5c eventalign directly).")
+    parser_sc.add_argument('--out', '-o', help="Path to output SQLite database.")
+    parser_sc.set_defaults(func=eventalign_collapse_subcommand)
 
     # Init subparser
     parser_init = subparsers.add_parser('template',
@@ -81,6 +93,8 @@ def preprocess_subcommand(args):
         RemoraPreprocessor(config)()
     elif config.get_resquiggler() == "uncalled4":
         preprocessor = Uncalled4Preprocessor(config)()
+    elif config.get_resquiggler() == "eventalign":
+        preprocessor = EventalignPreprocessor(config)()
     else:
         raise ArgumentError(f"Unsupported resquiggler {config.resquiggler}")
 
@@ -110,6 +124,14 @@ def sampcomp_subcommand(args):
     # Run SampComp
     s()
 
+
+def eventalign_collapse_subcommand(args):
+    """
+    Parse eventalign data to process and store it
+    to an intermediary efficient database for later
+    analysis.
+    """
+    EventalignCollapser(sys.stdin, args.ref, args.out)()
 
 def init_subcommand(args):
     """

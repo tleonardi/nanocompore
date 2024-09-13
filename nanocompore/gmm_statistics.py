@@ -17,8 +17,11 @@ def gmm_test(kmer_data, transcript, random_state, anova=True, logit=False, verbo
         #sys.stderr.write("gmm_test only supports two conditions\n")
         raise NanocomporeError("gmm_test only supports two conditions")
 
+    data = [(i, d) for i, d in zip(kmer_data.intensity,
+                                   np.log10(kmer_data.dwell))]
+
     # Scale the intensity and dwell time arrays
-    X = StandardScaler().fit_transform([(i, d) for i, d in zip(kmer_data.intensity, kmer_data.dwell)])
+    X = StandardScaler().fit_transform(data)
 
     gmm_fit = fit_best_gmm(X, max_components=2, cv_types=['full'], random_state=random_state)
     gmm_mod, gmm_type, gmm_ncomponents = gmm_fit
@@ -48,7 +51,7 @@ def gmm_test(kmer_data, transcript, random_state, anova=True, logit=False, verbo
 
         if logit:
             logit_results = gmm_logit_test(y_pred,
-                                           kmer_data,
+                                           kmer_data.condition_labels,
                                            transcript.condition_labels)
 
     return({'anova': aov_results,
@@ -123,13 +126,16 @@ def gmm_anova_test(counters, condition_labels, gmm_ncomponents, allow_warnings=F
         #raise NanocomporeError("The Anova test returned a p-value of 0. This is most likely an error somewhere")
     # Calculate the delta log odds ratio, i.e. the difference of the means of the log odds ratios between the two conditions
     aov_delta_logit=float(np.mean(logr_s1)-np.mean(logr_s2))
-    aov_results = {'pvalue': aov_pvalue, 'delta_logit': aov_delta_logit, 'table': aov_table, 'log_ratios':logr}
-    return(aov_results)
+    return {
+            'pvalue': aov_pvalue,
+            'delta_logit': aov_delta_logit,
+            'table': aov_table,
+            'log_ratios':logr
+           }
 
 
-def gmm_logit_test(y_pred, kmer_data, condition_labels):
-    Y = kmer_data.condition_labels
-    y_pred=np.append(y_pred, [0, 0, 1, 1])
+def gmm_logit_test(y_pred, Y, condition_labels):
+    y_pred = np.append(y_pred, [0, 0, 1, 1])
     Y.extend([condition_labels[0], condition_labels[1], condition_labels[0], condition_labels[1]])
     Y = pd.get_dummies(Y)
     Y['intercept'] = 1
@@ -138,14 +144,17 @@ def gmm_logit_test(y_pred, kmer_data, condition_labels):
     with warnings.catch_warnings():
         warnings.filterwarnings('error')
         try:
-            logit_mod=logit.fit(disp=0)
+            logit_mod = logit.fit(disp=0)
             logit_pvalue, logit_coef = logit_mod.pvalues.iloc[1], logit_mod.params.iloc[1]
         except ConvergenceWarning:
             logit_mod, logit_pvalue, logit_coef = "NC", 1, "NC"
     if logit_pvalue == 0:
         logit_pvalue = np.finfo(float).tiny
-    logit_results = {'pvalue': logit_pvalue, 'coef': logit_coef, 'model': logit_mod}
-    return(logit_results)
+    return {
+            'pvalue': logit_pvalue,
+            'coef': logit_coef,
+            'model': logit_mod
+           }
 
 
 def count_reads_in_cluster(counters):
