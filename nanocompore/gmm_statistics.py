@@ -1,8 +1,6 @@
 from collections import Counter
 import warnings, sys
 
-
-# Third party
 from scipy.stats import f_oneway
 import statsmodels.discrete.discrete_model as dm
 from statsmodels.tools.sm_exceptions import ConvergenceWarning
@@ -11,7 +9,6 @@ from sklearn.mixture import GaussianMixture
 import numpy as np
 import pandas as pd
 
-# Local package
 from nanocompore.common import *
 
 
@@ -157,6 +154,7 @@ def count_reads_in_cluster(counters):
         cluster_counts.append("%s:%s/%s" % (k, v[0], v[1]))
     cluster_counts="__".join(cluster_counts)
     return(cluster_counts)
+
 
 def sum_of_squares(x):
     """

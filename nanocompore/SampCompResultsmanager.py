@@ -20,16 +20,11 @@ class resultsManager():
         self._overwrite = config.get_overwrite()
         self._bed_fn = config.get_bed()
         self._correction_method = config.get_correction_method()
-        
+
         self._db = SampCompDb.SampComp_DB(outpath=self._outpath, prefix=self._prefix, overwrite=self._overwrite)
-    
+
     def saveData(self, transcript, test_results, config, table=''):
-        self._db.store_test_results(tx_name=transcript, test_results=test_results[0], table=table)
-        if config.get_read_level_data():
-            save_transcript = len(config.get_read_level_data_transcripts()) == 0 \
-                              or transcript in config.get_read_level_data_transcripts()
-            if save_transcript:
-                self._db.store_read_level_data(tx_name=transcript, read_data=test_results[1])
+        self._db.store_test_results(tx_name=transcript, test_results=test_results, table=table)
 
     def closeDB(self):
         self._db.closeDB()
@@ -112,7 +107,7 @@ class resultsManager():
             data['chr'] = 'NA'
             data['strand'] = 'NA'
             logger.debug("No bed file was provided, genomic positions are not used and 'NA' will be used instead")
-        
+
         return data
 
     def _writeBed(self, data, pvalue_threshold=0, span=5, title="Nanocompore Significant Sites"):
@@ -139,11 +134,11 @@ class resultsManager():
                 out_bedgraph = os.path.join(self._outpath, f"{self._prefix}sig_sites_{test}_thr_{pvalue_threshold}.bed")
                 logger.debug(f"Starting to write results to {out_bedgraph}")
                 columns_to_save = ['chr', 'genomicPos', 'end_pos', test,]
-                data[data[test] <= pvalue_threshold].to_csv(out_bedgraph, sep='\t', columns=columns_to_save, header=False, index=False)     
+                data[data[test] <= pvalue_threshold].to_csv(out_bedgraph, sep='\t', columns=columns_to_save, header=False, index=False)
 
     def _sort_headers_list(self, headers):
         headers.sort(key=lambda x: (not 'pvalue' in x, x))
-        return headers  
+        return headers
 
     def _sort_shift_stat_headers(self, strings):
         conditions = ['c1', 'c2']
@@ -192,7 +187,7 @@ class resultsManager():
 
                 # Replace the original p-values with the corrected p-values in the dataframe
                 df[column] = corrected_pvals
-                
+
                 # Replace the NaN values back in the dataframe
                 df.loc[nan_indices, column] = np.nan
                 logger.debug(f"pvalues for {column} have been corrected using {method}")

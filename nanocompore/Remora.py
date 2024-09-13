@@ -13,9 +13,12 @@ from pkg_resources import resource_filename
 from collections import Counter
 
 from remora import io, refine_signal_map
-from kmer import KmerData
 
-from common import Kit, VAR_ORDER, NanocomporeError
+from nanocompore.kmer import KmerData
+from nanocompore.common import Kit
+from nanocompore.common import VAR_ORDER
+from nanocompore.common import NanocomporeError
+from nanocompore.common import REMORA_MEASUREMENT_TYPE
 
 
 RNA002_LEVELS_FILE = "models/rna002_5mer_levels_v1.txt"
@@ -170,7 +173,7 @@ class Remora:
         samples_metrics, bam_reads = self._get_samples_metrics()
 
         # Get [(reads, positions, vars), ...] with one 3d tensor per sample
-        per_sample_tensors = [np.stack([d[v] for v in VAR_ORDER], axis=2, dtype=np.float32)
+        per_sample_tensors = [np.stack([d[v] for v in VAR_ORDER], axis=2, dtype=REMORA_MEASUREMENT_TYPE)
                               for d in samples_metrics]
         # Delete the variables to allow GC to swipe unused
         # data while the generator is still used.
@@ -183,12 +186,10 @@ class Remora:
         sample_labels = np.array(self._sample_labels).repeat(sample_reads_count)
 
         # Get (samples*reads, pos, vars)
-        tensor = np.concatenate(per_sample_tensors, axis=0, dtype=np.float32)
+        tensor = np.concatenate(per_sample_tensors, axis=0, dtype=REMORA_MEASUREMENT_TYPE)
         del per_sample_tensors
 
-        reads = None
-        if self._config.get_read_level_data():
-            reads = np.concatenate(bam_reads)
+        reads = np.concatenate(bam_reads)
 
         for pos in range(self._ref_reg.len):
             kmer_seq = self._make_kmer_seq(pos)
@@ -198,18 +199,16 @@ class Remora:
             non_nan_rows = ~np.isnan(pos_data).any(axis=1)
             pos_data = pos_data[non_nan_rows, :]
             pos_sample_labels = sample_labels[non_nan_rows]
+            pos_reads = reads[non_nan_rows]
 
-            pos_reads = None
-            if self._config.get_read_level_data():
-                pos_reads = reads[non_nan_rows]
-
-            kmer_data = KmerData(pos, kmer_seq, pos_data, pos_sample_labels, pos_reads, self._experiment)
-            condition_counts = Counter(kmer_data.condition_labels)
-            if all(condition_counts.get(cond, 0) >= self._min_coverage
-                   for cond in self._experiment.get_condtion_labels()):
-                yield kmer_data
-            else:
-                logger.trace(f'Skipping position {pos} due to insuffient coverage in both conditions')
+            yield KmerData(pos,
+                           kmer_seq,
+                           pos_sample_labels,
+                           pos_reads,
+                           pos_data[:, VAR_ORDER.index('trimmean')],
+                           pos_data[:, VAR_ORDER.index('trimsd')],
+                           pos_data[:, VAR_ORDER.index('dwell')],
+                           self._experiment)
 
 
     def _make_kmer_seq(self, pos):

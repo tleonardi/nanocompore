@@ -1,26 +1,21 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
-#~~~~~~~~~~~~~~IMPORTS~~~~~~~~~~~~~~#
-
-# Standard library imports
 import argparse
 import os
 import shutil
 import textwrap
 import yaml
+import sys
 
-# Third party
 from loguru import logger
 
-# Local imports
 from nanocompore import __version__ as package_version
 from nanocompore import __description__ as package_description
 from nanocompore.SampComp import SampComp
+from nanocompore.preprocessing import RemoraPreprocessor
+from nanocompore.preprocessing import Uncalled4Preprocessor
 from nanocompore.Config import Config
 from nanocompore.common import *
 
-#~~~~~~~~~~~~~~MAIN PARSER ENTRY POINT~~~~~~~~~~~~~~#
 
 def main(args=None):
     # General parser
@@ -30,10 +25,18 @@ def main(args=None):
     subparser_description = textwrap.dedent("""
             nanocompore implements the following subcommands
             \t* template : Initialize a new input configuration file using the default template.
+            \t* preprocess : Preprocess the resquiggling data to prepare it for the subsequent analysis step.\n
             \t* run : Compare 2 samples and find significant signal differences.\n""")
     subparsers = parser.add_subparsers(dest='subcommand',
                                        required=True,
                                        description=subparser_description)
+
+    # preprocess subparser
+    parser_sc = subparsers.add_parser('preprocess',
+                                      formatter_class=argparse.RawDescriptionHelpFormatter,
+                                      description=textwrap.dedent("Preprocess the resquiggling data to prepare it for comparison."))
+    parser_sc.add_argument('config', type=str)
+    parser_sc.set_defaults(func=preprocess_subcommand)
 
     # Sampcomp subparser
     parser_sc = subparsers.add_parser('run',
@@ -58,6 +61,29 @@ def main(args=None):
 
 
 #~~~~~~~~~~~~~~SUBCOMMAND FUNCTIONS~~~~~~~~~~~~~~#
+
+def preprocess_subcommand(args):
+    """
+    Runs the preprocessing step that will
+    take the data from the chosen resquiggler
+    and prepare it for the actual analysis.
+    """
+    logger.warning("Running the preprocessing step")
+
+    # Read the input config file
+    with open(args.config, 'r') as f:
+        config_file = yaml.safe_load(f)
+
+    config = Config(config_file)
+
+    # Init the preprocessor
+    if config.get_resquiggler() == "remora":
+        RemoraPreprocessor(config)()
+    elif config.get_resquiggler() == "uncalled4":
+        preprocessor = Uncalled4Preprocessor(config)()
+    else:
+        raise ArgumentError(f"Unsupported resquiggler {config.resquiggler}")
+
 
 def sampcomp_subcommand(args):
     """

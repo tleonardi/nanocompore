@@ -1,33 +1,26 @@
-# -*- coding: utf-8 -*-
+from collections import Counter
+from collections import OrderedDict
+from collections import defaultdict
 
-#~~~~~~~~~~~~~~IMPORTS~~~~~~~~~~~~~~#
-# Std lib
-from collections import OrderedDict, defaultdict
-
-
-# Third party
 from loguru import logger
 from scipy.stats import mannwhitneyu, ttest_ind, chi2
 from scipy.stats.mstats import ks_twosamp
 import numpy as np
 import pandas as pd
 
-# Local package
 from nanocompore.common import *
 import nanocompore.gmm_statistics as gmm
-
-
-READ_LEVEL_DATA_COLS = ['intensity', 'dwell', 'sample', 'condition', 'transcript', 'pos', 'kmer']
 
 
 class TxComp():
     def __init__(self,
                  experiment,
                  config,
-                 random_state = 26):
+                 random_state=26):
         logger.debug("TxCompare object created")
 
         self._config = config
+        self._experiment = experiment
         self._random_state = random_state
 
         # If we have less than 2 replicates in any condition skip anova and force logit method
@@ -36,9 +29,10 @@ class TxComp():
             self._anova = False
             self._logit = True
 
+
     def _any_condition_with_fewer_than_2_samples(self, experiment):
         condition_counts = defaultdict(int)
-        for condition in experiment.get_condtion_labels():
+        for condition in experiment.get_condition_labels():
             condition_counts[condition] = len(experiment.condition_to_samples(condition))
         if len(condition_counts) == 2:
             if any(count < 2 for cond, count in condition_counts.items()):
@@ -48,28 +42,24 @@ class TxComp():
         else:
             raise NanocomporeError (f"There are not exactly two condition labels")
 
-    def txCompare(self, transcript):
+
+    def txCompare(self, kmer_data_list, transcript):
         logger.info(f"TxCompare starting for {transcript.name}")
         total_results_dict = defaultdict(None)
         tests = set()
         valid_positions = []
         condition_label_1 = transcript.condition_labels[0]
         condition_label_2 = transcript.condition_labels[1]
-        # read_pos_data_point: (condition, sample, transcript, read, pos, kmer, intensity, dwell)
-        total_read_data = []
-        for kmer_data in transcript.generate_data():
+        for kmer_data in kmer_data_list:
+            condition_counts = Counter(kmer_data.condition_labels)
+            if not all(condition_counts.get(cond, 0) >= self._config.get_min_coverage()
+                       for cond in self._experiment.get_condition_labels()):
+                logger.trace(f'Skipping position {kmer_data.pos} due to insuffient coverage in both conditions')
+                continue
+
             valid_positions.append(kmer_data.pos)
             results_dict = {}
             results_dict['kmer_seq'] = kmer_data.kmer
-
-            if self._config.get_read_level_data():
-                read_data = pd.DataFrame(kmer_data._data, columns=['dwell', 'intensity'])
-                read_data['pos'] = kmer_data.pos
-                read_data['kmer'] = kmer_data.kmer
-                read_data['sample'] = kmer_data.sample_labels
-                read_data['condition'] = kmer_data.condition_labels
-                read_data['read'] = kmer_data.reads
-                total_read_data.append(read_data)
 
             for method in self._config.get_comparison_methods():
                 if method.upper() in ['MW', 'KS', 'TT']:
@@ -91,7 +81,6 @@ class TxComp():
                     except:
                         raise NanocomporeError(f"Error doing {method} dwell test on {transcript.name} at pos {kmer_data.pos}")
 
-
                 elif method == "GMM":
                     try:
                         gmm_results = gmm.gmm_test(kmer_data=kmer_data,
@@ -105,7 +94,6 @@ class TxComp():
                     relevant_gmm_results, gmm_tests = self._extract_gmm_results(gmm_results)
                     results_dict.update(relevant_gmm_results)
                     gmm_tests.update(gmm_tests)
-
 
             # Calculate shift statistics
             #sys.stderr.write(f"Calculatign shift stats for {pos} of {transcript.name}\n")
@@ -181,10 +169,7 @@ class TxComp():
                             else:
                                 total_results_dict[mid_pos][test_label] = self._combine_pvalues_hou(pval_list_dict[test], weights, corr_matrix_dict[test])
 
-        if self._config.get_read_level_data():
-            total_read_data = pd.concat(total_read_data, axis=0)
-
-        return total_results_dict, total_read_data
+        return total_results_dict
 
 
     def _extract_gmm_results(self, gmm_results):
@@ -211,6 +196,7 @@ class TxComp():
             tests.add("logit_LOR")
 
         return results, tests
+
 
     def _nonparametric_test(self, data1, data2, method=None):
         if method in ["mann_whitney", "MW"]:
@@ -248,11 +234,13 @@ class TxComp():
         ])
         return(shift_stats)
 
+
     def _harmomic_series(self, sequence_context):
         weights = []
         for i in range(-sequence_context, sequence_context+1):
             weights.append(1/(abs(i)+1))
         return weights
+
 
     def _cross_corr_matrix(self, pvalues_vector, context=2):
         """ Calculate the cross correlation matrix of the
@@ -276,6 +264,7 @@ class TxComp():
                 row.append(np.corrcoef((np.roll(pvalues_vector,i)[context:s-context]), (np.roll(pvalues_vector,j)[context:s-context]))[0][1])
             matrix.append(row)
         return(np.array(matrix))
+
 
     def _combine_pvalues_hou(self, pvalues, weights, cor_mat):
         """ Hou's method for the approximation for the distribution of the weighted
@@ -323,3 +312,4 @@ class TxComp():
         if combined_p_value == 0:
             combined_p_value = np.finfo(float).tiny
         return combined_p_value
+
