@@ -93,6 +93,7 @@ class Uncalled4:
                            pos_data[:, 1],
                            pos_data[:, 2],
                            pos_data[:, 0],
+                           None, # We don't have validity data here
                            self._experiment)
 
 

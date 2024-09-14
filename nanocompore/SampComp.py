@@ -130,6 +130,7 @@ class SampComp(object):
                         kmer.intensity[valid_mask],
                         kmer.sd[valid_mask],
                         kmer.dwell[valid_mask],
+                        None, # We don't have validity data here
                         self._experiment)
 
 
@@ -148,6 +149,7 @@ class SampComp(object):
                         intensity,
                         sd,
                         dwell,
+                        None, # we don't need validity data here
                         self._experiment)
 
 

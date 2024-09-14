@@ -14,8 +14,6 @@ from loguru import logger
 from pyfaidx import Fasta
 
 
-VAR_ORDER = ['dwell', 'trimmean', 'trimsd']
-
 Kit = Enum('Kit', ['RNA002', 'RNA004'])
 
 # Center positions taken from the Uncalled4 paper
@@ -450,20 +448,6 @@ class Indexer:
     @property
     def current_id(self):
         return self._current_id
-
-
-def get_reads_invalid_kmer_ratio(kmers_data, ref_len):
-    """
-    Calculate the ratio of invalid kmers for all reads.
-
-    Returns a dictionary with read_id keys
-    and a 0-1 ratios as values.
-    """
-    read_counts = Counter([read
-                           for kmer in kmers_data
-                           for read in kmer.reads])
-    return {read: (ref_len - valid)/ref_len
-            for read, valid in read_counts.items()}
 
 
 TranscriptRow = namedtuple('TranscriptRow', 'ref_id id')

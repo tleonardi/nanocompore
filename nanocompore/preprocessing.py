@@ -36,7 +36,6 @@ from nanocompore.common import READ_ID_TYPE
 from nanocompore.common import SAMPLE_ID_TYPE
 from nanocompore.common import Indexer
 from nanocompore.common import EVENTALIGN_MEASUREMENT_TYPE
-from nanocompore.common import get_reads_invalid_kmer_ratio
 
 
 class Preprocessor:
@@ -89,17 +88,15 @@ class Preprocessor:
         self._valid_transcripts = whitelist.ref_id_list
 
 
-    def _write_to_db(self, ref_id, kmers_data):
-        rows = list(self._process_rows_for_writing(ref_id, kmers_data))
+    def _write_to_db(self, ref_id, kmers_data, read_invalid_ratios):
+        rows = list(self._process_rows_for_writing(ref_id, kmers_data, read_invalid_ratios))
         self._db_cursor.executemany(INSERT_KMER_DATA_QUERY, rows)
         self._db_conn.commit()
 
 
-    def _process_rows_for_writing(self, ref_id, kmers_data):
+    def _process_rows_for_writing(self, ref_id, kmers_data, read_invalid_ratios):
         fasta_fh = Fasta(self._config.get_fasta_ref())
         ref_len = len(fasta_fh[ref_id])
-
-        read_invalid_kmer_ratios = get_reads_invalid_kmer_ratio(kmers_data, ref_len)
 
         self._db_cursor.execute(INSERT_TRANSCRIPTS_QUERY,
                                 (ref_id, self._current_transcript_id))
@@ -119,7 +116,7 @@ class Preprocessor:
                      for kmer in kmers_data
                      for read in kmer.reads}
         new_mappings = read_indexer.add(all_reads)
-        reads_data = [(read, idx, read_invalid_kmer_ratios[read])
+        reads_data = [(read, idx, read_invalid_ratios[read])
                       for read, idx in new_mappings]
         self._db_cursor.executemany(INSERT_READS_QUERY, reads_data)
 
@@ -177,6 +174,37 @@ class Preprocessor:
         self.__dict__.update(state)
 
 
+    def _get_reads_invalid_kmer_ratio(self, kmers):
+        """
+        Calculate the ratio of missing kmers
+        in the read. It takes the kmers with
+        min and max position to determine the
+        read length.
+
+        This is the method employed for Uncalled4 and Remora.
+        For eventalign there's a custom method, that takes
+        in consideration the richer information provided
+        by the resquiggler.
+        """
+        read_counts = defaultdict(lambda: 0)
+        read_ends = defaultdict(lambda: (np.inf, -1))
+
+        for kmer in kmers:
+            for read in kmer.reads:
+                read_counts[read] += 1
+                curr_range = read_ends[read]
+                start = min(kmer.pos, curr_range[0])
+                end = max(kmer.pos, curr_range[1])
+                read_ends[read] = (start, end)
+        return {read: self._calc_invalid_ratio(read_ends[read], count)
+                for read, count in read_counts.items()}
+
+
+    def _calc_invalid_ratio(self, ends, valid):
+        length = ends[1] - ends[0] + 1
+        return (length - valid)/length
+
+
 class RemoraPreprocessor(Preprocessor):
     """
     Uses ONT's Remora internally to resquiggle
@@ -193,8 +221,8 @@ class RemoraPreprocessor(Preprocessor):
             futures = [executor.submit(self._resquiggle, ref_id)
                        for ref_id in self._valid_transcripts]
             for future in as_completed(futures):
-                ref_id, kmer_data_generator = future.result()
-                self._write_to_db(ref_id, kmer_data_generator)
+                ref_id, kmers, read_invalid_ratios = future.result()
+                self._write_to_db(ref_id, kmers, read_invalid_ratios)
 
 
     def _resquiggle(self, ref_id):
@@ -208,8 +236,9 @@ class RemoraPreprocessor(Preprocessor):
                         end=len(ref_seq),
                         seq=ref_seq,
                         strand='+')
-
-        return ref_id, list(remora.kmer_data_generator())
+        kmers = list(remora.kmer_data_generator())
+        read_invalid_ratios = self._get_reads_invalid_kmer_ratio(kmers)
+        return ref_id, kmers, read_invalid_ratios
 
 
 class Uncalled4Preprocessor(Preprocessor):
@@ -230,8 +259,8 @@ class Uncalled4Preprocessor(Preprocessor):
             futures = [executor.submit(self._resquiggle, ref_id)
                        for ref_id in self._valid_transcripts]
             for future in as_completed(futures):
-                ref_id, kmers_data = future.result()
-                self._write_to_db(ref_id, kmers_data)
+                ref_id, kmers, read_invalid_ratios = future.result()
+                self._write_to_db(ref_id, kmers, read_invalid_ratios)
 
 
     def _resquiggle(self, ref_id):
@@ -241,7 +270,9 @@ class Uncalled4Preprocessor(Preprocessor):
                               self._config,
                               ref_id,
                               ref_seq)
-        return ref_id, list(uncalled4.kmer_data_generator())
+        kmers = list(uncalled4.kmer_data_generator())
+        read_invalid_ratios = self._get_reads_invalid_kmer_ratio(kmers)
+        return ref_id, kmers, read_invalid_ratios
 
 
 class EventalignPreprocessor(Preprocessor):
@@ -275,11 +306,13 @@ class EventalignPreprocessor(Preprocessor):
         sample_cursors = {sample: db.cursor()
                           for sample, db in sample_dbs.items()}
 
-        sample_read_indices = {}
+        sample_read_indices = defaultdict(dict)
+        read_invalid_ratios = {}
         for sample, cursor in sample_cursors.items():
             res = cursor.execute("SELECT * FROM reads")
-            sample_read_indices[sample] = {row[1]: row[0]
-                                           for row in res.fetchall()}
+            for row in res.fetchall():
+                sample_read_indices[sample][row[1]] = row[0]
+                read_invalid_ratios[row[0]] = row[2]
 
         # Merge the information from the collapsed eventalign_dbs
         for ref_id in self._valid_transcripts:
@@ -291,7 +324,7 @@ class EventalignPreprocessor(Preprocessor):
                     pos = row[1]
                     pos_data[pos].append((sample, row))
             kmers_list = self._merge_kmer_data_from_samples(pos_data, sample_read_indices)
-            self._write_to_db(ref_id, kmers_list)
+            self._write_to_db(ref_id, kmers_list, read_invalid_ratios)
 
 
     def _merge_kmer_data_from_samples(self, pos_data, sample_read_indices):
@@ -305,7 +338,7 @@ class EventalignPreprocessor(Preprocessor):
             sd = self._merge_measurements_from_rows(5, rows, EVENTALIGN_MEASUREMENT_TYPE)
             dwell = self._merge_measurements_from_rows(6, rows, EVENTALIGN_MEASUREMENT_TYPE)
 
-            kmers.append(KmerData(pos, kmer, samples, read_ids, intensity, sd, dwell, self._experiment))
+            kmers.append(KmerData(pos, kmer, samples, read_ids, intensity, sd, dwell, None, self._experiment))
         return kmers
 
 
