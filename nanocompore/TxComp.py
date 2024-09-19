@@ -51,11 +51,18 @@ class TxComp():
         condition_label_1 = transcript.condition_labels[0]
         condition_label_2 = transcript.condition_labels[1]
         for kmer_data in kmer_data_list:
+            # Make sure we have sufficient reads for all conditions.
             condition_counts = Counter(kmer_data.condition_labels)
             if not all(condition_counts.get(cond, 0) >= self._config.get_min_coverage()
                        for cond in self._experiment.get_condition_labels()):
                 logger.trace(f'Skipping position {kmer_data.pos} due to insuffient coverage in both conditions')
                 continue
+
+            # If we have too many reads, downsample them in a way that
+            # will keep the number of reads for the two conditions equal.
+            max_reads = self._config.get_downsample_high_coverage()
+            nreads = min(min(condition_counts.values()), max_reads)
+            kmer_data = kmer_data.subsample_reads(nreads)
 
             valid_positions.append(kmer_data.pos)
             results_dict = {}

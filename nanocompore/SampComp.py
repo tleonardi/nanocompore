@@ -64,7 +64,7 @@ class SampComp(object):
                            for tx in self._get_transcripts_for_processing()]
                 for future in as_completed(futures):
                     ref_id, results = future.result()
-                    if len(result) == 0:
+                    if len(results) == 0:
                         continue
                     try:
                         resultsManager.saveData(ref_id, results, self._config)

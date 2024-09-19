@@ -78,9 +78,10 @@ class Uncalled4:
             kmer = get_pos_kmer(pos, self._seq, kit)
             pos_data = reads_tensor[:, pos, :]
 
-            # Remove reads that did not have data for the position.
-            # non_zero_reads = ~(pos_data == 0).any(axis=1)
-            valid_reads = ~np.isnan(pos_data).any(axis=1)
+            # Remove reads that did not have data for the position
+            # or represent an unrecoverable skip event (this happens
+            # when the skip event is the first one).
+            valid_reads = ~np.isnan(pos_data).any(axis=1) & (pos_data[:, 0] != 0)
 
             pos_data = pos_data[valid_reads, :].astype(UNCALLED4_MEASUREMENT_TYPE)
             pos_sample_labels = sample_labels[valid_reads]
@@ -119,6 +120,7 @@ class Uncalled4:
         # The negative length values are paddings used
         # for each alignment segment.
         ul = [d for d in read.get_tag('ul')[::-1] if d >= 0]
+        ul = self._resolve_skips(ul)
 
         intensity = []
         sd = []
@@ -180,6 +182,14 @@ class Uncalled4:
         return np.concatenate([np.repeat(np.nan, prefix),
                                arr,
                                np.repeat(np.nan, suffix)])
+
+
+    def _resolve_skips(self, ul):
+        resolved = np.empty(len(ul))
+        resolved[0] = ul[0]
+        for i in range(1, len(ul)):
+            resolved[i] = ul[i] if ul[i] != 0 else resolved[i - 1]
+        return resolved
 
 
     def _sample(self, labels, limit, seed=42):
