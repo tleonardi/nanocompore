@@ -328,7 +328,16 @@ def is_valid_fasta(file):
         # raise NanocomporeError("The fasta file cannot be opened")
         return False
 
-
+DROP_METADATA_TABLE_QUERY = """
+DROP TABLE IF EXISTS metadata;
+"""
+CREATE_METADATA_TABLE_QUERY = """
+CREATE TABLE metadata (
+    key TEXT NOT NULL,
+    value TEXT NOT NULL,
+    PRIMARY KEY(key)
+);
+"""
 DROP_KMER_DATA_TABLE_QUERY = """
 DROP TABLE IF EXISTS kmer_data;
 """
@@ -403,6 +412,13 @@ SAMPLE_ID_TYPE = np.uint8
 REMORA_MEASUREMENT_TYPE = np.float32
 UNCALLED4_MEASUREMENT_TYPE = np.int16
 EVENTALIGN_MEASUREMENT_TYPE = np.float32
+
+DB_METADATA_RESQUIGGLER_KEY = 'resquiggler'
+DB_METADATA_READ_ID_TYPE_KEY = 'read_id_type'
+DB_METADATA_SAMPLE_ID_TYPE_KEY = 'sample_id_type'
+DB_METADATA_MEASUREMENT_TYPE_KEY = 'measurement_type'
+DB_METADATA_SAMPLE_LABELS_KEY = 'sample_labels'
+DB_METADATA_CONDITION_SAMPLES_KEY = 'condition_samples'
 
 
 def get_measurement_type(resquiggler):

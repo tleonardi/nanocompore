@@ -1,6 +1,7 @@
 import csv
 import os
 import sqlite3
+import json
 
 from collections import Counter
 from collections import defaultdict
@@ -21,10 +22,12 @@ from nanocompore.uncalled4 import Uncalled4
 from nanocompore.eventalign_collapse import EventalignCollapser
 from nanocompore.kmer import KmerData
 from nanocompore.common import Kit
+from nanocompore.common import DROP_METADATA_TABLE_QUERY
 from nanocompore.common import DROP_KMER_DATA_TABLE_QUERY
 from nanocompore.common import DROP_READS_TABLE_QUERY
 from nanocompore.common import DROP_READS_ID_INDEX_QUERY
 from nanocompore.common import DROP_TRANSCRIPTS_TABLE_QUERY
+from nanocompore.common import CREATE_METADATA_TABLE_QUERY
 from nanocompore.common import CREATE_KMER_DATA_TABLE_QUERY
 from nanocompore.common import CREATE_READS_TABLE_QUERY
 from nanocompore.common import CREATE_READS_ID_INDEX_QUERY
@@ -36,6 +39,13 @@ from nanocompore.common import READ_ID_TYPE
 from nanocompore.common import SAMPLE_ID_TYPE
 from nanocompore.common import Indexer
 from nanocompore.common import EVENTALIGN_MEASUREMENT_TYPE
+from nanocompore.common import get_measurement_type
+from nanocompore.common import DB_METADATA_RESQUIGGLER_KEY
+from nanocompore.common import DB_METADATA_READ_ID_TYPE_KEY
+from nanocompore.common import DB_METADATA_SAMPLE_ID_TYPE_KEY
+from nanocompore.common import DB_METADATA_MEASUREMENT_TYPE_KEY
+from nanocompore.common import DB_METADATA_SAMPLE_LABELS_KEY
+from nanocompore.common import DB_METADATA_CONDITION_SAMPLES_KEY
 
 
 class Preprocessor:
@@ -79,6 +89,25 @@ class Preprocessor:
         self._db_cursor.execute(CREATE_READS_ID_INDEX_QUERY)
         self._db_cursor.execute(DROP_TRANSCRIPTS_TABLE_QUERY)
         self._db_cursor.execute(CREATE_TRANSCRIPTS_TABLE_QUERY)
+        self._db_cursor.execute(DROP_METADATA_TABLE_QUERY)
+        self._db_cursor.execute(CREATE_METADATA_TABLE_QUERY)
+        self._write_metadata()
+
+
+    def _write_metadata(self):
+        resquiggler = self._config.get_resquiggler()
+        condition_samples = {cond: self._experiment.condition_to_samples(cond)
+                             for cond in self._experiment.get_condition_labels()}
+        metadata = {
+            DB_METADATA_RESQUIGGLER_KEY: resquiggler,
+            DB_METADATA_READ_ID_TYPE_KEY: READ_ID_TYPE.__name__,
+            DB_METADATA_SAMPLE_ID_TYPE_KEY: SAMPLE_ID_TYPE.__name__,
+            DB_METADATA_MEASUREMENT_TYPE_KEY: get_measurement_type(resquiggler).__name__,
+            DB_METADATA_SAMPLE_LABELS_KEY: ','.join(self._experiment.get_sample_labels()),
+            DB_METADATA_CONDITION_SAMPLES_KEY: json.dumps(condition_samples),
+        }
+        for key, value in metadata.items():
+            self._db_cursor.execute("INSERT INTO metadata (key, value) VALUES (?, ?)", (key, str(value)))
 
 
     def _whitelist_transcripts(self):
