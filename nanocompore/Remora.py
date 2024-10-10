@@ -19,6 +19,8 @@ from nanocompore.common import Kit
 from nanocompore.common import VAR_ORDER
 from nanocompore.common import NanocomporeError
 from nanocompore.common import REMORA_MEASUREMENT_TYPE
+from nanocompore.common import is_valid_position
+from nanocompore.common import get_pos_kmer
 
 
 RNA002_LEVELS_FILE = "models/rna002_5mer_levels_v1.txt"
@@ -166,6 +168,8 @@ class Remora:
 
 
     def kmer_data_generator(self):
+        kit = self._config.get_kit()
+
         # Resquiggle the signal and get the summary metrics for
         # each position of the transcript. The result is list of dicts
         # with one dict per sample and each dict has the type:
@@ -191,8 +195,15 @@ class Remora:
 
         reads = np.concatenate(bam_reads)
 
+        # Iterate over all positions of the transcript using
+        # 0-based indexing.
         for pos in range(self._ref_reg.len):
-            kmer_seq = self._make_kmer_seq(pos)
+            # Ignore positions where part of the k-mer is
+            # out of the range.
+            if not is_valid_position(pos, self._ref_reg.len, kit):
+                continue
+
+            kmer_seq = get_pos_kmer(pos, self._seq, kit)
             pos_data = tensor[:, pos, :]
 
             # Remove reads with nan values for any of the variables at that position
@@ -209,16 +220,6 @@ class Remora:
                            pos_data[:, VAR_ORDER.index('trimsd')],
                            pos_data[:, VAR_ORDER.index('dwell')],
                            self._experiment)
-
-
-    def _make_kmer_seq(self, pos):
-        kmer = self._seq[pos:pos + self._kmer_size]
-        kmer_diff = self._kmer_size - len(kmer)
-        kmer = kmer + 'N'*kmer_diff
-        if len(kmer) > self._kmer_size:
-            raise NanocomporeError (f'{kmer} is longer than the modeled kmer size {self._kmer_size}')
-        else:
-            return kmer
 
 
     @property

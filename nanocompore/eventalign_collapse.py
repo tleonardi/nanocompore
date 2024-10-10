@@ -31,13 +31,14 @@ class EventalignCollapser:
     transcript position and stores the relevant
     data to an intermediary SQLite database.
     """
-    def __init__(self, file, fasta_ref, output):
+    def __init__(self, file, fasta_ref, output, kit):
         if isinstance(file, str):
             self._file = open(file, 'r')
         else:
             self._file = file
         self._fasta_ref = Fasta(fasta_ref)
         self._ref_lens = {}
+        self._kit = kit
         self._db_conn = sqlite3.connect(output)
         self._db_cursor = self._db_conn.cursor()
         self._db_cursor.execute(DROP_KMER_DATA_TABLE_QUERY)
@@ -65,7 +66,20 @@ class EventalignCollapser:
 
             cols = line.split('\t')
             ref_id = cols[0]
-            pos = int(cols[1])
+            # The position in the eventalign is
+            # the 0-based index of the initial
+            # base in the k-mer.
+            # We want to convert that to 0-based
+            # index of the central (most influential)
+            # base of the kmer, according to the model.
+            # E.g. if we have position 7 in eventalign,
+            # then it indicates that the k-mer's first
+            # base is the 8th base of the transcript.
+            # If RNA002 is used, because the 4th
+            # position of the 5mer is the central one,
+            # we want to report the 11th base, which
+            # in 0-based indexing will have index 10.
+            pos = int(cols[1]) + self._kit.center - 1
             kmer = cols[2]
             read = cols[3]
             event_measurements = [float(v) for v in cols[13].split(',')]
@@ -151,7 +165,7 @@ class EventalignCollapser:
             valid_reads = ~np.isnan(intensity[:, pos])
 
             if np.any(valid_reads):
-                kmer_data = KmerData(pos+1,
+                kmer_data = KmerData(pos,
                                      kmers[pos],
                                      None,
                                      read_ids[valid_reads],
