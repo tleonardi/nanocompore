@@ -196,15 +196,15 @@ class Remora:
         reads = np.concatenate(bam_reads)
 
         # Iterate over all positions of the transcript using
-        # 1-based indexing.
-        for pos in range(1, self._ref_reg.len + 1):
+        # 0-based indexing.
+        for pos in range(self._ref_reg.len):
             # Ignore positions where part of the k-mer is
             # out of the range.
             if not is_valid_position(pos, self._ref_reg.len, kit):
                 continue
 
             kmer_seq = get_pos_kmer(pos, self._seq, kit)
-            pos_data = tensor[:, pos - 1, :]
+            pos_data = tensor[:, pos, :]
 
             # Remove reads with nan values for any of the variables at that position
             non_nan_rows = ~np.isnan(pos_data).any(axis=1)

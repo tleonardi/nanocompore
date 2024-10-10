@@ -69,16 +69,17 @@ class EventalignCollapser:
             # The position in the eventalign is
             # the 0-based index of the initial
             # base in the k-mer.
-            # We want to convert that to 1-based
-            # indexing of the central (most influential)
+            # We want to convert that to 0-based
+            # index of the central (most influential)
             # base of the kmer, according to the model.
             # E.g. if we have position 7 in eventalign,
             # then it indicates that the k-mer's first
             # base is the 8th base of the transcript.
             # If RNA002 is used, because the 4th
-            # position is the central one, we want
-            # to report position 11.
-            pos = int(cols[1]) + self._kit.center
+            # position of the 5mer is the central one,
+            # we want to report the 11th base, which
+            # in 0-based indexing will have index 10.
+            pos = int(cols[1]) + self._kit.center - 1
             kmer = cols[2]
             read = cols[3]
             event_measurements = [float(v) for v in cols[13].split(',')]
@@ -164,7 +165,7 @@ class EventalignCollapser:
             valid_reads = ~np.isnan(intensity[:, pos])
 
             if np.any(valid_reads):
-                kmer_data = KmerData(pos+1,
+                kmer_data = KmerData(pos,
                                      kmers[pos],
                                      None,
                                      read_ids[valid_reads],

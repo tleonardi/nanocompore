@@ -69,14 +69,14 @@ class Uncalled4:
         condition_labels = np.array(condition_labels)
 
         # iterate the transcript positions using 1-based indexing
-        for pos in range(1, ref_len + 1):
+        for pos in range(ref_len):
             # Ignore positions where part of the k-mer is
             # out of the range.
             if not is_valid_position(pos, ref_len, kit):
                 continue
 
             kmer = get_pos_kmer(pos, self._seq, kit)
-            pos_data = reads_tensor[:, pos - 1, :]
+            pos_data = reads_tensor[:, pos, :]
 
             # Remove reads that did not have data for the position.
             # non_zero_reads = ~(pos_data == 0).any(axis=1)
