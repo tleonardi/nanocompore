@@ -159,9 +159,6 @@ class Preprocessor:
 
 
     def _process_rows_for_writing(self, ref_id, kmers_data, read_invalid_ratios):
-        fasta_fh = Fasta(self._config.get_fasta_ref())
-        ref_len = len(fasta_fh[ref_id])
-
         with closing(self._db_conn.cursor()) as cursor:
             cursor.execute(INSERT_TRANSCRIPTS_QUERY,
                            (ref_id, self._current_transcript_id))
@@ -550,7 +547,7 @@ class EventalignPreprocessor(Preprocessor):
             read_ids = [idx + sample_read_offsets[sample]
                         for idx, sample in zip(self._merge_col_from_samples(3, rows, READ_ID_TYPE),
                                                samples)]
-            read_ids = np.array(read_ids)
+            read_ids = np.array(read_ids, dtype=READ_ID_TYPE)
 
             intensity = self._merge_col_from_samples(4, rows, EVENTALIGN_MEASUREMENT_TYPE)
             sd = self._merge_col_from_samples(5, rows, EVENTALIGN_MEASUREMENT_TYPE)
