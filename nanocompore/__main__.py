@@ -53,8 +53,9 @@ def main(args=None):
                                       formatter_class=argparse.RawDescriptionHelpFormatter,
                                       description=textwrap.dedent("Parse eventalign data to process and store it to an intermediary efficient database for later analysis."))
     parser_sc.add_argument('--ref', '-r', help="Transcriptome fasta reference.")
-    parser_sc.add_argument('--in', '-i', help="Path to input eventalign file. If not provided, the input is read from stdin (useful for piping nanopolish/f5c eventalign directly).")
-    parser_sc.add_argument('--out', '-o', help="Path to output SQLite database.")
+    parser_sc.add_argument('--input', '-i', help="Path to input eventalign file. If not provided, the input is read from stdin (useful for piping nanopolish/f5c eventalign directly).")
+    parser_sc.add_argument('--output', '-o', help="Path to output SQLite database.")
+    parser_sc.add_argument('--kit', '-k', help="The sequencing kit used. E.g. RNA002, RNA004.")
     parser_sc.set_defaults(func=eventalign_collapse_subcommand)
 
     # Init subparser
@@ -131,7 +132,11 @@ def eventalign_collapse_subcommand(args):
     to an intermediary efficient database for later
     analysis.
     """
-    EventalignCollapser(sys.stdin, args.ref, args.out)()
+    kit = Kit[args.kit]
+    file_in = sys.stdin
+    if args.input:
+        file_in = args.input
+    EventalignCollapser(file_in, args.ref, args.output, kit)()
 
 def init_subcommand(args):
     """

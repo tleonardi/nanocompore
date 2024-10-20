@@ -120,7 +120,8 @@ class EventalignCollapser:
             kmer_data['kmer'] = kmer
 
         # finish the last transcript
-        self._finish_transcript(prev_ref_id)
+        if prev_ref_id:
+            self._finish_transcript(prev_ref_id)
 
 
     def _finish_transcript(self, ref_id):
