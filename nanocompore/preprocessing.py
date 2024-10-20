@@ -135,24 +135,23 @@ class Preprocessor:
         return references
 
 
-    def _get_db(self):
-        db_out_path = self._config.get_kmer_data_db()
-        conn = sqlite3.connect(db_out_path, isolation_level=None)
+    def _get_db(self, db=None):
+        if not db:
+            db = self._config.get_kmer_data_db()
+        conn = sqlite3.connect(db, isolation_level=None)
         conn.execute('PRAGMA synchronous = OFF')
         conn.execute('PRAGMA journal_mode = OFF')
         # Use largest possible page size of 65kb
         conn.execute('PRAGMA page_size = 65536')
         # Use cache of 15000xpage_size. That's about
         # 952mb of cache.
-        conn.execute('PRAGMA cache_size = 15000')
+        conn.execute('PRAGMA cache_size = 2000')
         # conn.execute('PRAGMA cache_size = -400000')
         return conn
 
 
-    def _write_to_db(self, ref_id, kmers_data, read_invalid_ratios):
-        rows = self._process_rows_for_writing(ref_id, kmers_data, read_invalid_ratios)
-        with closing(self._get_db()) as conn,\
-             closing(conn.cursor()) as cursor:
+    def _write_kmer_rows(self, connection, rows):
+        with closing(connection.cursor()) as cursor:
             cursor.execute("begin")
             cursor.executemany(INSERT_KMER_DATA_QUERY, rows)
             cursor.execute("commit")
@@ -289,7 +288,9 @@ class RemoraPreprocessor(Preprocessor):
                        for ref_id in self._references]
             for future in as_completed(futures):
                 ref_id, kmers, read_invalid_ratios = future.result()
-                self._write_to_db(ref_id, kmers, read_invalid_ratios)
+                rows = self._process_rows_for_writing(ref_id, kmers, read_invalid_ratios)
+                with closing(self._get_db()) as conn:
+                    self._write_kmer_rows(conn, rows)
         self._create_db_indices()
 
 
@@ -329,7 +330,9 @@ class Uncalled4Preprocessor(Preprocessor):
                        for ref_id in self._references]
             for future in as_completed(futures):
                 ref_id, kmers, read_invalid_ratios = future.result()
-                self._write_to_db(ref_id, kmers, read_invalid_ratios)
+                rows = self._process_rows_for_writing(ref_id, kmers, read_invalid_ratios)
+                with closing(self._get_db()) as conn:
+                    self._write_kmer_rows(conn, rows)
         self._create_db_indices()
 
 
@@ -431,13 +434,17 @@ class EventalignPreprocessor(Preprocessor):
         lock = manager.Lock()
         task_queue = manager.Queue()
         current_transcript_id = manager.Value('i', 1)
+        processed_transcripts = manager.Value('i', 0)
 
         workers = [mp.Process(target=self._read_and_merge_samples,
-                              args=(task_queue,
+                              args=(i,
+                                    task_queue,
                                     lock,
                                     sample_read_offsets,
-                                    current_transcript_id))
-                   for _ in range(self._worker_processes)]
+                                    current_transcript_id,
+                                    processed_transcripts,
+                                    len(references)))
+                   for i in range(self._worker_processes)]
 
         for worker in workers:
             worker.start()
@@ -452,14 +459,48 @@ class EventalignPreprocessor(Preprocessor):
         for worker in workers:
             worker.join()
 
+        logger.info("Merging tmp databases.")
+
+        # Merge tmp databases
+        with closing(self._get_db()) as conn,\
+             closing(conn.cursor()) as cursor:
+            for i in range(self._worker_processes):
+                tmp_db = self._config.get_kmer_data_db() + f".{i}"
+                cursor.execute(f"ATTACH '{tmp_db}' as tmp")
+                cursor.execute("BEGIN")
+                cursor.execute("INSERT INTO transcripts SELECT * FROM tmp.transcripts")
+                cursor.execute("INSERT INTO kmer_data SELECT * FROM tmp.kmer_data")
+                conn.commit()
+                cursor.execute("DETACH DATABASE tmp")
+                # Delete the tmp db
+                Path(tmp_db).unlink()
+
         logger.info("Creating database indices.")
         self._create_db_indices()
 
 
-    def _read_and_merge_samples(self, task_queue, lock, sample_read_offsets, current_transcript_id):
+    def _read_and_merge_samples(self,
+                                idx,
+                                task_queue,
+                                lock,
+                                sample_read_offsets,
+                                current_transcript_id,
+                                processed_transcripts,
+                                num_transcripts):
         sample_dbs = {sample: sample_def['eventalign_db']
                       for condition_def in self._config.get_data().values()
                       for sample, sample_def in condition_def.items()}
+
+        tmp_db_out = self._config.get_kmer_data_db() + f".{idx}"
+        with closing(self._get_db(tmp_db_out)) as conn,\
+             closing(conn.cursor()) as cursor:
+            cursor.execute(DROP_KMER_DATA_TABLE_QUERY)
+            cursor.execute(CREATE_KMER_DATA_TABLE_QUERY)
+            cursor.execute(DROP_READS_TABLE_QUERY)
+            cursor.execute(CREATE_READS_TABLE_QUERY)
+            cursor.execute(DROP_TRANSCRIPTS_TABLE_QUERY)
+            cursor.execute(CREATE_TRANSCRIPTS_TABLE_QUERY)
+            conn.commit()
 
         while True:
             ref_id = task_queue.get()
@@ -482,17 +523,21 @@ class EventalignPreprocessor(Preprocessor):
             if not kmers:
                 continue
 
-            lock.acquire()
+            rows = self._process_rows_for_writing(ref_id, kmers, None)
 
-            db_out_path = self._config.get_kmer_data_db()
-            with closing(sqlite3.connect(db_out_path)) as conn,\
+            lock.acquire()
+            transcript_id = current_transcript_id.value
+            current_transcript_id.value += 1
+            lock.release()
+
+            with closing(self._get_db(tmp_db_out)) as conn,\
                  closing(conn.cursor()) as cursor:
                 cursor.execute(INSERT_TRANSCRIPTS_QUERY,
-                               (ref_id, self._current_transcript_id))
-            self._write_to_db(ref_id, kmers, None)
-            logger.info(f"Data for reference {ref_id} has been saved to the database.")
-            current_transcript_id.value += 1
-
+                               (ref_id, transcript_id))
+                self._write_kmer_rows(conn, rows)
+            lock.acquire()
+            processed_transcripts.value += 1
+            logger.info(f"Data for reference {processed_transcripts.value}/{num_transcripts} {ref_id} has been saved to the tmp database.")
             lock.release()
 
 
