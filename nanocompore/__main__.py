@@ -56,6 +56,7 @@ def main(args=None):
     parser_sc.add_argument('--input', '-i', help="Path to input eventalign file. If not provided, the input is read from stdin (useful for piping nanopolish/f5c eventalign directly).")
     parser_sc.add_argument('--output', '-o', help="Path to output SQLite database.")
     parser_sc.add_argument('--kit', '-k', help="The sequencing kit used. E.g. RNA002, RNA004.")
+    parser_sc.add_argument('--nthreads', '-n', help="Number of parallel processes to use for processing.", nargs='?', type=int, const=2, default=2)
     parser_sc.set_defaults(func=eventalign_collapse_subcommand)
 
     # Init subparser
@@ -133,10 +134,7 @@ def eventalign_collapse_subcommand(args):
     analysis.
     """
     kit = Kit[args.kit]
-    file_in = sys.stdin
-    if args.input:
-        file_in = args.input
-    EventalignCollapser(file_in, args.ref, args.output, kit)()
+    EventalignCollapser(args.input, args.ref, args.output, kit, args.nthreads)()
 
 def init_subcommand(args):
     """

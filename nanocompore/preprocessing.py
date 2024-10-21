@@ -143,8 +143,7 @@ class Preprocessor:
         conn.execute('PRAGMA journal_mode = OFF')
         # Use largest possible page size of 65kb
         conn.execute('PRAGMA page_size = 65536')
-        # Use cache of 15000xpage_size. That's about
-        # 952mb of cache.
+        # Use cache of 2048 x page_size. That's 128MB of cache.
         conn.execute('PRAGMA cache_size = 2000')
         # conn.execute('PRAGMA cache_size = -400000')
         return conn
