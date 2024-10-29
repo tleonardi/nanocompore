@@ -1,3 +1,5 @@
+from sklearn.model_selection import train_test_split
+
 from nanocompore.common import NanocomporeError
 
 class KmerData:
@@ -72,4 +74,22 @@ class KmerData:
 
     def get_condition_kmer_dwell_data(self, condition_label):
         return self.dwell[[condition_label == cond for cond in self.condition_labels]]
+
+
+    def subsample_reads(self, nreads, random_state=None):
+        # Use sklearn to take a stratified sumsample, such
+        # that we get an equal number of reads per condition.
+        selected, _ = train_test_split(list(range(len(self.intensity))),
+                                       train_size=nreads,
+                                       stratify=self.condition_labels,
+                                       random_state=random_state)
+        return KmerData(self.pos,
+                        self.kmer,
+                        self.sample_labels[selected],
+                        self.reads[selected] if self.reads is not None else None,
+                        self.intensity[selected],
+                        self.sd[selected],
+                        self.dwell[selected],
+                        self._valid,
+                        self._experiment)
 
