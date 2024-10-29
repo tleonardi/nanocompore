@@ -1,8 +1,7 @@
-from nanocompore.common import VAR_ORDER
 from nanocompore.common import NanocomporeError
 
-class KmerData():
-    def __init__(self, pos, kmer, sample_labels, reads, intensity, intensity_std, dwell, experiment):
+class KmerData:
+    def __init__(self, pos, kmer, sample_labels, reads, intensity, intensity_std, dwell, valid, experiment):
         self._kmer = kmer
         self._pos = pos
         self._sample_labels = sample_labels
@@ -10,6 +9,7 @@ class KmerData():
         self._intensity = intensity
         self._intensity_std = intensity_std
         self._dwell = dwell
+        self._valid = valid
         self._experiment = experiment
 
 
@@ -46,6 +46,11 @@ class KmerData():
     @property
     def reads(self):
         return self._reads
+
+
+    @property
+    def valid(self):
+        return self._valid
 
 
     @property

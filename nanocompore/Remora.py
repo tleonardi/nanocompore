@@ -1,22 +1,16 @@
-#!/usr/bin/env python3
-from __future__ import print_function
+from collections import Counter
 
 import pod5
 import pysam
 import numpy as np
-import math
 import pandas as pd
-import itertools
 
 from loguru import logger
 from pkg_resources import resource_filename
-from collections import Counter
-
 from remora import io, refine_signal_map
 
 from nanocompore.kmer import KmerData
 from nanocompore.common import Kit
-from nanocompore.common import VAR_ORDER
 from nanocompore.common import NanocomporeError
 from nanocompore.common import REMORA_MEASUREMENT_TYPE
 from nanocompore.common import is_valid_position
@@ -25,6 +19,7 @@ from nanocompore.common import get_pos_kmer
 
 RNA002_LEVELS_FILE = "models/rna002_5mer_levels_v1.txt"
 RNA004_LEVELS_FILE = "models/rna004_9mer_levels_v1.txt"
+VAR_ORDER = ['dwell', 'trimmean', 'trimsd']
 
 
 class Remora:
@@ -219,6 +214,7 @@ class Remora:
                            pos_data[:, VAR_ORDER.index('trimmean')],
                            pos_data[:, VAR_ORDER.index('trimsd')],
                            pos_data[:, VAR_ORDER.index('dwell')],
+                           None, # We don't have validity data here
                            self._experiment)
 
 

@@ -20,7 +20,6 @@ from nanocompore.common import INSERT_TRANSCRIPTS_QUERY
 from nanocompore.common import READ_ID_TYPE
 from nanocompore.common import EVENTALIGN_MEASUREMENT_TYPE
 from nanocompore.common import Indexer
-from nanocompore.common import get_reads_invalid_kmer_ratio
 
 
 class EventalignCollapser:
@@ -80,10 +79,12 @@ class EventalignCollapser:
             # we want to report the 11th base, which
             # in 0-based indexing will have index 10.
             pos = int(cols[1]) + self._kit.center - 1
+            # reference kmer
             kmer = cols[2]
             read = cols[3]
             event_measurements = [float(v) for v in cols[13].split(',')]
             event_dwell = float(cols[8])
+            model_kmer = cols[9]
 
             # Exceptional case for the first line
             if not prev_ref_id:
@@ -110,6 +111,12 @@ class EventalignCollapser:
                 kmer_data['dwell'] = event_dwell
             else:
                 kmer_data['dwell'] += event_dwell
+            # If this is the first event we store the current
+            # validity status. Else, we update only if it's
+            # so far valid. We want to ensure that if one
+            # event is invalid, the whole kmer is invalid.
+            if 'valid' not in kmer_data or kmer_data['valid']:
+                kmer_data['valid'] = kmer == model_kmer
             kmer_data['kmer'] = kmer
 
 
@@ -123,6 +130,7 @@ class EventalignCollapser:
         sd.fill(np.nan)
         dwell = np.empty((nreads, ref_len), dtype=EVENTALIGN_MEASUREMENT_TYPE)
         dwell.fill(np.nan)
+        valid = np.full((nreads, ref_len), False)
         read_ids = []
         kmers = np.repeat('NNNNN', ref_len)
 
@@ -140,6 +148,7 @@ class EventalignCollapser:
                 intensity[row, pos-1] = median
                 sd[row, pos-1] = mad
                 dwell[row, pos-1] = pos_data['dwell']
+                valid[row, pos-1] = pos_data['valid']
                 kmers[pos-1] = pos_data['kmer']
 
         kmer_data_list = self._get_kmer_data_list(ref_id,
@@ -148,7 +157,8 @@ class EventalignCollapser:
                                                   np.array(read_ids),
                                                   intensity,
                                                   sd,
-                                                  dwell)
+                                                  dwell,
+                                                  valid)
         self._write_to_db(ref_id, kmer_data_list)
 
 
@@ -159,7 +169,8 @@ class EventalignCollapser:
                             read_ids,
                             intensity,
                             sd,
-                            dwell):
+                            dwell,
+                            valid):
         kmer_data_list = []
         for pos in range(ref_len):
             valid_reads = ~np.isnan(intensity[:, pos])
@@ -172,6 +183,7 @@ class EventalignCollapser:
                                      intensity[valid_reads, pos],
                                      sd[valid_reads, pos],
                                      dwell[valid_reads, pos],
+                                     valid[valid_reads, pos],
                                      None)
                 kmer_data_list.append(kmer_data)
 
@@ -188,7 +200,7 @@ class EventalignCollapser:
     def _process_rows_for_writing(self, ref_id, kmers_data):
         ref_len = len(self._fasta_ref[ref_id])
 
-        read_invalid_kmer_ratios = get_reads_invalid_kmer_ratio(kmers_data, ref_len)
+        read_invalid_kmer_ratios = self._get_reads_invalid_kmer_ratio(kmers_data)
 
         self._db_cursor.execute(INSERT_TRANSCRIPTS_QUERY,
                                 (ref_id, self._current_transcript_id))
@@ -216,4 +228,17 @@ class EventalignCollapser:
 
         self._current_transcript_id += 1
         self._current_read_id = read_indexer.current_id
+
+
+    def _get_reads_invalid_kmer_ratio(self, kmers_data):
+        read_totals = defaultdict(lambda: 0)
+        read_invalid = defaultdict(lambda: 0)
+        for kmer in kmers_data:
+            for read, valid in zip(kmer.reads, kmer.valid):
+                read_totals[read] += 1
+                if not valid:
+                    read_invalid[read] += 1
+
+        return {read: read_invalid[read]/total
+                for read, total in read_totals.items()}
 
