@@ -10,7 +10,7 @@ CONFIG_SCHEMA = Schema({
             str: { # condition
                 str: { # sample (replicate)
                     'bam': lambda f: open(f, 'r'),
-                    'pod5': lambda f: open(f, 'r'),
+                    'pod5': str,
                     Optional('eventalign_tsv'): lambda f: open(f, 'r'),
                     Optional('eventalign_db'): lambda f: open(f, 'r')
                 }

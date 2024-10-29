@@ -350,8 +350,7 @@ CREATE TABLE kmer_data (
     reads BLOB NOT NULL,
     intensity BLOB,
     intensity_std BLOB,
-    dwell BLOB,
-    PRIMARY KEY(transcript_id, pos)
+    dwell BLOB
 );
 """
 CREATE_INTERMEDIARY_KMER_DATA_TABLE_QUERY = """
@@ -362,8 +361,7 @@ CREATE TABLE kmer_data (
     reads BLOB NOT NULL,
     intensity BLOB,
     intensity_std BLOB,
-    dwell BLOB,
-    PRIMARY KEY(transcript_id, pos)
+    dwell BLOB
 );
 """
 INSERT_KMER_DATA_QUERY = """
@@ -379,8 +377,7 @@ CREATE_READS_TABLE_QUERY = """
 CREATE TABLE reads (
     read TEXT NOT NULL,
     id INTEGER NOT NULL,
-    invalid_kmers REAL,
-    PRIMARY KEY(read)
+    invalid_kmers REAL
 );
 """
 INSERT_READS_QUERY = """
@@ -391,6 +388,12 @@ DROP INDEX IF EXISTS reads_id_index;
 """
 CREATE_READS_ID_INDEX_QUERY = """
 CREATE INDEX IF NOT EXISTS reads_id_index ON reads (id);
+"""
+DROP_KMERS_INDEX_QUERY = """
+DROP INDEX IF EXISTS kmer_index;
+"""
+CREATE_KMERS_INDEX_QUERY = """
+CREATE INDEX IF NOT EXISTS kmer_index ON kmer_data (transcript_id, pos);
 """
 
 DROP_TRANSCRIPTS_TABLE_QUERY = """
