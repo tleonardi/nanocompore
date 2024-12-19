@@ -105,6 +105,7 @@ class Preprocessor:
         with closing(self._db_conn.cursor()) as cursor:
             cursor.execute(CREATE_READS_ID_INDEX_QUERY)
             cursor.execute(CREATE_KMERS_INDEX_QUERY)
+            cursor.execute(CREATE_TRANSCRIPTS_ID_INDEX_QUERY)
 
 
     def _write_metadata(self):
@@ -130,7 +131,9 @@ class Preprocessor:
         for condition_def in self._config.get_data().values():
             for sample, sample_def in condition_def.items():
                 bam = pysam.AlignmentFile(sample_def['bam'], "rb")
-                references.update(bam.references)
+                for read in bam.fetch(until_eof=True):
+                    if read.reference_name:
+                        references.add(read.reference_name)
         logger.info(f"Found {len(references)} references.")
         return references
 
@@ -507,8 +510,13 @@ class EventalignPreprocessor(Preprocessor):
             for sample, db in sample_dbs.items():
                 with closing(sqlite3.connect(db)) as conn,\
                      closing(conn.cursor()) as cursor:
-                    transcript_id = cursor.execute("SELECT id FROM transcripts WHERE reference = ?",
-                                                   (ref_id,)).fetchone()[0]
+                    transcript = cursor.execute("SELECT id FROM transcripts WHERE reference = ?",
+                                                (ref_id,)).fetchone()
+                    if transcript:
+                        transcript_id = transcript[0]
+                    else:
+                        logger.warning(f"Reference {ref_id} not found in the transcripts table for sample {sample}.")
+                        continue
                     rows = cursor.execute("SELECT * FROM kmer_data WHERE transcript_id = ?",
                                           (transcript_id,)).fetchall()
                     for row in rows:
@@ -519,12 +527,12 @@ class EventalignPreprocessor(Preprocessor):
             if not kmers:
                 continue
 
-            rows = self._process_rows_for_writing(ref_id, kmers, None)
-
             lock.acquire()
             transcript_id = current_transcript_id.value
             current_transcript_id.value += 1
             lock.release()
+
+            rows = self._process_rows_for_writing(transcript_id, kmers, None)
 
             with closing(self._get_db(tmp_db_out)) as conn,\
                  closing(conn.cursor()) as cursor:
@@ -615,14 +623,14 @@ class EventalignPreprocessor(Preprocessor):
     # we need a different processing that will not try to map them again.
     # Also, in this case the read mappings are already transfered from
     # the eventalign collapsed db and we don't need to write them here.
-    def _process_rows_for_writing(self, ref_id, kmers_data, read_invalid_ratios=None):
+    def _process_rows_for_writing(self, transcript_id, kmers_data, read_invalid_ratios=None):
         processed_kmers = []
         for kmer_data in kmers_data:
             sample_ids = [self._sample_ids[label]
                           for label in kmer_data.sample_labels]
             sample_ids = np.array(sample_ids, dtype=SAMPLE_ID_TYPE)
 
-            proc_kmer = (self._current_transcript_id,
+            proc_kmer = (transcript_id,
                          kmer_data.pos,
                          kmer_data.kmer,
                          sample_ids.tobytes(),

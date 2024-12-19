@@ -115,7 +115,7 @@ def sampcomp_subcommand(args):
 
     # Check if output folder already exists
     try:
-        mkdir(fn=config.get_outpath(), exist_ok=config.get_overwrite())
+        mkdir(fn=config.get_outpath(), exist_ok=config.get_result_exists_strategy() != 'stop')
     except (NanocomporeError, FileExistsError) as E:
         raise NanocomporeError("Could not create the output folder. Try using `overwrite: true` in the input configuration or use another directory")
 

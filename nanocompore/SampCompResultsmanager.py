@@ -17,11 +17,11 @@ class resultsManager():
     def __init__ (self, config):
         self._outpath = config.get_outpath()
         self._prefix = config.get_outprefix()
-        self._overwrite = config.get_overwrite()
+        self._result_exists_strategy = config.get_result_exists_strategy()
         self._bed_fn = config.get_bed()
         self._correction_method = config.get_correction_method()
 
-        self._db = SampCompDb.SampComp_DB(outpath=self._outpath, prefix=self._prefix, overwrite=self._overwrite)
+        self._db = SampCompDb.SampComp_DB(outpath=self._outpath, prefix=self._prefix, result_exists_strategy=self._result_exists_strategy)
 
     def saveData(self, transcript, test_results, config, table=''):
         self._db.store_test_results(tx_name=transcript, test_results=test_results, table=table)
@@ -52,6 +52,12 @@ class resultsManager():
         elif (bed or bedgraph) and not self._bed_fn:
             raise NanocomporeError('Writing a bed file requires an input bed to map transcriptome coordinates to genome coordinates')
         self.closeDB()
+
+
+    def filter_already_processed_transcripts(self, transcripts):
+        existing_transcripts = set(self._db.get_transcripts())
+        return [tx for tx in transcripts if tx.ref_id not in existing_transcripts]
+
 
     def _writeResultsTSV(self, data, stats_tests):
         #writes the results of all the statistical tests to a tsv file
@@ -180,6 +186,7 @@ class resultsManager():
 
                 # Correct the p-values using the Benjamini-Hochberg method.
                 # We'll ignore NaNs when performing the correction.
+                logger.debug(f"Starting to correct pvalues for {column} with {method}")
                 corrected_pvals = self.__multipletests_filter_nan(pvals, method)
 
                 # Replace the original p-values with the corrected p-values in the dataframe
@@ -203,7 +210,13 @@ class resultsManager():
 
         pvalues_no_nan = [p for p in pvalues if not np.isnan(p)]
         corrected_p_values = multipletests(pvalues_no_nan, method=method)[1]
+        current_corrected = 0
+        results = np.empty(len(pvalues))
         for i, p in enumerate(pvalues):
             if np.isnan(p):
-                corrected_p_values = np.insert(corrected_p_values, i, np.nan, axis=0)
-        return corrected_p_values
+                results[i] = np.nan
+            else:
+                results[i] = corrected_p_values[current_corrected]
+                current_corrected += 1
+        return results
+

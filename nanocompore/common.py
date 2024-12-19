@@ -406,6 +406,12 @@ CREATE TABLE transcripts (
     PRIMARY KEY(reference)
 );
 """
+DROP_TRANSCRIPTS_ID_INDEX_QUERY = """
+DROP INDEX IF EXISTS transcripts_id_index;
+"""
+CREATE_TRANSCRIPTS_ID_INDEX_QUERY = """
+CREATE INDEX IF NOT EXISTS transcripts_id_index ON transcripts (id);
+"""
 INSERT_TRANSCRIPTS_QUERY = """
 INSERT INTO transcripts VALUES(?, ?);
 """

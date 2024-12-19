@@ -10,7 +10,7 @@ from nanocompore.common import *
 
 class SampComp_DB():
 
-    def __init__ (self, outpath='', prefix='', overwrite=False):
+    def __init__ (self, outpath='', prefix='', result_exists_strategy="stop"):
         if outpath:
             self._outpath = outpath
         else:
@@ -19,7 +19,7 @@ class SampComp_DB():
         self._prefix = prefix
         self._db_path = os.path.join(self._outpath, f"{self._prefix}sampComp_sql.db")
 
-        self._enterDB(overwrite)
+        self._enterDB(result_exists_strategy)
 
         self._create_tables()
 
@@ -161,15 +161,22 @@ class SampComp_DB():
         self._exitDB()
 
 
+    def get_transcripts(self):
+        return [row[0]
+                for row in self._cursor.execute("SELECT name FROM transcripts").fetchall()]
+
+
     ################## Private methods ##################
-    def _enterDB(self, overwrite):
-        if overwrite:
+    def _enterDB(self, result_exists_strategy):
+        if result_exists_strategy == 'overwrite':
             if os.path.isfile(self._db_path):
                 os.remove(self._db_path)
                 #sys.stderr.write(f"Removed existing database file '{self._db_path}'\n")
                 logger.debug(f"Removed existing database file '{self._db_path}'")
             self._connect_to_db()
-
+        elif result_exists_strategy == 'continue':
+            logger.info(f"Database file '{self._db_path}' already exists and result_exists_strategy is set to 'continue'. Will try to reuse it.")
+            self._connect_to_db()
         else:
             if os.path.isfile(self._db_path):
                 raise NanocomporeError(f"database file '{self._db_path}' exists and overwrite is False")
@@ -272,14 +279,20 @@ class SampComp_DB():
 
         for table in table_defs:
             table_headers = ', '.join(table_defs[table])
-            construction_querry = f"CREATE TABLE {table} ({table_headers})"
-            try:
-                self._cursor.execute(construction_querry)
-                self._connection.commit()
-                logger.debug(f"created {table}")
-            except:
-                logger.error(f"Error creating {table} table")
-                raise
+            construction_querry = f"CREATE TABLE IF NOT EXISTS {table} ({table_headers})"
+            error = None
+            for retry in range(3):
+                try:
+                    self._cursor.execute(construction_querry)
+                    self._connection.commit()
+                    logger.debug(f"created {table}")
+                    break
+                except Exception as e:
+                    logger.error(f"Error creating {table} table. Retrying.")
+                    error = e
+            else:
+                logger.error(f"Error creating {table} table after 3 retries.")
+                raise error
 
         self._default_storage_table = 'kmer_stats'
 
@@ -316,17 +329,22 @@ class SampComp_DB():
 
     def _insert_query_and_get_id(self, query='', table='', column=''):
         if all(map(lambda x: bool(x), [query, table, column])):
-            try:
-                self._cursor.execute(f"SELECT id FROM {table} WHERE {column} = ?", [query])
-                row = self._cursor.fetchone()
-                if row is not None:
-                    return row[0]
-                else:
-                    self._cursor.execute(f"INSERT INTO {table} ({column}) VALUES (?)", [query])
-                    self._connection.commit()
-                    return self._cursor.lastrowid
-            except:
-                raise NanocomporeError(f"Failed to insert/look up {table}, {column}, {query}")
+            error = None
+            for retry in range(3):
+                try:
+                    self._cursor.execute(f"SELECT id FROM {table} WHERE {column} = ?", [query])
+                    row = self._cursor.fetchone()
+                    if row is not None:
+                        return row[0]
+                    else:
+                        self._cursor.execute(f"INSERT INTO {table} ({column}) VALUES (?)", [query])
+                        self._connection.commit()
+                        return self._cursor.lastrowid
+                except Exception as e:
+                    logger.error(f"Failed to insert/look up {table}, {column}, {query}. Retrying.")
+                    error = e
+            else:
+                raise NanocomporeError(f"Failed to insert/look up {table}, {column}, {query} after 3 retries.")
         else:
             raise NanocomporeError(f"At least one input was empty query={query}, table={table}, column={column}")
 
@@ -342,12 +360,12 @@ class SampComp_DB():
 
     def _index_database(self):
         index_queries = []
-        index_queries.append("CREATE INDEX kmer_stats_tx_id_index ON kmer_stats (transcript_id)")
-        index_queries.append("CREATE INDEX kmer_stats_kmer_id_index ON kmer_stats (kmer_seq_id)")
-        index_queries.append("CREATE UNIQUE INDEX transcripts_index ON transcripts (id, name)")
-        index_queries.append("CREATE UNIQUE INDEX kmer_seqs_index ON kmer_seqs (id, sequence)")
-        index_queries.append("CREATE INDEX read_level_data_read_id_index ON read_level_data (read_id)")
-        index_queries.append("CREATE INDEX reads_transcript_id_index ON reads (transcript_id)")
+        index_queries.append("CREATE INDEX IF NOT EXISTS kmer_stats_tx_id_index ON kmer_stats (transcript_id)")
+        index_queries.append("CREATE INDEX IF NOT EXISTS kmer_stats_kmer_id_index ON kmer_stats (kmer_seq_id)")
+        index_queries.append("CREATE UNIQUE INDEX IF NOT EXISTS transcripts_index ON transcripts (id, name)")
+        index_queries.append("CREATE UNIQUE INDEX IF NOT EXISTS kmer_seqs_index ON kmer_seqs (id, sequence)")
+        index_queries.append("CREATE INDEX IF NOT EXISTS read_level_data_read_id_index ON read_level_data (read_id)")
+        index_queries.append("CREATE INDEX IF NOT EXISTS reads_transcript_id_index ON reads (transcript_id)")
 
         for index_query in index_queries:
             try:

@@ -46,7 +46,7 @@ CONFIG_SCHEMA = Schema({
     Optional('allow_warnings'): bool,
     Optional('outpath'): str,
     Optional('outprefix'): str,
-    Optional('overwrite'): bool,
+    Optional('result_exists_strategy'): Or("stop", "continue", "overwrite"),
     Optional('log_level'): Or('warning', 'info', 'debug'),
     Optional('progress'): bool,
     Optional('correction_method'): 'fdr_bh',
@@ -71,7 +71,7 @@ DEFAULT_ANOVA = False
 DEFAULT_ALLOW_WARNINGS = False
 DEFAULT_OUTPATH = 'nanocompore_output'
 DEFAULT_OUTPREFIX = 'out_'
-DEFAULT_OVERWRITE = False
+DEFAULT_RESULT_EXISTS_STRATEGY = 'stop'
 DEFAULT_LOG_LEVEL = 'info'
 DEFAULT_PROGRESS = False
 DEFAULT_CORRECTION_METHOD = 'fdr_bh'
@@ -238,11 +238,13 @@ class Config:
         return prefix + '_'
 
 
-    def get_overwrite(self):
+    def get_result_exists_strategy(self):
         """
-        Use <outpath> even if it exists already.
+        What to do if <outpath> already exists.
+        Options are: stop, continue, and overwrite.
+        Default: stop
         """
-        return self._config.get('overwrite', DEFAULT_OVERWRITE)
+        return self._config.get('result_exists_strategy', DEFAULT_RESULT_EXISTS_STRATEGY)
 
 
     def get_log_level(self):

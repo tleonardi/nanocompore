@@ -162,8 +162,6 @@ class EventalignCollapser:
         current_line_pos = None
         while True:
             line = sys.stdin.readline()
-            tmp_file.write(line)
-
             if not line:
                 break
 
@@ -180,6 +178,8 @@ class EventalignCollapser:
                 tmp_file = open(tmp_file_name, 'w')
 
                 prev_ref_id = ref_id
+
+            tmp_file.write(line)
 
         if prev_ref_id:
             task_queue.put((prev_ref_id, tmp_file_name))
@@ -287,41 +287,45 @@ class EventalignCollapser:
                     fstart = 0
                     fend = np.inf
 
-                logger.info(f"Starting to read and process data for ref {ref_id}.")
-                data = self._read_data(file, fstart, fend)
+                try:
+                    logger.info(f"Starting to read and process data for ref {ref_id}.")
+                    data = self._read_data(file, fstart, fend)
 
-                kmers = self._process_ref(ref_id, data, fasta)
-                read_invalid_kmer_ratios = self._get_reads_invalid_kmer_ratio(kmers)
+                    kmers = self._process_ref(ref_id, data, fasta)
+                    read_invalid_kmer_ratios = self._get_reads_invalid_kmer_ratio(kmers)
 
-                all_reads = {read
-                             for kmer in kmers
-                             for read in kmer.reads}
+                    all_reads = {read
+                                 for kmer in kmers
+                                 for read in kmer.reads}
 
-                lock.acquire()
-                transcript_id = current_transcript_id.value
-                current_transcript_id.value += 1
-                reads_offset = current_reads_offset.value
-                current_reads_offset.value += len(all_reads)
-                lock.release()
+                    lock.acquire()
+                    transcript_id = current_transcript_id.value
+                    current_transcript_id.value += 1
+                    reads_offset = current_reads_offset.value
+                    current_reads_offset.value += len(all_reads)
+                    lock.release()
 
-                read_ids = {read: i + reads_offset
-                            for i, read in enumerate(all_reads)}
+                    read_ids = {read: i + reads_offset
+                                for i, read in enumerate(all_reads)}
 
-                rows = self._process_rows_for_writing(transcript_id, kmers, read_ids)
+                    rows = self._process_rows_for_writing(transcript_id, kmers, read_ids)
 
-                reads_data = [(read, idx, read_invalid_kmer_ratios[read])
-                              for read, idx in read_ids.items()]
+                    reads_data = [(read, idx, read_invalid_kmer_ratios[read])
+                                  for read, idx in read_ids.items()]
 
-                cursor.execute('BEGIN')
-                cursor.execute(INSERT_TRANSCRIPTS_QUERY,
-                               (ref_id, transcript_id))
-                cursor.executemany(INSERT_READS_QUERY, reads_data)
-                cursor.executemany(INSERT_INTERMEDIARY_KMER_DATA_QUERY, rows)
-                cursor.execute('COMMIT')
-                logger.info(f"Wrote transcript {transcript_id} {ref_id} to tmp database.")
-                if not self._file:
-                    file.close()
-                    Path(filepath).unlink()
+                    cursor.execute('BEGIN')
+                    cursor.execute(INSERT_TRANSCRIPTS_QUERY,
+                                   (ref_id, transcript_id))
+                    cursor.executemany(INSERT_READS_QUERY, reads_data)
+                    cursor.executemany(INSERT_INTERMEDIARY_KMER_DATA_QUERY, rows)
+                    cursor.execute('COMMIT')
+                    logger.info(f"Wrote transcript {transcript_id} {ref_id} to tmp database.")
+                except Exception as e:
+                    logger.error(str(e) + f" for ref {ref_id}.")
+                finally:
+                    if not self._file:
+                        file.close()
+                        Path(filepath).unlink()
 
 
     def _process_ref(self, ref_id, data, fasta_ref):
@@ -353,11 +357,11 @@ class EventalignCollapser:
                 # arrays, which is the expected case here.
                 median = statistics.median(kmer_data.measurements)
                 mad = statistics.median(np.abs(np.array(kmer_data.measurements) - median))
-                intensity[row, pos-1] = median
-                sd[row, pos-1] = mad
-                dwell[row, pos-1] = kmer_data.dwell
-                valid[row, pos-1] = kmer_data.valid
-                kmers[pos-1] = kmer_data.kmer
+                intensity[row, pos] = median
+                sd[row, pos] = mad
+                dwell[row, pos] = kmer_data.dwell
+                valid[row, pos] = kmer_data.valid
+                kmers[pos] = kmer_data.kmer
 
         kmer_data_list = self._get_kmer_data_list(ref_id,
                                                   ref_len,

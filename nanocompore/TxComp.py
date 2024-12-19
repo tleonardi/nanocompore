@@ -45,7 +45,7 @@ class TxComp():
 
     def txCompare(self, kmer_data_list, transcript):
         logger.info(f"TxCompare starting for {transcript.name}")
-        total_results_dict = defaultdict(None)
+        total_results_dict = {}
         tests = set()
         valid_positions = []
         condition_label_1 = transcript.condition_labels[0]
