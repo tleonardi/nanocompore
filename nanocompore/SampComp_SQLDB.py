@@ -23,7 +23,7 @@ class SampComp_DB():
 
         self._create_tables()
 
-    ################## Public methods ##################
+
     def _checkIfLabelsExist(self, test_results, table=''):
         if not table:
             logger.debug(f"{table} doesn't exist in the database yet. Creating")
@@ -54,6 +54,7 @@ class SampComp_DB():
         except:
             raise NanocomporeError(f"Database error: Failed to insert at least one of {labels} new labels into {table} of {self._db_path}")
 
+
     def _create_test_labels(self, test_results):
         labels = set()
         for pos in test_results:
@@ -62,6 +63,7 @@ class SampComp_DB():
                 labels.add((test, test_type))
         logger.trace(f'tests and test labels created for the table')
         return labels
+
 
     def _makes_values(self, pos=0, tx_id=0, results_dict={}, kmer_table_headers=[]):
         if results_dict:
@@ -151,11 +153,13 @@ class SampComp_DB():
                 headers.append(header)
         return headers
 
+
     def getAllData(self):
         data_query = self._make_query()
         data = pd.read_sql(data_query, self._connection)
 
         return data
+
 
     def closeDB(self):
         self._exitDB()
@@ -347,6 +351,7 @@ class SampComp_DB():
                 raise NanocomporeError(f"Failed to insert/look up {table}, {column}, {query} after 3 retries.")
         else:
             raise NanocomporeError(f"At least one input was empty query={query}, table={table}, column={column}")
+
 
     def _make_query(self):
         table_cols = ['kmer_stats.pos', 'tx.name', 'kmer_seqs.sequence']

@@ -1,19 +1,21 @@
 import collections, os, traceback, datetime
 import sqlite3
 import multiprocessing as mp
+
 from contextlib import closing
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
-from loguru import logger
-#from tqdm import tqdm
 import numpy as np
+
+from loguru import logger
 from pyfaidx import Fasta
 
-from nanocompore.common import *
 import nanocompore.SampCompResultsmanager as SampCompResultsmanager
+
+from nanocompore.Experiment import Experiment
 from nanocompore.Transcript import Transcript
 from nanocompore.TxComp import TxComp
-from nanocompore.Experiment import Experiment
+from nanocompore.common import *
 from nanocompore.kmer import KmerData
 
 
@@ -23,6 +25,10 @@ os.environ["MKL_THREADING_LAYER"] = "sequential"
 os.environ["NUMEXPR_NUM_THREADS"] = "1"
 os.environ["OMP_NUM_THREADS"] = "1"
 os.environ['OPENBLAS_NUM_THREADS'] = '1'
+
+
+DONE_MSG = "done"
+
 
 class SampComp(object):
     """
@@ -64,7 +70,7 @@ class SampComp(object):
         manager = mp.Manager()
         task_queue = manager.Queue()
         result_queue = manager.Queue()
-        workers = [mp.Process(target=self._processTx,
+        workers = [mp.Process(target=self._process_transcripts,
                               args=(i, task_queue, result_queue))
                    for i in range(self._processing_threads)]
 
@@ -79,6 +85,7 @@ class SampComp(object):
             logger.info(f"Found a total of {all_transcripts_num}. {already_processed} have already been processed in previous runs. Will process only for the remaining {len(transcripts)}.")
         else:
             logger.info(f"Found a total of {len(transcripts)} transcripts for processing.")
+
         for ref_id in transcripts:
             task_queue.put(ref_id)
 
@@ -90,19 +97,15 @@ class SampComp(object):
             finished_workers = 0
             while True:
                 msg = result_queue.get()
-                if msg == "done":
+                if msg == DONE_MSG:
                     finished_workers += 1
                     if finished_workers == self._processing_threads:
                         break
                     continue
                 ref_id, results = msg
-                logger.info(f"Got {type(results)}")
-                logger.info(f"Got {len(results)} results for saving for {ref_id}")
                 if len(results) == 0:
                     continue
-                logger.info(f"Starts saving results for {ref_id} to the SampComp database.")
                 resultsManager.saveData(ref_id, results, self._config)
-                logger.info(f"Saved results for {ref_id} to the SampComp database.")
 
             for worker in workers:
                 worker.join()
@@ -112,7 +115,7 @@ class SampComp(object):
             resultsManager.closeDB()
 
 
-    def _processTx(self, i, task_queue, result_queue):
+    def _process_transcripts(self, worker_id, task_queue, result_queue):
         fasta_fh = Fasta(self._config.get_fasta_ref())
         txComp = TxComp(experiment=self._experiment,
                         config=self._config,
@@ -124,25 +127,26 @@ class SampComp(object):
             while True:
                 transcript_ref = task_queue.get()
                 if transcript_ref is None:
-                    logger.debug(f"Worker {i} has finished and will terminate.")
-                    result_queue.put("done")
-                    break
+                    logger.info(f"Worker {worker_id} has finished and will terminate.")
+                    result_queue.put(DONE_MSG)
+                    return
 
                 try:
-                    logger.debug(f"Worker {i} got new transcript for processing: {transcript_ref.ref_id}")
+                    logger.debug(f"Worker {worker_id} got new transcript for processing: {transcript_ref.ref_id}")
                     ref_seq = str(fasta_fh[transcript_ref.ref_id])
                     transcript = Transcript(ref_id=transcript_ref.ref_id,
                                             experiment=self._experiment,
                                             ref_seq=ref_seq,
                                             config=self._config)
-                    logger.debug(f"Worker thread starts reading data for transcript: {transcript_ref.ref_id}")
+                    logger.debug(f"Worker {worker_id} starts reading data for transcript: {transcript_ref.ref_id}")
                     kmer_data_list = self._read_transcript_kmer_data(transcript_ref, cursor)
-                    logger.debug(f"Worker thread starts comparing data for transcript: {transcript_ref.ref_id}")
+                    logger.debug(f"Worker {worker_id} starts comparing data for transcript: {transcript_ref.ref_id}")
                     results = txComp.txCompare(kmer_data_list, transcript)
-                    logger.debug(f"Worker thread finished comparing data for transcript: {transcript_ref.ref_id}. Results: {len(results)}")
+                    logger.debug(f"Worker {worker_id} finished comparing data for transcript: {transcript_ref.ref_id}. Results: {len(results)}")
+                    result_queue.put((transcript_ref.ref_id, results))
                 except Exception as e:
                     traceback.print_stack(e)
-                    logger.error(f"Error in Worker for {ref_id}: {e}")
+                    logger.error(f"Error in Worker {worker_id} for {ref_id}: {e}")
 
 
     def _read_transcript_kmer_data(self, transcript_ref, cursor):
@@ -171,7 +175,7 @@ class SampComp(object):
         return KmerData(kmer.pos,
                         kmer.kmer,
                         kmer.sample_labels[valid_mask],
-                        None, # read ids are not necessary for sampcomp
+                        kmer.reads[valid_mask],
                         kmer.intensity[valid_mask],
                         kmer.sd[valid_mask],
                         kmer.dwell[valid_mask],
@@ -219,7 +223,6 @@ class SampComp(object):
             SELECT t.reference, t.id
             FROM kmer_data kd
             INNER JOIN transcripts t ON kd.transcript_id = t.id
-            WHERE num_reads >= {self._config.get_min_coverage()}
             """
             return {TranscriptRow(row[0], row[1])
                     for row in cursor.execute(query).fetchall()}

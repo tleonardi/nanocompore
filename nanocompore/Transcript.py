@@ -15,8 +15,6 @@ class Transcript():
         self._length = len(self._ref_seq)
 
 
-    ########## Public ##########
-
     @property
     def name(self):
         return self._name

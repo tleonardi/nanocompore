@@ -90,8 +90,10 @@ class TxComp():
 
                 elif method == "GMM":
                     try:
+                        motor_kmer = self._get_motor_kmer(kmer_data, kmer_data_list)
                         gmm_results = gmm.gmm_test(kmer_data=kmer_data,
-                                                   transcript=transcript,
+                                                   motor_kmer=motor_kmer,
+                                                   experiment=self._experiment,
                                                    anova=self._config.get_anova(),
                                                    logit=self._config.get_logit(),
                                                    allow_warnings=self._config.get_allow_warnings(),
@@ -177,6 +179,13 @@ class TxComp():
                                 total_results_dict[mid_pos][test_label] = self._combine_pvalues_hou(pval_list_dict[test], weights, corr_matrix_dict[test])
 
         return total_results_dict
+
+
+    def _get_motor_kmer(self, kmer, kmers):
+        for other_kmer in kmers:
+            if other_kmer.pos == kmer.pos + MOTOR_DWELL_EFFECT_OFFSET:
+                return other_kmer
+        return None
 
 
     def _extract_gmm_results(self, gmm_results):

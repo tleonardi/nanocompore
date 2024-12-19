@@ -12,13 +12,11 @@ import pandas as pd
 from nanocompore.common import *
 
 
-def gmm_test(kmer_data, transcript, random_state, anova=True, logit=False, verbose=True, allow_warnings=False):
-    if len(transcript.condition_labels) != 2:
-        #sys.stderr.write("gmm_test only supports two conditions\n")
+def gmm_test(kmer_data, motor_kmer, experiment, random_state, anova=True, logit=False, verbose=True, allow_warnings=False):
+    if len(experiment.get_condition_labels()) != 2:
         raise NanocomporeError("gmm_test only supports two conditions")
 
-    data = [(i, d) for i, d in zip(kmer_data.intensity,
-                                   np.log10(kmer_data.dwell))]
+    data, sample_labels, condition_labels = get_kmer_data(kmer_data, motor_kmer, experiment)
 
     # Scale the intensity and dwell time arrays
     X = StandardScaler().fit_transform(data)
@@ -136,7 +134,7 @@ def gmm_anova_test(counters, condition_labels, gmm_ncomponents, allow_warnings=F
 
 def gmm_logit_test(y_pred, Y, condition_labels):
     y_pred = np.append(y_pred, [0, 0, 1, 1])
-    Y.extend([condition_labels[0], condition_labels[1], condition_labels[0], condition_labels[1]])
+    Y = np.append(Y, [condition_labels[0], condition_labels[1], condition_labels[0], condition_labels[1]])
     Y = pd.get_dummies(Y)
     Y['intercept'] = 1
     X = Y[['intercept', condition_labels[0]]].astype(int)

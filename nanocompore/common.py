@@ -28,6 +28,12 @@ Kit.RNA002.center = 4
 Kit.RNA004.len = 9
 Kit.RNA004.center = 6
 
+# When a modification passes through the motor protein
+# it can change the movement speed of the molecule,
+# affecting the dwell time measured for a downstream
+# position. For the RNA002/RNA004 kits this offset
+# was measured to be 11 nt.
+MOTOR_DWELL_EFFECT_OFFSET = 11
 
 def is_valid_position(pos, seq_len, kit):
     """
@@ -328,6 +334,7 @@ def is_valid_fasta(file):
         # raise NanocomporeError("The fasta file cannot be opened")
         return False
 
+
 DROP_METADATA_TABLE_QUERY = """
 DROP TABLE IF EXISTS metadata;
 """
@@ -476,4 +483,48 @@ class Indexer:
 
 
 TranscriptRow = namedtuple('TranscriptRow', 'ref_id id')
+
+
+def match_kmer_with_motor_dwell(kmer, motor_effect_kmer):
+    """
+    Combines the measurements for the kmer and a second
+    downsream kmer where the motor effect is manifested.
+    Returns an 2D array with one row with shape
+    (intensity, dwell, motor_dwell) per read.
+    """
+    data = {read: [i, d, None, s, c]
+            for read, i, d, s, c in zip(kmer.reads,
+                                        kmer.intensity,
+                                        kmer.dwell,
+                                        kmer.sample_labels,
+                                        kmer.condition_labels) }
+
+    for i, read in enumerate(motor_effect_kmer.reads):
+        if read not in data:
+            continue
+        data[read][2] = motor_effect_kmer.dwell[i]
+
+    samples = np.array([read[3] for read in data.values() if read[2]])
+    conditions = np.array([read[4] for read in data.values() if read[2]])
+    data = np.array([read[:3] for read in data.values() if read[2]])
+
+    data[:, [1, 2]] = np.log10(data[:, [1, 2]])
+
+    return data, samples, conditions
+
+
+def get_kmer_data(kmer, motor_effect_kmer, experiment):
+    if motor_effect_kmer:
+        logger.trace(f"Motor dwell included. Pos {kmer.pos}, motor pos: {motor_effect_kmer.pos}.")
+        data, sample_labels, condition_labels = match_kmer_with_motor_dwell(kmer, motor_effect_kmer)
+        condition_counts = Counter(condition_labels)
+        if all(condition_counts.get(cond, 0) >= experiment.get_config().get_min_coverage()
+               for cond in experiment.get_condition_labels()):
+            return data, sample_labels, condition_labels
+
+    data = np.array(list(zip(kmer.intensity,
+                             np.log10(kmer.dwell))))
+    sample_labels = np.array(kmer.sample_labels)
+    condition_labels = np.array(kmer.condition_labels)
+    return data, sample_labels, condition_labels
 

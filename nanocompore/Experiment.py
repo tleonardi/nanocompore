@@ -14,6 +14,7 @@ from nanocompore.common import *
 # TODO: maybe delete this class as it's a bit redundant now that we have Config
 class Experiment():
     def __init__(self, config):
+        self._config = config
         self._input_data_df = self._build_input_data_df_from_config(config)
 
         try:
@@ -39,7 +40,7 @@ class Experiment():
             return True
         else:
             return False
-            
+
     def _check_unique_sample_labels(self):
         sample_labels = self._input_data_df['Sample'].to_list()
         if len(sample_labels) == len(set(sample_labels)):
@@ -59,29 +60,40 @@ class Experiment():
         condition_labels = self._input_data_df['Condition'].to_list()
         sample_labels = self._input_data_df['Sample'].to_list()
         for condition, sample in zip(condition_labels, sample_labels):
-            self._sample_to_condition[sample] = condition           
+            self._sample_to_condition[sample] = condition
 
 ################### Public methods ###################
+
+    def get_config(self):
+        return self._config
+
+
 
     def sample_to_condition(self, sample_label):
         return self._sample_to_condition[sample_label]
 
+
     def condition_to_samples(self, condition_label):
         return self._condition_to_samples[condition_label]
+
 
     def get_condition_labels(self):
         return list(self._condition_to_samples.keys())
 
+
     def get_sample_labels(self):
         return list(self._sample_to_condition.keys())
+
 
     def get_sample_ids(self):
         labels = self.get_sample_labels()
         return dict(zip(labels, range(len(labels))))
 
+
     def get_sample_pod5_bam_data(self):
         for sample, pod5, bam in self._get_input_data(data_labels=['Sample', 'pod5', 'bam']):
             yield sample, pod5, bam
+
 
     def get_sample_condition_bam_data(self):
         for sample, condition, bam in self._get_input_data(data_labels=['Sample', 'Condition', 'bam']):
@@ -107,3 +119,4 @@ class Experiment():
                 elif label == 'bam':
                     data.append(bam)
             yield tuple(data)
+

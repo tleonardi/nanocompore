@@ -57,7 +57,7 @@ class resultsManager():
     def filter_already_processed_transcripts(self, transcripts):
         existing_transcripts = set(self._db.get_transcripts())
         return [tx for tx in transcripts if tx.ref_id not in existing_transcripts]
-
+        
 
     def _writeResultsTSV(self, data, stats_tests):
         #writes the results of all the statistical tests to a tsv file
