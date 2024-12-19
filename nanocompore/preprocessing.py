@@ -17,40 +17,42 @@ import numpy as np
 from loguru import logger
 from pyfaidx import Fasta
 
-from nanocompore.Transcript import Transcript
 from nanocompore.Experiment import Experiment
-from nanocompore.Whitelist import Whitelist
 from nanocompore.Remora import Remora
-from nanocompore.uncalled4 import Uncalled4
+from nanocompore.Transcript import Transcript
+from nanocompore.Whitelist import Whitelist
 from nanocompore.eventalign_collapse import EventalignCollapser
 from nanocompore.kmer import KmerData
-from nanocompore.common import Kit
-from nanocompore.common import DROP_METADATA_TABLE_QUERY
-from nanocompore.common import DROP_KMER_DATA_TABLE_QUERY
-from nanocompore.common import DROP_READS_TABLE_QUERY
-from nanocompore.common import DROP_READS_ID_INDEX_QUERY
-from nanocompore.common import DROP_KMERS_INDEX_QUERY
-from nanocompore.common import DROP_TRANSCRIPTS_TABLE_QUERY
-from nanocompore.common import CREATE_METADATA_TABLE_QUERY
-from nanocompore.common import CREATE_KMER_DATA_TABLE_QUERY
-from nanocompore.common import CREATE_READS_TABLE_QUERY
-from nanocompore.common import CREATE_READS_ID_INDEX_QUERY
+from nanocompore.uncalled4 import Uncalled4
 from nanocompore.common import CREATE_KMERS_INDEX_QUERY
+from nanocompore.common import CREATE_KMER_DATA_TABLE_QUERY
+from nanocompore.common import CREATE_METADATA_TABLE_QUERY
+from nanocompore.common import CREATE_READS_ID_INDEX_QUERY
+from nanocompore.common import CREATE_READS_TABLE_QUERY
+from nanocompore.common import CREATE_TRANSCRIPTS_ID_INDEX_QUERY
 from nanocompore.common import CREATE_TRANSCRIPTS_TABLE_QUERY
+from nanocompore.common import DB_METADATA_CONDITION_SAMPLES_KEY
+from nanocompore.common import DB_METADATA_MEASUREMENT_TYPE_KEY
+from nanocompore.common import DB_METADATA_READ_ID_TYPE_KEY
+from nanocompore.common import DB_METADATA_RESQUIGGLER_KEY
+from nanocompore.common import DB_METADATA_SAMPLE_ID_TYPE_KEY
+from nanocompore.common import DB_METADATA_SAMPLE_LABELS_KEY
+from nanocompore.common import DROP_KMERS_INDEX_QUERY
+from nanocompore.common import DROP_KMER_DATA_TABLE_QUERY
+from nanocompore.common import DROP_METADATA_TABLE_QUERY
+from nanocompore.common import DROP_READS_ID_INDEX_QUERY
+from nanocompore.common import DROP_READS_TABLE_QUERY
+from nanocompore.common import DROP_TRANSCRIPTS_ID_INDEX_QUERY
+from nanocompore.common import DROP_TRANSCRIPTS_TABLE_QUERY
+from nanocompore.common import EVENTALIGN_MEASUREMENT_TYPE
 from nanocompore.common import INSERT_KMER_DATA_QUERY
 from nanocompore.common import INSERT_READS_QUERY
 from nanocompore.common import INSERT_TRANSCRIPTS_QUERY
+from nanocompore.common import Indexer
+from nanocompore.common import Kit
 from nanocompore.common import READ_ID_TYPE
 from nanocompore.common import SAMPLE_ID_TYPE
-from nanocompore.common import Indexer
-from nanocompore.common import EVENTALIGN_MEASUREMENT_TYPE
 from nanocompore.common import get_measurement_type
-from nanocompore.common import DB_METADATA_RESQUIGGLER_KEY
-from nanocompore.common import DB_METADATA_READ_ID_TYPE_KEY
-from nanocompore.common import DB_METADATA_SAMPLE_ID_TYPE_KEY
-from nanocompore.common import DB_METADATA_MEASUREMENT_TYPE_KEY
-from nanocompore.common import DB_METADATA_SAMPLE_LABELS_KEY
-from nanocompore.common import DB_METADATA_CONDITION_SAMPLES_KEY
 
 
 class Preprocessor:
@@ -96,6 +98,7 @@ class Preprocessor:
             cursor.execute(CREATE_TRANSCRIPTS_TABLE_QUERY)
             cursor.execute(DROP_METADATA_TABLE_QUERY)
             cursor.execute(CREATE_METADATA_TABLE_QUERY)
+            cursor.execute(DROP_TRANSCRIPTS_ID_INDEX_QUERY)
             cursor.execute(DROP_READS_ID_INDEX_QUERY)
             cursor.execute(DROP_KMERS_INDEX_QUERY)
         self._write_metadata()

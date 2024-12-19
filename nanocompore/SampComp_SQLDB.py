@@ -111,40 +111,6 @@ class SampComp_DB():
             raise NanocomporeError("Not connected to the Database")
 
 
-    def store_read_level_data(self, tx_name, read_data):
-        """
-        Stores the measurements (intensity and dwell time) for
-        each position of every read to the database.
-        """
-        if self._is_connected():
-            # Make sure that the transcript exists in the database and get its id
-            tx_id = self._insert_query_and_get_id(query=tx_name, table='transcripts', column='name')
-            # Make sure that the kmers exist in the database and get their ids
-            kmer_to_id = self._get_or_create_kmer_ids('kmer_seqs', 'sequence', read_data['kmer'])
-
-            # Write the read ids to the reads table
-            reads = read_data[['sample', 'read']].copy()
-            reads['transcript_id'] = tx_id
-            reads.rename(columns={'read': 'id'}, inplace=True)
-            self._insert_missing('reads', reads.columns, list(reads.itertuples(index=False)))
-
-            # Write the intensity/dwell time data for all read/position pairs
-            # to the read_level_data table
-            read_data['kmer_seq_id'] = [kmer_to_id[x] for x in read_data['kmer']]
-            read_data.drop(columns=['kmer'], inplace=True)
-            read_data.rename(columns={'read': 'read_id'}, inplace=True)
-            read_data.to_sql('read_level_data',
-                             self._connection,
-                             if_exists='append',
-                             index=False,
-                             method='multi',
-                             chunksize=32000)
-
-            logger.debug(f"Read level data for {tx_name} added to the database")
-        else:
-            raise NanocomporeError("Not connected to the Database")
-
-
     def get_kmer_table_headers(self):
         table_headers = self._cursor.execute('''SELECT * FROM kmer_stats''')
         headers = []
@@ -257,30 +223,9 @@ class SampComp_DB():
                                 "FOREIGN KEY(transcript_id) REFERENCES transcripts(id)",
                                 "FOREIGN KEY(kmer_seq_id) REFERENCES kmer_seqs(id)"]
 
-        # "reads" table:
-        table_def_reads = ["sample VARCHAR NOT NULL",
-                           "id VARCHAR NOT NULL",
-                           "transcript_id INTEGER NOT NULL",
-                           "PRIMARY KEY (sample, id)"]
-        # TODO: maybe add metadata for the read (e.g. quality, cigar string, etc.)
-
-        table_read_level_data = [
-            'condition VARCHAR NOT NULL',
-            'sample VARCHAR NOT NULL',
-            'read_id INTEGER NOT NULL',
-            'pos INTEGER NOT NULL',
-            'kmer_seq_id INTEGER NOT NULL',
-            'intensity FLOAT NOT NULL',
-            'dwell FLOAT NOT NULL',
-            'PRIMARY KEY (condition, sample, read_id, pos)',
-            'FOREIGN KEY(sample, read_id) REFERENCES reads(sample, id)',
-            'FOREIGN KEY(kmer_seq_id) REFERENCES kmer_seqs(id)']
-
         table_defs = collections.OrderedDict([('transcripts', table_def_transcripts),
                                               ('kmer_seqs', table_def_kmer_seqs),
-                                              ('kmer_stats', table_def_kmer_stats),
-                                              ('reads', table_def_reads),
-                                              ('read_level_data', table_read_level_data)])
+                                              ('kmer_stats', table_def_kmer_stats)])
 
         for table in table_defs:
             table_headers = ', '.join(table_defs[table])
@@ -300,36 +245,6 @@ class SampComp_DB():
                 raise error
 
         self._default_storage_table = 'kmer_stats'
-
-
-    def _get_or_create_kmer_ids(self, table, column, values):
-        """
-        Gets the ids of the values in the table or creates them if they don't exist.
-        Works only only for tables with a single column."""
-        insert_query =  f"INSERT INTO {table} ({column}) VALUES (?) ON CONFLICT DO NOTHING"
-        self._cursor.executemany(insert_query, [(x, ) for x in values])
-        seq_to_id = {}
-        # The SQLite driver supports maximum 999 parameters
-        # so we need to split the query into batches
-        for i in range(0, len(values), 999):
-            batch = values[i:i+999]
-            param_definition = ', '.join(['?'] * len(batch))
-            select_query = f"SELECT id, {column} FROM {table} WHERE {column} IN ({param_definition})"
-            new_seqs = self._cursor.execute(select_query, tuple(batch)).fetchall()
-            seq_to_id.update({x[1]: x[0] for x in new_seqs})
-        return seq_to_id
-
-
-    def _insert_missing(self, table, columns, values):
-        """
-        Inserts the values into the table if they don't exist.
-        """
-        insert_query =  f"""
-        INSERT INTO {table} ({','.join(columns)})
-        VALUES ({','.join(['?'] * len(columns))})
-        ON CONFLICT DO NOTHING
-        """
-        self._cursor.executemany(insert_query, values)
 
 
     def _insert_query_and_get_id(self, query='', table='', column=''):
@@ -364,14 +279,13 @@ class SampComp_DB():
         data_query = f"SELECT {table_cols} FROM kmer_stats kmer_stats LEFT JOIN transcripts tx ON tx.id = kmer_stats.transcript_id LEFT JOIN kmer_seqs kmer_seqs ON kmer_stats.kmer_seq_id = kmer_seqs.id"
         return data_query
 
+
     def _index_database(self):
         index_queries = []
         index_queries.append("CREATE INDEX IF NOT EXISTS kmer_stats_tx_id_index ON kmer_stats (transcript_id)")
         index_queries.append("CREATE INDEX IF NOT EXISTS kmer_stats_kmer_id_index ON kmer_stats (kmer_seq_id)")
         index_queries.append("CREATE UNIQUE INDEX IF NOT EXISTS transcripts_index ON transcripts (id, name)")
         index_queries.append("CREATE UNIQUE INDEX IF NOT EXISTS kmer_seqs_index ON kmer_seqs (id, sequence)")
-        index_queries.append("CREATE INDEX IF NOT EXISTS read_level_data_read_id_index ON read_level_data (read_id)")
-        index_queries.append("CREATE INDEX IF NOT EXISTS reads_transcript_id_index ON reads (transcript_id)")
 
         for index_query in index_queries:
             try:
