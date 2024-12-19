@@ -18,33 +18,23 @@ from nanocompore.common import *
 
 class TxComp():
     def __init__(self,
-                 experiment,
                  config,
                  random_state=26):
         logger.debug("TxCompare object created")
 
         self._config = config
-        self._experiment = experiment
         self._random_state = random_state
 
         # If we have less than 2 replicates in any condition skip anova and force logit method
-        if self._any_condition_with_fewer_than_2_samples(experiment):
+        if self._any_condition_with_fewer_than_2_samples():
             logger.info("At least one condition only has 1 sample, using logit method")
             self._anova = False
             self._logit = True
 
 
-    def _any_condition_with_fewer_than_2_samples(self, experiment):
-        condition_counts = defaultdict(int)
-        for condition in experiment.get_condition_labels():
-            condition_counts[condition] = len(experiment.condition_to_samples(condition))
-        if len(condition_counts) == 2:
-            if any(count < 2 for cond, count in condition_counts.items()):
-                return True
-            else:
-                return False
-        else:
-            raise NanocomporeError(f"There are not exactly two condition labels")
+    def _any_condition_with_fewer_than_2_samples(self):
+        return any(len(samples) < 2
+                   for samples in self._config.get_conditions_to_samples().values())
 
 
     def txCompare(self, kmer_data_list, transcript):
@@ -52,12 +42,12 @@ class TxComp():
         total_results_dict = {}
         tests = set()
         valid_positions = []
-        condition_label_1, condition_label_2 = self._experiment.get_condition_labels()
+        condition_label_1, condition_label_2 = self._config.get_condition_labels()
         for kmer_data in kmer_data_list:
             # Make sure we have sufficient reads for all conditions.
             condition_counts = Counter(kmer_data.condition_labels)
             if not all(condition_counts.get(cond, 0) >= self._config.get_min_coverage()
-                       for cond in self._experiment.get_condition_labels()):
+                       for cond in self._config.get_condition_labels()):
                 logger.trace(f'Skipping position {kmer_data.pos} of transcript {transcript.name} due to insuffient coverage in both conditions')
                 continue
 
@@ -105,7 +95,7 @@ class TxComp():
                         motor_kmer = self._get_motor_kmer(kmer_data, kmer_data_list)
                         gmm_results = gmm.gmm_test(kmer_data=kmer_data,
                                                    motor_kmer=motor_kmer,
-                                                   experiment=self._experiment,
+                                                   config=self._config,
                                                    anova=self._config.get_anova(),
                                                    logit=self._config.get_logit(),
                                                    allow_warnings=self._config.get_allow_warnings(),
@@ -121,10 +111,10 @@ class TxComp():
                 elif method == "GOF":
                     try:
                         motor_kmer = self._get_motor_kmer(kmer_data, kmer_data_list)
-                        if self._experiment.is_multi_replicate():
-                            gof_pval = gof_test_multirep(kmer_data, motor_kmer=motor_kmer, experiment=self._experiment)
+                        if self._config.is_multi_replicate():
+                            gof_pval = gof_test_multirep(kmer_data, motor_kmer=motor_kmer, config=self._config)
                         else:
-                            gof_pval = gof_test_singlerep(kmer_data, motor_kmer=motor_kmer, experiment=self._experiment)
+                            gof_pval = gof_test_singlerep(kmer_data, motor_kmer=motor_kmer, config=self._config)
                     except:
                         raise NanocomporeError(f"Error doing GOF test on {transcript.name}")
                     results_dict[f"GOF_pvalue"] = gof_pval

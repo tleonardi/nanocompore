@@ -93,13 +93,13 @@ class Config:
     def __init__(self, config_file):
         self._config = CONFIG_SCHEMA.validate(config_file)
 
+        self._test_condition = [cond
+                                for cond in self.get_condition_labels()
+                                if cond != self.get_depleted_condition()][0]
+
 
     def get_data(self):
         return self._config['data']
-
-
-    def get_depleted_condition(self):
-        return self._config['depleted_condition']
 
 
     def get_kmer_data_db(self):
@@ -293,3 +293,60 @@ class Config:
         Note: empty list means all transcripts
         """
         return self._config.get('read_level_data_transcripts', DEFAULT_READ_LEVEL_DATA_TRANSCRIPTS)
+
+
+    def get_sample_labels(self):
+        return list({sample
+                     for samples in self.get_data().values()
+                     for sample in samples})
+
+
+    def get_condition_labels(self):
+        return list(self.get_data().keys())
+
+
+    def get_depleted_condition(self):
+        return self._config['depleted_condition']
+
+
+    def get_test_condition(self):
+        return self._test_condition
+
+
+    def is_multi_replicate(self):
+        return all(len(reps) > 1
+                   for reps in self.get_data().values())
+
+
+    def get_sample_ids(self):
+        labels = self.get_sample_labels()
+        return dict(zip(labels, range(len(labels))))
+
+
+    def sample_to_condition(self):
+        return {sample: cond
+                for cond, sample_defs in self.get_data().items()
+                for sample in sample_defs.keys()}
+
+
+    def get_condition_samples(self, condition_label):
+        return list(self.get_data()[condition_label].keys())
+
+
+    def get_conditions_to_samples(self):
+        return {cond: list(sample_defs.keys())
+                for cond, sample_defs in self.get_data().items()}
+
+
+    def get_sample_condition_bam_data(self):
+        return [(sample, condition, samp_def['bam'])
+                for condition, samples in self.get_data().items()
+                for sample, samp_def in samples.items()]
+
+
+    def get_sample_pod5_bam_data(self):
+        return [(sample, samp_def['pod5'], samp_def['bam'])
+                for _, samples in self.get_data().items()
+                for sample, samp_def in samples.items()]
+
+

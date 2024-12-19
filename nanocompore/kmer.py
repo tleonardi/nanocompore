@@ -7,7 +7,7 @@ from sklearn.model_selection import train_test_split
 from nanocompore.common import NanocomporeError
 
 class KmerData:
-    def __init__(self, pos, kmer, sample_labels, reads, intensity, intensity_std, dwell, valid, experiment):
+    def __init__(self, pos, kmer, sample_labels, reads, intensity, intensity_std, dwell, valid, config):
         self._kmer = kmer
         self._pos = pos
         self._sample_labels = sample_labels
@@ -16,7 +16,7 @@ class KmerData:
         self._intensity_std = intensity_std
         self._dwell = dwell
         self._valid = valid
-        self._experiment = experiment
+        self._config = config
 
 
     @property
@@ -61,8 +61,8 @@ class KmerData:
 
     @property
     def condition_labels(self):
-        return [self._experiment.sample_to_condition(s)
-                for s in self.sample_labels]
+        samp_to_cond = self._config.sample_to_condition()
+        return [samp_to_cond[s] for s in self.sample_labels]
 
 
     def get_condition_kmer_intensity_data(self, condition_label):
@@ -97,5 +97,5 @@ class KmerData:
                         self.sd[mask],
                         self.dwell[mask],
                         self._valid,
-                        self._experiment)
+                        self._config)
 

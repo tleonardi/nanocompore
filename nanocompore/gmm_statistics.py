@@ -12,11 +12,11 @@ import pandas as pd
 from nanocompore.common import *
 
 
-def gmm_test(kmer_data, motor_kmer, experiment, random_state, anova=True, logit=False, verbose=True, allow_warnings=False):
-    if len(experiment.get_condition_labels()) != 2:
+def gmm_test(kmer_data, motor_kmer, config, random_state, anova=True, logit=False, verbose=True, allow_warnings=False):
+    if len(config.get_condition_labels()) != 2:
         raise NanocomporeError("gmm_test only supports two conditions")
 
-    data, sample_labels, condition_labels = get_kmer_data(kmer_data, motor_kmer, experiment)
+    data, sample_labels, condition_labels = get_kmer_data(kmer_data, motor_kmer, config)
 
     # Scale the intensity and dwell time arrays
     X = StandardScaler().fit_transform(data)
@@ -37,20 +37,20 @@ def gmm_test(kmer_data, motor_kmer, experiment, random_state, anova=True, logit=
         y_pred = gmm_mod.predict(X)
         counters = dict()
         # Count how many reads in each cluster for each sample
-        for lab in experiment.get_sample_labels():
+        for lab in config.get_sample_labels():
             counters[lab] = Counter(y_pred[sample_labels == lab])
         cluster_counts = count_reads_in_cluster(counters)
 
         if anova:
             aov_results = gmm_anova_test(counters,
-                                         experiment.get_condition_labels(),
+                                         config.get_condition_labels(),
                                          gmm_ncomponents,
                                          allow_warnings)
 
         if logit:
             logit_results = gmm_logit_test(y_pred,
                                            condition_labels,
-                                           experiment.get_condition_labels())
+                                           config.get_condition_labels())
 
     return({'anova': aov_results,
             'logit': logit_results,
@@ -169,3 +169,4 @@ def sum_of_squares(x):
     """
     x = np.atleast_1d(x)
     return np.sum(x*x)
+

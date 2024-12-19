@@ -13,11 +13,9 @@ from nanocompore.common import get_pos_kmer
 
 class Uncalled4:
     def __init__(self,
-                 experiment,
                  config,
                  ref_id,
                  seq):
-        self._experiment = experiment
         self._config = config
         self._seq = seq
         self._ref_id = ref_id
@@ -36,14 +34,14 @@ class Uncalled4:
         condition_labels = []
 
         read_count = 0
-        for sample, _, bam in self._experiment.get_sample_pod5_bam_data():
+        for sample, _, bam in self._config.get_sample_pod5_bam_data():
             read_count += pysam.AlignmentFile(bam, 'rb').count(reference=self._ref_id)
 
         # shape is: (reads, positions, vars)
         reads_tensor = np.zeros((read_count, ref_len, 3))
 
         read_index = 0
-        for sample, _, bam in self._experiment.get_sample_pod5_bam_data():
+        for sample, _, bam in self._config.get_sample_pod5_bam_data():
             for read in pysam.AlignmentFile(bam, 'rb').fetch(self._ref_id):
                 if read.is_secondary or read.is_supplementary:
                     continue
@@ -56,7 +54,7 @@ class Uncalled4:
 
                 read_ids.append(read.query_name)
                 sample_labels.append(sample)
-                condition_labels.append(self._experiment.sample_to_condition(sample))
+                condition_labels.append(self._config.sample_to_condition(sample))
 
                 read_index += 1
 
@@ -95,7 +93,7 @@ class Uncalled4:
                            pos_data[:, 2],
                            pos_data[:, 0],
                            None, # We don't have validity data here
-                           self._experiment)
+                           self._config)
 
 
     def _get_signal(self, read):

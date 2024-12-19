@@ -24,7 +24,6 @@ VAR_ORDER = ['dwell', 'trimmean', 'trimsd']
 
 class Remora:
     def __init__(self,
-                 experiment,
                  config,
                  ref_id='',
                  start=0,
@@ -33,7 +32,6 @@ class Remora:
                  strand='+'):
 
         ########## Private fields ##########
-        self._experiment = experiment
         self._config = config
         self._seq = seq
         self._min_coverage = config.get_min_coverage()
@@ -85,7 +83,7 @@ class Remora:
 
 
     def _build_pod5_bam_tuple(self):
-        for sample, pod5_fn, bam in self._experiment.get_sample_pod5_bam_data():
+        for sample, pod5_fn, bam in self._config.get_sample_pod5_bam_data():
             try:
                 pod5_fh = pod5.Reader(pod5_fn)
             except:
@@ -215,7 +213,7 @@ class Remora:
                            pos_data[:, VAR_ORDER.index('trimsd')],
                            pos_data[:, VAR_ORDER.index('dwell')],
                            None, # We don't have validity data here
-                           self._experiment)
+                           self._config)
 
 
     @property

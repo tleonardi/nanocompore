@@ -2,19 +2,18 @@ from collections import Counter
 
 import numpy as np
 
+from loguru import logger
 from scipy.stats import kstest
 from scipy.stats import multivariate_normal
 from sklearn.preprocessing import StandardScaler
 
-from loguru import logger
-
 from nanocompore.common import get_kmer_data
 
 
-def gof_test_singlerep(kmer_data, motor_kmer, experiment):
-    control_label = experiment.get_depleted_condition()
+def gof_test_singlerep(kmer_data, motor_kmer, config):
+    control_label = config.get_depleted_condition()
 
-    data, sample_labels, condition_labels = get_kmer_data(kmer_data, motor_kmer, experiment)
+    data, sample_labels, condition_labels = get_kmer_data(kmer_data, motor_kmer, config)
 
     control_data = data[condition_labels == control_label]
     test_data = data[condition_labels != control_label]
@@ -39,21 +38,22 @@ def gof_test_singlerep(kmer_data, motor_kmer, experiment):
     return result.pvalue
 
 
-def gof_test_multirep(kmer_data, motor_kmer, experiment):
-    control_label = experiment.get_depleted_condition()
-    test_label = experiment.get_test_condition()
+def gof_test_multirep(kmer_data, motor_kmer, config):
+    control_label = config.get_depleted_condition()
+    test_label = config.get_test_condition()
 
-    data, sample_labels, condition_labels = get_kmer_data(kmer_data, motor_kmer, experiment)
+    data, sample_labels, condition_labels = get_kmer_data(kmer_data, motor_kmer, config)
 
-    sample_counts = Counter(samples)
-    if len(sample_counts) < len(experiment.get_sample_labels()) or min(sample_counts.values()) < 30:
+    sample_counts = Counter(sample_labels)
+    if len(sample_counts) < len(config.get_sample_labels()) or \
+       min(sample_counts.values()) < config.get_min_coverage():
         return None
 
     internal_likelihoods = []
     external_likelihoods = []
 
-    control_samples = experiment.condition_to_samples(control_label)
-    test_samples = experiment.condition_to_samples(test_label)
+    control_samples = config.get_condition_samples(control_label)
+    test_samples = config.get_condition_samples(test_label)
 
     for sample in control_samples:
         sample_data = data[sample_labels == sample]

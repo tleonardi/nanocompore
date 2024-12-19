@@ -1,15 +1,5 @@
-from loguru import logger
-
-
 class Transcript():
-    def __init__(self,
-                 ref_id='',
-                 experiment='',
-                 config=None,
-                 ref_seq=0):
-
-        logger.trace(f"Creating transcript object for {ref_id}")
-        self._experiment = experiment
+    def __init__(self, ref_id, ref_seq):
         self._name = ref_id
         self._ref_seq = ref_seq
         self._length = len(self._ref_seq)

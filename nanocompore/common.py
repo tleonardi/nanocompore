@@ -65,7 +65,6 @@ def get_pos_kmer(pos, seq, kit):
 class NanocomporeError (Exception):
     """ Basic exception class for nanocompore module """
     def __init__(self, message=""):
-        logger.error(message)
         super().__init__(message)
 
 
@@ -513,13 +512,13 @@ def match_kmer_with_motor_dwell(kmer, motor_effect_kmer):
     return data, samples, conditions
 
 
-def get_kmer_data(kmer, motor_effect_kmer, experiment):
+def get_kmer_data(kmer, motor_effect_kmer, config):
     if motor_effect_kmer:
         logger.trace(f"Motor dwell included. Pos {kmer.pos}, motor pos: {motor_effect_kmer.pos}.")
         data, sample_labels, condition_labels = match_kmer_with_motor_dwell(kmer, motor_effect_kmer)
         condition_counts = Counter(condition_labels)
-        if all(condition_counts.get(cond, 0) >= experiment.get_config().get_min_coverage()
-               for cond in experiment.get_condition_labels()):
+        if all(condition_counts.get(cond, 0) >= config.get_min_coverage()
+               for cond in config.get_condition_labels()):
             return data, sample_labels, condition_labels
 
     data = np.array(list(zip(kmer.intensity,

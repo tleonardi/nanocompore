@@ -17,10 +17,8 @@ import numpy as np
 from loguru import logger
 from pyfaidx import Fasta
 
-from nanocompore.Experiment import Experiment
 from nanocompore.Remora import Remora
 from nanocompore.Transcript import Transcript
-from nanocompore.Whitelist import Whitelist
 from nanocompore.eventalign_collapse import EventalignCollapser
 from nanocompore.kmer import KmerData
 from nanocompore.uncalled4 import Uncalled4
@@ -67,7 +65,6 @@ class Preprocessor:
     def __init__(self, config):
         logger.info("Initializing the preprocessor")
         self._config = config
-        self._experiment = Experiment(config)
 
         # self._db_conn = sqlite3.connect(db, isolation_level=None)
         # self._db_conn.execute('PRAGMA synchronous = OFF')
@@ -76,7 +73,7 @@ class Preprocessor:
         self._db_conn = self._get_db()
         self._setup_db()
 
-        self._sample_ids = self._experiment.get_sample_ids()
+        self._sample_ids = self._config.get_sample_ids()
 
         self._current_transcript_id = 1
         self._current_read_id = 1
@@ -113,14 +110,13 @@ class Preprocessor:
 
     def _write_metadata(self):
         resquiggler = self._config.get_resquiggler()
-        condition_samples = {cond: self._experiment.condition_to_samples(cond)
-                             for cond in self._experiment.get_condition_labels()}
+        condition_samples = self._config.get_condition_samples()
         metadata = {
             DB_METADATA_RESQUIGGLER_KEY: resquiggler,
             DB_METADATA_READ_ID_TYPE_KEY: READ_ID_TYPE.__name__,
             DB_METADATA_SAMPLE_ID_TYPE_KEY: SAMPLE_ID_TYPE.__name__,
             DB_METADATA_MEASUREMENT_TYPE_KEY: get_measurement_type(resquiggler).__name__,
-            DB_METADATA_SAMPLE_LABELS_KEY: ','.join(self._experiment.get_sample_labels()),
+            DB_METADATA_SAMPLE_LABELS_KEY: ','.join(self._config.get_sample_labels()),
             DB_METADATA_CONDITION_SAMPLES_KEY: json.dumps(condition_samples),
         }
         with closing(self._db_conn.cursor()) as cursor:
@@ -300,8 +296,7 @@ class RemoraPreprocessor(Preprocessor):
         fasta_fh = Fasta(self._config.get_fasta_ref())
         ref_seq = str(fasta_fh[ref_id])
 
-        remora = Remora(self._experiment,
-                        self._config,
+        remora = Remora(self._config,
                         ref_id=ref_id,
                         start=0,
                         end=len(ref_seq),
@@ -408,8 +403,7 @@ class Uncalled4Preprocessor(Preprocessor):
                     break
 
                 ref_seq = str(fasta_fh[ref_id])
-                uncalled4 = Uncalled4(self._experiment,
-                                      self._config,
+                uncalled4 = Uncalled4(self._config,
                                       ref_id,
                                       ref_seq)
                 kmers = list(uncalled4.kmer_data_generator())
@@ -479,8 +473,7 @@ class Uncalled4Preprocessor(Preprocessor):
     def _resquiggleold(self, ref_id):
         fasta_fh = Fasta(self._config.get_fasta_ref())
         ref_seq = str(fasta_fh[ref_id])
-        uncalled4 = Uncalled4(self._experiment,
-                              self._config,
+        uncalled4 = Uncalled4(self._config,
                               ref_id,
                               ref_seq)
         kmers = list(uncalled4.kmer_data_generator())
@@ -701,7 +694,7 @@ class EventalignPreprocessor(Preprocessor):
             sd = self._merge_col_from_samples(5, rows, EVENTALIGN_MEASUREMENT_TYPE)
             dwell = self._merge_col_from_samples(6, rows, EVENTALIGN_MEASUREMENT_TYPE)
 
-            kmers.append(KmerData(pos, kmer, samples, read_ids, intensity, sd, dwell, None, self._experiment))
+            kmers.append(KmerData(pos, kmer, samples, read_ids, intensity, sd, dwell, None, self._config))
         return kmers
 
 
@@ -742,7 +735,7 @@ class EventalignPreprocessor(Preprocessor):
             for future in as_completed(futures):
                 sample, db = future.result()
                 logger.info(f"Input eventalign for sample {sample} has been collapsed and saved at {db}")
-                condition = self._experiment.sample_to_condition(sample)
+                condition = self._config.sample_to_condition(sample)
                 self._config.get_data()[condition][sample]['eventalign_db'] = db
 
 

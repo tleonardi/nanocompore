@@ -12,7 +12,6 @@ from pyfaidx import Fasta
 
 import nanocompore.SampCompResultsmanager as SampCompResultsmanager
 
-from nanocompore.Experiment import Experiment
 from nanocompore.Transcript import Transcript
 from nanocompore.TxComp import TxComp
 from nanocompore.common import *
@@ -51,10 +50,9 @@ class SampComp(object):
         log_init_state(loc=locals())
 
         self._config = config
-        self._experiment = Experiment(config)
         self._processing_threads = self._config.get_nthreads() - 1
         self._value_type = get_measurement_type(self._config.get_resquiggler())
-        self._sample_labels = self._experiment.get_sample_labels()
+        self._sample_labels = self._config.get_sample_labels()
 
 
     def __call__(self):
@@ -117,9 +115,7 @@ class SampComp(object):
 
     def _process_transcripts(self, worker_id, task_queue, result_queue):
         fasta_fh = Fasta(self._config.get_fasta_ref())
-        txComp = TxComp(experiment=self._experiment,
-                        config=self._config,
-                        random_state=26)
+        txComp = TxComp(config=self._config, random_state=26)
 
         db = self._config.get_kmer_data_db()
         with closing(sqlite3.connect(db)) as conn,\
@@ -134,19 +130,16 @@ class SampComp(object):
                 try:
                     logger.debug(f"Worker {worker_id} got new transcript for processing: {transcript_ref.ref_id}")
                     ref_seq = str(fasta_fh[transcript_ref.ref_id])
-                    transcript = Transcript(ref_id=transcript_ref.ref_id,
-                                            experiment=self._experiment,
-                                            ref_seq=ref_seq,
-                                            config=self._config)
+                    transcript = Transcript(ref_id=transcript_ref.ref_id, ref_seq=ref_seq)
                     logger.debug(f"Worker {worker_id} starts reading data for transcript: {transcript_ref.ref_id}")
                     kmer_data_list = self._read_transcript_kmer_data(transcript_ref, cursor)
                     logger.debug(f"Worker {worker_id} starts comparing data for transcript: {transcript_ref.ref_id}")
                     results = txComp.txCompare(kmer_data_list, transcript)
                     logger.debug(f"Worker {worker_id} finished comparing data for transcript: {transcript_ref.ref_id}. Results: {len(results)}")
                     result_queue.put((transcript_ref.ref_id, results))
-                except Exception as e:
-                    traceback.print_stack(e)
-                    logger.error(f"Error in Worker {worker_id} for {ref_id}: {e}")
+                except Exception:
+                    msg = traceback.format_exc()
+                    logger.error(f"Error in Worker {worker_id} for {transcript_ref.ref_id}: {msg}")
 
 
     def _read_transcript_kmer_data(self, transcript_ref, cursor):
@@ -180,7 +173,7 @@ class SampComp(object):
                         kmer.sd[valid_mask],
                         kmer.dwell[valid_mask],
                         None, # We don't have validity data here
-                        self._experiment)
+                        self._config)
 
 
     def _db_row_to_kmer(self, row):
@@ -199,7 +192,7 @@ class SampComp(object):
                         sd,
                         dwell,
                         None, # we don't need validity data here
-                        self._experiment)
+                        self._config)
 
 
     def _get_valid_read_ids(self, cursor, read_ids):
