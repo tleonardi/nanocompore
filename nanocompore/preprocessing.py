@@ -324,18 +324,156 @@ class Uncalled4Preprocessor(Preprocessor):
 
 
     def __call__(self):
-        with ProcessPoolExecutor(max_workers=self._worker_processes) as executor:
-            futures = [executor.submit(self._resquiggle, ref_id)
-                       for ref_id in self._references]
-            for future in as_completed(futures):
-                ref_id, kmers, read_invalid_ratios = future.result()
-                rows = self._process_rows_for_writing(ref_id, kmers, read_invalid_ratios)
-                with closing(self._get_db()) as conn:
-                    self._write_kmer_rows(conn, rows)
+        manager = mp.Manager()
+        task_queue = manager.Queue()
+        lock = manager.Lock()
+        current_transcript_id = manager.Value('i', 1)
+        current_read_offset = manager.Value('i', 0)
+        processed_transcripts = manager.Value('i', 0)
+
+        logger.info(f"Starting {self._worker_processes} worker processes.")
+
+        workers = [mp.Process(target=self._resquiggle,
+                              args=(i,
+                                    task_queue,
+                                    lock,
+                                    current_transcript_id,
+                                    current_read_offset,
+                                    processed_transcripts,
+                                    len(self._references)))
+                   for i in range(self._worker_processes)]
+
+        for worker in workers:
+            worker.start()
+
+        for ref_id in self._references:
+            task_queue.put(ref_id)
+
+        # add poison pills to kill the workers
+        for _ in range(self._worker_processes):
+            task_queue.put(None)
+
+        for worker in workers:
+            worker.join()
+
+        logger.info("Merging tmp databases.")
+
+        # Merge tmp databases
+        with closing(self._get_db()) as conn,\
+             closing(conn.cursor()) as cursor:
+            for i in range(self._worker_processes):
+                tmp_db = self._config.get_kmer_data_db() + f".{i}"
+                cursor.execute(f"ATTACH '{tmp_db}' as tmp")
+                cursor.execute("BEGIN")
+                cursor.execute("INSERT INTO transcripts SELECT * FROM tmp.transcripts")
+                cursor.execute("INSERT INTO reads SELECT * FROM tmp.reads")
+                cursor.execute("INSERT INTO kmer_data SELECT * FROM tmp.kmer_data")
+                conn.commit()
+                cursor.execute("DETACH DATABASE tmp")
+                # Delete the tmp db
+                Path(tmp_db).unlink()
+
+        logger.info("Creating database indices.")
         self._create_db_indices()
 
 
-    def _resquiggle(self, ref_id):
+    def _resquiggle(self,
+                    idx,
+                    task_queue,
+                    lock,
+                    current_transcript_id,
+                    current_read_offset,
+                    processed_transcripts,
+                    num_transcripts):
+        fasta_fh = Fasta(self._config.get_fasta_ref())
+
+        tmp_db_out = self._config.get_kmer_data_db() + f".{idx}"
+        with closing(self._get_db(tmp_db_out)) as conn,\
+             closing(conn.cursor()) as cursor:
+            cursor.execute(DROP_KMER_DATA_TABLE_QUERY)
+            cursor.execute(CREATE_KMER_DATA_TABLE_QUERY)
+            cursor.execute(DROP_READS_TABLE_QUERY)
+            cursor.execute(CREATE_READS_TABLE_QUERY)
+            cursor.execute(DROP_TRANSCRIPTS_TABLE_QUERY)
+            cursor.execute(CREATE_TRANSCRIPTS_TABLE_QUERY)
+            conn.commit()
+
+        with closing(self._get_db(tmp_db_out)) as conn:
+            while True:
+                ref_id = task_queue.get()
+                if ref_id == None:
+                    break
+
+                ref_seq = str(fasta_fh[ref_id])
+                uncalled4 = Uncalled4(self._experiment,
+                                      self._config,
+                                      ref_id,
+                                      ref_seq)
+                kmers = list(uncalled4.kmer_data_generator())
+                read_invalid_ratios = self._get_reads_invalid_kmer_ratio(kmers)
+
+                lock.acquire()
+                transcript_id = current_transcript_id.value
+                current_transcript_id.value += 1
+                read_offset = current_read_offset.value
+                current_read_offset.value += len(read_invalid_ratios)
+                lock.release()
+
+                offsetted_reads = [(read_id, i + read_offset, invalid_ratio)
+                                   for i, (read_id, invalid_ratio) in enumerate(read_invalid_ratios.items())]
+                kmer_rows = self._process_rows_for_writing(transcript_id, kmers, offsetted_reads)
+
+                with closing(conn.cursor()) as cursor:
+                    cursor.execute("begin")
+                    cursor.execute(INSERT_TRANSCRIPTS_QUERY, (ref_id, transcript_id))
+                    cursor.executemany(INSERT_READS_QUERY, offsetted_reads)
+                    cursor.execute("commit")
+                self._write_kmer_rows(conn, kmer_rows)
+
+                lock.acquire()
+                processed_transcripts.value += 1
+                logger.info(f"Data for reference {processed_transcripts.value}/{num_transcripts} {ref_id} has been saved to the tmp database.")
+                lock.release()
+
+
+    def _process_rows_for_writing(self, transcript_id, kmers_data, offsetted_reads):
+        read_to_id = {r[0]: r[1] for r in offsetted_reads}
+
+        processed_kmers = []
+        for kmer_data in kmers_data:
+            sample_ids = [self._sample_ids[label]
+                          for label in kmer_data.sample_labels]
+            sample_ids = np.array(sample_ids, dtype=SAMPLE_ID_TYPE)
+
+            read_ids = np.array([read_to_id[read] for read in kmer_data.reads], dtype=READ_ID_TYPE)
+
+            proc_kmer = (transcript_id,
+                         kmer_data.pos,
+                         kmer_data.kmer,
+                         sample_ids.tobytes(),
+                         read_ids.tobytes(),
+                         kmer_data.intensity.tobytes(),
+                         kmer_data.sd.tobytes(),
+                         kmer_data.dwell.tobytes())
+            processed_kmers.append(proc_kmer)
+        return processed_kmers
+
+
+    def _get_db(self, db=None):
+        if not db:
+            db = self._config.get_kmer_data_db()
+        conn = sqlite3.connect(db, isolation_level=None)
+        conn.execute('PRAGMA synchronous = OFF')
+        conn.execute('PRAGMA journal_mode = OFF')
+        # Use largest possible page size of 65kb
+        conn.execute('PRAGMA page_size = 65536')
+        # Use cache of 2048 x page_size. That's 128MB of cache.
+        conn.execute('PRAGMA cache_size = 2000')
+        # conn.execute('PRAGMA cache_size = -400000')
+        return conn
+
+
+    def _resquiggleold(self, ref_id):
         fasta_fh = Fasta(self._config.get_fasta_ref())
         ref_seq = str(fasta_fh[ref_id])
         uncalled4 = Uncalled4(self._experiment,
