@@ -422,6 +422,18 @@ INSERT_TRANSCRIPTS_QUERY = """
 INSERT INTO transcripts VALUES(?, ?);
 """
 
+CREATE_BASE_KMER_RESULTS_QUERY = """
+CREATE TABLE kmer_results (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    transcript_id INTEGER NOT NULL,
+    pos INTEGER NOT NULL,
+    kmer INTEGER NOT NULL,
+    UNIQUE (transcript_id, pos),
+    FOREIGN KEY(transcript_id) REFERENCES transcripts(id),
+)
+"""
+
+
 READ_ID_TYPE = np.uint32
 SAMPLE_ID_TYPE = np.uint8
 REMORA_MEASUREMENT_TYPE = np.float32
@@ -526,4 +538,31 @@ def get_kmer_data(kmer, motor_effect_kmer, config):
     sample_labels = np.array(kmer.sample_labels)
     condition_labels = np.array(kmer.condition_labels)
     return data, sample_labels, condition_labels
+
+
+def encode_kmer(kmer):
+    encoding = 0
+    for base in kmer:
+        encoding <<= 2
+        if base == "A" or base == "a":
+            encoding |= 0
+        elif base == "G" or base == "g":
+            encoding |= 1
+        elif base == "C" or base == "c":
+            encoding |= 2
+        elif base == "T" or base == "t":
+            encoding |= 3
+        else:
+            raise RuntimeError(f"Bad nucleotide in kmer: {kmer}")
+    return encoding
+
+
+def decode_kmer(encoding, kmer_size):
+    kmer = []
+    for _ in range(kmer_size):
+        base_code = encoding & ~(~0 << 2)
+        base = ["A", "G", "C", "T"][base_code]
+        kmer.append(base)
+        encoding >>= 2
+    return ''.join(kmer[::-1])
 

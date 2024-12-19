@@ -58,7 +58,7 @@ class TxComp():
 
             valid_positions.append(kmer_data.pos)
             results_dict = {}
-            results_dict['kmer_seq'] = kmer_data.kmer
+            results_dict['kmer'] = kmer_data.kmer
 
             comp_methods = set(self._config.get_comparison_methods())
             auto_test = None

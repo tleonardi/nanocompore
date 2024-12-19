@@ -91,26 +91,23 @@ class SampComp(object):
         for _ in range(self._processing_threads):
             task_queue.put(None)
 
-        try:
-            finished_workers = 0
-            while True:
-                msg = result_queue.get()
-                if msg == DONE_MSG:
-                    finished_workers += 1
-                    if finished_workers == self._processing_threads:
-                        break
-                    continue
-                ref_id, results = msg
-                if len(results) == 0:
-                    continue
-                resultsManager.saveData(ref_id, results, self._config)
+        finished_workers = 0
+        while True:
+            msg = result_queue.get()
+            if msg == DONE_MSG:
+                finished_workers += 1
+                if finished_workers == self._processing_threads:
+                    break
+                continue
+            ref_id, results = msg
+            if len(results) == 0:
+                continue
+            resultsManager.save_results(ref_id, results)
 
-            for worker in workers:
-                worker.join()
+        for worker in workers:
+            worker.join()
 
-            resultsManager.finish()
-        finally:
-            resultsManager.closeDB()
+        resultsManager.finish()
 
 
     def _process_transcripts(self, worker_id, task_queue, result_queue):

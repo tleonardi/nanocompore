@@ -10,7 +10,7 @@ from statsmodels.stats.multitest import multipletests
 
 #Local Packages
 from nanocompore.common import *
-import nanocompore.SampComp_SQLDB as SampCompDb
+import nanocompore.SampComp_SQLDB as SampCompDB
 
 
 class resultsManager():
@@ -20,23 +20,24 @@ class resultsManager():
         self._result_exists_strategy = config.get_result_exists_strategy()
         self._bed_fn = config.get_bed()
         self._correction_method = config.get_correction_method()
+        self._config = config
 
-        self._db = SampCompDb.SampComp_DB(outpath=self._outpath, prefix=self._prefix, result_exists_strategy=self._result_exists_strategy)
+        self._db = SampCompDB.SampCompDB(outpath=self._outpath, prefix=self._prefix, result_exists_strategy=self._result_exists_strategy)
 
-    def saveData(self, transcript, test_results, config, table=''):
-        self._db.store_test_results(tx_name=transcript, test_results=test_results, table=table)
 
-    def closeDB(self):
-        self._db.closeDB()
+    def save_results(self, transcript, test_results):
+        self._db.save_test_results(transcript, test_results)
+
 
     def finish(self, valid_transcripts=set(), bed=False, bedgraph=False, pvalue_threshold=0):
-        self._db._index_database()
+        self._db.index_database()
         logger.debug("Created all table indexes")
-        tests, shift_stats = self._getStatsTests()
         logger.debug("Gathering all the data for reporting")
-        data = self._db.getAllData()
+        data = self._db.get_all_results()
+        tests, shift_stats = self._getStatsTests(data)
         logger.debug("Data gathered")
         data = self._addGenomicPositions(data, valid_transcripts=valid_transcripts)
+        data['kmer'] = data['kmer'].apply(lambda encoding: decode_kmer(encoding, self._config.get_kit().len))
         logger.debug("Added genomic positions to data")
         data = self._correct_pvalues(data, method=self._correction_method)
         logger.debug("Corrected pvalues")
@@ -51,19 +52,18 @@ class resultsManager():
                 self._writeBedgraph(data, valid_transcripts=valid_transcripts, pvalue_theshold=pvalue_threshold)
         elif (bed or bedgraph) and not self._bed_fn:
             raise NanocomporeError('Writing a bed file requires an input bed to map transcriptome coordinates to genome coordinates')
-        self.closeDB()
 
 
     def filter_already_processed_transcripts(self, transcripts):
         existing_transcripts = set(self._db.get_transcripts())
         return [tx for tx in transcripts if tx.ref_id not in existing_transcripts]
-        
+
 
     def _writeResultsTSV(self, data, stats_tests):
         #writes the results of all the statistical tests to a tsv file
         out_tsv = os.path.join(self._outpath, f"{self._prefix}nanocompore_results.tsv")
         logger.debug(f"Starting to write results to {out_tsv}")
-        columns_to_save = ['pos', 'chr', 'genomicPos', 'name', 'strand', 'sequence'] + ','.join(stats_tests).split(',')
+        columns_to_save = ['pos', 'chr', 'genomicPos', 'name', 'strand', 'kmer'] + ','.join(stats_tests).split(',')
         aliases = ['pos', 'chr', 'genomicPos', 'ref_id', 'strand', 'ref_kmer'] + ','.join(stats_tests).split(',')
         data.to_csv(out_tsv, sep='\t', columns=columns_to_save, header=aliases, index=False)
 
@@ -161,11 +161,10 @@ class resultsManager():
         strings.sort(key=lambda x: target.index(x) if x in target else len(target))
         return strings
 
-    def _getStatsTests(self):
+    def _getStatsTests(self, data):
         tests = []
         shift_stats = []
-        headers = self._db.get_kmer_table_headers()
-        for header in headers:
+        for header in data.columns:
             if self._any_header_in_string(['pvalue', 'LOR', 'GMM', 'logit', 'cluster_counts'], header):
                 tests.append(header)
             elif self._any_header_in_string(['c1', 'c2'], header):
