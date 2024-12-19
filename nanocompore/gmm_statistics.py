@@ -37,20 +37,20 @@ def gmm_test(kmer_data, motor_kmer, experiment, random_state, anova=True, logit=
         y_pred = gmm_mod.predict(X)
         counters = dict()
         # Count how many reads in each cluster for each sample
-        for lab in transcript.sample_labels:
-            counters[lab] = Counter(y_pred[[i==lab for i in kmer_data.sample_labels]])
+        for lab in experiment.get_sample_labels():
+            counters[lab] = Counter(y_pred[sample_labels == lab])
         cluster_counts = count_reads_in_cluster(counters)
 
         if anova:
             aov_results = gmm_anova_test(counters,
-                                         transcript.condition_labels,
+                                         experiment.get_condition_labels(),
                                          gmm_ncomponents,
                                          allow_warnings)
 
         if logit:
             logit_results = gmm_logit_test(y_pred,
-                                           kmer_data.condition_labels,
-                                           transcript.condition_labels)
+                                           condition_labels,
+                                           experiment.get_condition_labels())
 
     return({'anova': aov_results,
             'logit': logit_results,

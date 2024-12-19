@@ -29,18 +29,3 @@ class Transcript():
     def seq(self):
         return self._ref_seq
 
-
-    @property
-    def condition_labels(self):
-        return list(self._experiment.get_condition_labels())
-
-
-    @property
-    def sample_labels(self):
-        return self._experiment.get_sample_labels()
-
-
-    @property
-    def sample_2_condition(self, sample_label):
-        return self._experiment.sample_to_condition(sample_label)
-

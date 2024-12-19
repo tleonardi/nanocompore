@@ -25,6 +25,11 @@ class Experiment():
         self._build_condition_to_samples()
         self._build_sample_to_condition()
 
+        self._test_condition = [cond
+                                for cond in self.get_condition_labels()
+                                if cond != self.get_depleted_condition()][0]
+
+
 ################### Private methods ###################
 
     def _build_input_data_df_from_config(self, config):
@@ -63,10 +68,17 @@ class Experiment():
             self._sample_to_condition[sample] = condition
 
 ################### Public methods ###################
-
+    
     def get_config(self):
         return self._config
 
+
+    def get_depleted_condition(self):
+        return self._config.get_depleted_condition()
+
+
+    def get_test_condition(self):
+        return self._test_condition
 
 
     def sample_to_condition(self, sample_label):
@@ -98,7 +110,13 @@ class Experiment():
     def get_sample_condition_bam_data(self):
         for sample, condition, bam in self._get_input_data(data_labels=['Sample', 'Condition', 'bam']):
             yield sample, condition, bam
-        
+
+
+    def is_multi_replicate(self):
+        return all(len(reps) > 1
+                   for reps in self._condition_to_samples.values())
+
+
     def _get_input_data(self, data_labels=['Sample', 'Condition', 'pod5', 'bam']):
         """
         Generator function that yields a tuple values in the order of data_labels input

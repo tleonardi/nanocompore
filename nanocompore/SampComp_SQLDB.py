@@ -72,13 +72,14 @@ class SampComp_DB():
             logger.trace(f"The kmer {results_dict['kmer_seq']} has the kmer_id {kmer_seq_id}")
             values = [tx_id, pos, kmer_seq_id]
             for test_type in kmer_table_headers:
-                if results_dict[test_type]:
+                if test_type in results_dict and results_dict[test_type]:
                     values.append(results_dict[test_type])
                 else:
                     values.append(np.nan)
             return values
         else:
             raise NanocomporeError(f"No results for position {pos}")
+
 
     def store_test_results(self, tx_name, test_results, table=''):
         if self._is_connected():

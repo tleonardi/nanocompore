@@ -18,6 +18,7 @@ CONFIG_SCHEMA = Schema({
         },
         And(lambda d: len(d) == 2, error='Only two conditions allowed')
     ),
+    'depleted_condition': str,
     'fasta': And(is_valid_fasta, error='Invalid fasta file'),
     'kmer_data_db': str,
     'resquiggler': Or('remora', 'uncalled4', 'eventalign'),
@@ -29,10 +30,13 @@ CONFIG_SCHEMA = Schema({
     Optional('min_ref_length'): And(int, lambda n: n >= 0, error='min_ref_length must be >= 0'),
     Optional('max_invalid_kmers_freq'): And(float, lambda n: n >= 0, error='max_invalid_kmers_freq must be in the [0, 1] range'),
     Optional('comparison_methods'): And(['GMM',
+                                         'GOF',
                                          'KS',
                                          'TT',
                                          'MW',
+                                         'auto',
                                          'GAUSSIAN_MIXTURE_MODEL',
+                                         'GOODNESS_OF_FIT',
                                          'KOLMOGOROV_SMIRNOV',
                                          'T_TEST',
                                          'MANN_WHITNEY'],
@@ -92,6 +96,10 @@ class Config:
 
     def get_data(self):
         return self._config['data']
+
+
+    def get_depleted_condition(self):
+        return self._config['depleted_condition']
 
 
     def get_kmer_data_db(self):

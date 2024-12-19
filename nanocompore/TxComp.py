@@ -2,14 +2,18 @@ from collections import Counter
 from collections import OrderedDict
 from collections import defaultdict
 
-from loguru import logger
-from scipy.stats import mannwhitneyu, ttest_ind, chi2
-from scipy.stats.mstats import ks_twosamp
 import numpy as np
 import pandas as pd
 
-from nanocompore.common import *
+from loguru import logger
+from scipy.stats import mannwhitneyu, ttest_ind, chi2
+from scipy.stats.mstats import ks_twosamp
+
 import nanocompore.gmm_statistics as gmm
+
+from nanocompore.gof_tests import gof_test_singlerep
+from nanocompore.gof_tests import gof_test_multirep
+from nanocompore.common import *
 
 
 class TxComp():
@@ -40,35 +44,40 @@ class TxComp():
             else:
                 return False
         else:
-            raise NanocomporeError (f"There are not exactly two condition labels")
+            raise NanocomporeError(f"There are not exactly two condition labels")
 
 
     def txCompare(self, kmer_data_list, transcript):
-        logger.info(f"TxCompare starting for {transcript.name}")
+        logger.debug(f"TxCompare starting for {transcript.name}")
         total_results_dict = {}
         tests = set()
         valid_positions = []
-        condition_label_1 = transcript.condition_labels[0]
-        condition_label_2 = transcript.condition_labels[1]
+        condition_label_1, condition_label_2 = self._experiment.get_condition_labels()
         for kmer_data in kmer_data_list:
             # Make sure we have sufficient reads for all conditions.
             condition_counts = Counter(kmer_data.condition_labels)
             if not all(condition_counts.get(cond, 0) >= self._config.get_min_coverage()
                        for cond in self._experiment.get_condition_labels()):
-                logger.trace(f'Skipping position {kmer_data.pos} due to insuffient coverage in both conditions')
+                logger.trace(f'Skipping position {kmer_data.pos} of transcript {transcript.name} due to insuffient coverage in both conditions')
                 continue
 
             # If we have too many reads, downsample them in a way that
             # will keep the number of reads for the two conditions equal.
             max_reads = self._config.get_downsample_high_coverage()
-            nreads = min(min(condition_counts.values()), max_reads)
-            kmer_data = kmer_data.subsample_reads(nreads)
+            kmer_data = kmer_data.subsample_reads(max_reads, random_state=self._random_state)
 
             valid_positions.append(kmer_data.pos)
             results_dict = {}
             results_dict['kmer_seq'] = kmer_data.kmer
 
-            for method in self._config.get_comparison_methods():
+            comp_methods = set(self._config.get_comparison_methods())
+            auto_test = None
+            if 'auto' in comp_methods:
+                auto_test = self._resolve_auto_test(condition_counts.values())
+                tests.add("auto")
+                comp_methods = comp_methods.difference({'auto'}).union({auto_test})
+
+            for method in comp_methods:
                 if method.upper() in ['MW', 'KS', 'TT']:
                     try:
                         intensity_data_1 = kmer_data.get_condition_kmer_intensity_data(condition_label_1)
@@ -76,6 +85,9 @@ class TxComp():
                         intensity_pvalue = self._nonparametric_test(intensity_data_1, intensity_data_2, method=method)
                         results_dict[f"{method}_intensity_pvalue"] = intensity_pvalue
                         tests.add(f"{method}_intensity_pvalue")
+                        if method == auto_test:
+                            results_dict['auto_pvalue'] = intensity_pvalue
+                            results_dict['auto_test'] = method
                     except:
                         raise NanocomporeError(f"Error doing {method} intensity test on {transcript.name} at pos {kmer_data.pos}")
 
@@ -102,7 +114,24 @@ class TxComp():
                         raise NanocomporeError(f"Error doing GMM test on {transcript.name}")
                     relevant_gmm_results, gmm_tests = self._extract_gmm_results(gmm_results)
                     results_dict.update(relevant_gmm_results)
-                    gmm_tests.update(gmm_tests)
+                    tests.update(gmm_tests)
+                    if method == auto_test:
+                        results_dict['auto_pvalue'] = relevant_gmm_results['GMM_logit_pvalue']
+                        results_dict['auto_test'] = method
+                elif method == "GOF":
+                    try:
+                        motor_kmer = self._get_motor_kmer(kmer_data, kmer_data_list)
+                        if self._experiment.is_multi_replicate():
+                            gof_pval = gof_test_multirep(kmer_data, motor_kmer=motor_kmer, experiment=self._experiment)
+                        else:
+                            gof_pval = gof_test_singlerep(kmer_data, motor_kmer=motor_kmer, experiment=self._experiment)
+                    except:
+                        raise NanocomporeError(f"Error doing GOF test on {transcript.name}")
+                    results_dict[f"GOF_pvalue"] = gof_pval
+                    tests.add(f"GOF_pvalue")
+                    if method == auto_test:
+                        results_dict['auto_pvalue'] = gof_pval
+                        results_dict['auto_test'] = method
 
             # Calculate shift statistics
             #sys.stderr.write(f"Calculatign shift stats for {pos} of {transcript.name}\n")
@@ -179,6 +208,17 @@ class TxComp():
                                 total_results_dict[mid_pos][test_label] = self._combine_pvalues_hou(pval_list_dict[test], weights, corr_matrix_dict[test])
 
         return total_results_dict
+
+
+    def _resolve_auto_test(self, condition_counts):
+        min_coverage = min(condition_counts)
+        if min_coverage < 256:
+            return 'KS'
+        elif min_coverage < 1024:
+            return 'GMM'
+        elif min_coverage >= 1024:
+            return 'GOF'
+        return 'KS'
 
 
     def _get_motor_kmer(self, kmer, kmers):

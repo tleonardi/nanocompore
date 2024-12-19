@@ -1,0 +1,85 @@
+from collections import Counter
+
+import numpy as np
+
+from scipy.stats import kstest
+from scipy.stats import multivariate_normal
+from sklearn.preprocessing import StandardScaler
+
+from loguru import logger
+
+from nanocompore.common import get_kmer_data
+
+
+def gof_test_singlerep(kmer_data, motor_kmer, experiment):
+    control_label = experiment.get_depleted_condition()
+
+    data, sample_labels, condition_labels = get_kmer_data(kmer_data, motor_kmer, experiment)
+
+    control_data = data[condition_labels == control_label]
+    test_data = data[condition_labels != control_label]
+
+    scaler = StandardScaler()
+    x_control = scaler.fit_transform(control_data)
+    x_test = scaler.transform(test_data)
+
+    mean_control = np.mean(x_control, axis=0)
+    cov_control = np.cov(x_control, rowvar=0)
+
+    probs_control = multivariate_normal.pdf(x_control,
+                                            mean=mean_control,
+                                            cov=cov_control,
+                                            allow_singular=True)
+    probs_test = multivariate_normal.pdf(x_test,
+                                         mean=mean_control,
+                                         cov=cov_control,
+                                         allow_singular=True)
+
+    result = kstest(probs_test, probs_control)
+    return result.pvalue
+
+
+def gof_test_multirep(kmer_data, motor_kmer, experiment):
+    control_label = experiment.get_depleted_condition()
+    test_label = experiment.get_test_condition()
+
+    data, sample_labels, condition_labels = get_kmer_data(kmer_data, motor_kmer, experiment)
+
+    sample_counts = Counter(samples)
+    if len(sample_counts) < len(experiment.get_sample_labels()) or min(sample_counts.values()) < 30:
+        return None
+
+    internal_likelihoods = []
+    external_likelihoods = []
+
+    control_samples = experiment.condition_to_samples(control_label)
+    test_samples = experiment.condition_to_samples(test_label)
+
+    for sample in control_samples:
+        sample_data = data[sample_labels == sample]
+        sample_mean = np.mean(sample_data, axis=0)
+        sample_cov = np.cov(sample_data, rowvar=False)
+
+        tech_replicates = [s for s in control_samples if s != sample]
+        for replicate in tech_replicates:
+            replicate_data = data[sample_labels == replicate]
+            likelihood = multivariate_normal.pdf(replicate_data,
+                                                 mean=sample_mean,
+                                                 cov=sample_cov,
+                                                 allow_singular=True)
+            internal_likelihoods.append(likelihood)
+
+        for bio_replicate in test_samples:
+            replicate_data = data[sample_labels == bio_replicate]
+            likelihood = multivariate_normal.pdf(replicate_data,
+                                                 mean=sample_mean,
+                                                 cov=sample_cov,
+                                                 allow_singular=True)
+            external_likelihoods.append(likelihood)
+
+    internal_likelihoods = np.concatenate(internal_likelihoods)
+    external_likelihoods = np.concatenate(external_likelihoods)
+
+    result = kstest(external_likelihoods, internal_likelihoods)
+    return result.pvalue
+

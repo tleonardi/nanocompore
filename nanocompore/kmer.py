@@ -1,3 +1,7 @@
+from collections import Counter
+
+import numpy as np
+
 from sklearn.model_selection import train_test_split
 
 from nanocompore.common import NanocomporeError
@@ -61,13 +65,6 @@ class KmerData:
                 for s in self.sample_labels]
 
 
-    # def get_condition_kmer_data(self, condition_label, data_type=''):
-    #     if data_type not in ('intensity', 'dwell'):
-    #         raise NanocomporeError(f"{data_type} is not currently supported")
-
-    #     return self._data[self._data['condition'] == condition_label][data_type]
-
-
     def get_condition_kmer_intensity_data(self, condition_label):
         return self.intensity[[condition_label == cond for cond in self.condition_labels]]
 
@@ -76,20 +73,29 @@ class KmerData:
         return self.dwell[[condition_label == cond for cond in self.condition_labels]]
 
 
-    def subsample_reads(self, nreads, random_state=None):
-        # Use sklearn to take a stratified sumsample, such
-        # that we get an equal number of reads per condition.
-        selected, _ = train_test_split(list(range(len(self.intensity))),
-                                       train_size=nreads,
-                                       stratify=self.condition_labels,
-                                       random_state=random_state)
+    def subsample_reads(self, maximum, random_state=None):
+        if all(count <= maximum for count in Counter(self.condition_labels).values()):
+            return self
+
+        rand = np.random.default_rng(seed=random_state)
+        indices = np.arange(0, len(self.reads))
+        all_selected = []
+        for condition in set(self.condition_labels):
+            condition_mask = np.array(self.condition_labels) == condition
+            selected = rand.permutation(indices[condition_mask])[:maximum]
+            all_selected.extend(selected)
+
+        mask = np.full(len(self.reads), False)
+        for i in all_selected:
+            mask[i] = True
+
         return KmerData(self.pos,
                         self.kmer,
-                        self.sample_labels[selected],
-                        self.reads[selected] if self.reads is not None else None,
-                        self.intensity[selected],
-                        self.sd[selected],
-                        self.dwell[selected],
+                        self.sample_labels[mask],
+                        self.reads[mask] if self.reads is not None else None,
+                        self.intensity[mask],
+                        self.sd[mask],
+                        self.dwell[mask],
                         self._valid,
                         self._experiment)
 
