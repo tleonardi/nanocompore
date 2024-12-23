@@ -10,13 +10,13 @@ from sklearn.preprocessing import StandardScaler
 from nanocompore.common import get_kmer_data
 
 
-def gof_test_singlerep(kmer_data, motor_kmer, config):
+def gof_test_singlerep(data, conditions, config):
     control_label = config.get_depleted_condition()
 
-    data, sample_labels, condition_labels = get_kmer_data(kmer_data, motor_kmer, config)
+    # data, sample_labels, condition_labels = get_kmer_data(kmer_data, motor_kmer, config)
 
-    control_data = data[condition_labels == control_label]
-    test_data = data[condition_labels != control_label]
+    control_data = data[condition_labels == control_label, :]
+    test_data = data[condition_labels != control_label, :]
 
     scaler = StandardScaler()
     x_control = scaler.fit_transform(control_data)
@@ -38,16 +38,16 @@ def gof_test_singlerep(kmer_data, motor_kmer, config):
     return result.pvalue
 
 
-def gof_test_multirep(kmer_data, motor_kmer, config):
+def gof_test_multirep(data, samples, conditions, config):
     control_label = config.get_depleted_condition()
     test_label = config.get_test_condition()
 
-    data, sample_labels, condition_labels = get_kmer_data(kmer_data, motor_kmer, config)
+    # data, sample_labels, condition_labels = get_kmer_data(kmer_data, motor_kmer, config)
 
-    sample_counts = Counter(sample_labels)
-    if len(sample_counts) < len(config.get_sample_labels()) or \
-       min(sample_counts.values()) < config.get_min_coverage():
-        return None
+    # sample_counts = Counter(samples)
+    # if len(sample_counts) < len(config.get_sample_labels()) or \
+    #    min(sample_counts.values()) < config.get_min_coverage():
+    #     return None
 
     internal_likelihoods = []
     external_likelihoods = []
@@ -56,13 +56,13 @@ def gof_test_multirep(kmer_data, motor_kmer, config):
     test_samples = config.get_condition_samples(test_label)
 
     for sample in control_samples:
-        sample_data = data[sample_labels == sample]
+        sample_data = data[samples == sample]
         sample_mean = np.mean(sample_data, axis=0)
         sample_cov = np.cov(sample_data, rowvar=False)
 
         tech_replicates = [s for s in control_samples if s != sample]
         for replicate in tech_replicates:
-            replicate_data = data[sample_labels == replicate]
+            replicate_data = data[samples == replicate]
             likelihood = multivariate_normal.pdf(replicate_data,
                                                  mean=sample_mean,
                                                  cov=sample_cov,
@@ -70,7 +70,7 @@ def gof_test_multirep(kmer_data, motor_kmer, config):
             internal_likelihoods.append(likelihood)
 
         for bio_replicate in test_samples:
-            replicate_data = data[sample_labels == bio_replicate]
+            replicate_data = data[samples == bio_replicate]
             likelihood = multivariate_normal.pdf(replicate_data,
                                                  mean=sample_mean,
                                                  cov=sample_cov,

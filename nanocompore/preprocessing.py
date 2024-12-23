@@ -110,7 +110,7 @@ class Preprocessor:
 
     def _write_metadata(self):
         resquiggler = self._config.get_resquiggler()
-        condition_samples = self._config.get_condition_samples()
+        condition_samples = self._config.get_data()
         metadata = {
             DB_METADATA_RESQUIGGLER_KEY: resquiggler,
             DB_METADATA_READ_ID_TYPE_KEY: READ_ID_TYPE.__name__,
@@ -735,7 +735,7 @@ class EventalignPreprocessor(Preprocessor):
             for future in as_completed(futures):
                 sample, db = future.result()
                 logger.info(f"Input eventalign for sample {sample} has been collapsed and saved at {db}")
-                condition = self._config.sample_to_condition(sample)
+                condition = self._config.sample_to_condition()[sample]
                 self._config.get_data()[condition][sample]['eventalign_db'] = db
 
 

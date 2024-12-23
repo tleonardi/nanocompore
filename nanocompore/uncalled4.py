@@ -54,7 +54,7 @@ class Uncalled4:
 
                 read_ids.append(read.query_name)
                 sample_labels.append(sample)
-                condition_labels.append(self._config.sample_to_condition(sample))
+                condition_labels.append(self._config.sample_to_condition()[sample])
 
                 read_index += 1
 

@@ -181,7 +181,7 @@ class resultsManager():
         for column in df.columns:
             if 'pvalue' in column:
                 # Get the p-values from the column
-                pvals = df[column].values
+                pvals = np.array(df[column].values, dtype=float)
 
                 # Correct the p-values using the Benjamini-Hochberg method.
                 # We'll ignore NaNs when performing the correction.
@@ -204,7 +204,7 @@ class resultsManager():
         test: input=[0.1, 0.01, np.nan, 0.01, 0.5, 0.4, 0.01, 0.001, np.nan, np.nan, 0.01, np.nan]
         out: array([0.13333333, 0.016, nan, 0.016, 0.5, 0.45714286, 0.016, 0.008, nan, nan, 0.016, nan])
         """
-        if all([np.isnan(p) for p in pvalues]):
+        if np.isnan(pvalues).all():
             return pvalues
 
         pvalues_no_nan = [p for p in pvalues if not np.isnan(p)]

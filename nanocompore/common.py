@@ -566,3 +566,17 @@ def decode_kmer(encoding, kmer_size):
         encoding >>= 2
     return ''.join(kmer[::-1])
 
+
+def chunks(iterator, chunk_size):
+    chunk = []
+    i = 0
+    for elem in iterator:
+        chunk.append(elem)
+        i += 1
+        if i == chunk_size:
+            yield chunk
+            chunk = []
+            i = 0
+    if len(chunk) > 0:
+        yield chunk
+

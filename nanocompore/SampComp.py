@@ -14,6 +14,7 @@ import nanocompore.SampCompResultsmanager as SampCompResultsmanager
 
 from nanocompore.Transcript import Transcript
 from nanocompore.TxComp import TxComp
+from nanocompore.batch_comp import BatchComp
 from nanocompore.common import *
 from nanocompore.kmer import KmerData
 
@@ -37,7 +38,7 @@ class SampComp(object):
     transcript to detect the presence of likely modifications.
     """
 
-    def __init__(self, config):
+    def __init__(self, config, random_state=42):
         """
         Initialise a `SampComp` object and generates a white list of references with sufficient coverage for subsequent analysis.
         The retuned object can then be called to start the analysis.
@@ -53,6 +54,7 @@ class SampComp(object):
         self._processing_threads = self._config.get_nthreads() - 1
         self._value_type = get_measurement_type(self._config.get_resquiggler())
         self._sample_labels = self._config.get_sample_labels()
+        self._random_state = random_state
 
 
     def __call__(self):
@@ -84,8 +86,9 @@ class SampComp(object):
         else:
             logger.info(f"Found a total of {len(transcripts)} transcripts for processing.")
 
-        for ref_id in transcripts:
-            task_queue.put(ref_id)
+        
+        for ref_ids in chunks(transcripts, 1):
+            task_queue.put(ref_ids)
 
         # add poison pills to kill the workers
         for _ in range(self._processing_threads):
@@ -99,9 +102,8 @@ class SampComp(object):
                 if finished_workers == self._processing_threads:
                     break
                 continue
+
             ref_id, results = msg
-            if len(results) == 0:
-                continue
             resultsManager.save_results(ref_id, results)
 
         for worker in workers:
@@ -112,38 +114,72 @@ class SampComp(object):
 
     def _process_transcripts(self, worker_id, task_queue, result_queue):
         fasta_fh = Fasta(self._config.get_fasta_ref())
-        txComp = TxComp(config=self._config, random_state=26)
+        # txComp = TxComp(config=self._config, random_state=26)
+        batch_comp = BatchComp(config=self._config)
+        kit = self._config.get_kit()
 
         db = self._config.get_kmer_data_db()
         with closing(sqlite3.connect(db)) as conn,\
              closing(conn.cursor()) as cursor:
             while True:
-                transcript_ref = task_queue.get()
-                if transcript_ref is None:
+                transcript_refs = task_queue.get()
+                if transcript_refs is None:
                     logger.info(f"Worker {worker_id} has finished and will terminate.")
                     result_queue.put(DONE_MSG)
                     return
 
+                # tx_id_to_ref_name = {ref.id: ref.ref_id
+                #                      for ref in transcript_refs}
+                tx_id_to_transcript = {ref.id: Transcript(ref_id=ref.ref_id,
+                                                          ref_seq=str(fasta_fh[ref.ref_id]))
+                                       for ref in transcript_refs}
+
                 try:
-                    logger.debug(f"Worker {worker_id} got new transcript for processing: {transcript_ref.ref_id}")
-                    ref_seq = str(fasta_fh[transcript_ref.ref_id])
-                    transcript = Transcript(ref_id=transcript_ref.ref_id, ref_seq=ref_seq)
-                    logger.debug(f"Worker {worker_id} starts reading data for transcript: {transcript_ref.ref_id}")
-                    kmer_data_list = self._read_transcript_kmer_data(transcript_ref, cursor)
-                    logger.debug(f"Worker {worker_id} starts comparing data for transcript: {transcript_ref.ref_id}")
-                    results = txComp.txCompare(kmer_data_list, transcript)
-                    logger.debug(f"Worker {worker_id} finished comparing data for transcript: {transcript_ref.ref_id}. Results: {len(results)}")
-                    result_queue.put((transcript_ref.ref_id, results))
+                    # logger.debug(f"Worker {worker_id} got new transcript for processing: {transcript_ref.ref_id}")
+                    # ref_seqs = {ref.ref_id: str(fasta_fh[ref.ref_id])
+                    #             for ref in transcript_refs}
+                    # transcript = Transcript(ref_id=transcript_ref.ref_id, ref_seq=ref_seq)
+                    # logger.debug(f"Worker {worker_id} starts reading data for transcript: {transcript_ref.ref_id}")
+                    kmer_data_list = self._read_transcript_kmer_data(transcript_refs, cursor)
+                    all_test_results = batch_comp.compare_transcripts(kmer_data_list)
+
+                    for tx_id in all_test_results['transcript_id'].unique():
+                        df = all_test_results[all_test_results.transcript_id == tx_id].copy()
+                        transcript = tx_id_to_transcript[tx_id]
+                        ref_id = transcript.name
+                        seq = transcript.seq
+                        kmers = df.pos.apply(lambda pos: get_pos_kmer(pos, seq, kit))
+                        df['kmer'] = kmers.apply(encode_kmer)
+                        result_queue.put((ref_id, df))
+
+                    # results = {}
+                    # for (tx_id, pos), test_results in all_test_results.items():
+                    #     transcript = tx_id_to_transcript[tx_id]
+                    #     ref_id = transcript.name
+                    #     seq = transcript.seq
+                    #     kmer = get_pos_kmer(pos, seq, self._config.get_kit())
+                    #     test_results['kmer'] = kmer
+                    #     results[(ref_id, pos)] = test_results
+                    # result_queue.put(results)
+
+                    # result_queue.put({(, pos): test_results | get_pos_kmer()tx_id_to_transcript[tx_id].ref_seq[pos-]
+                    #                   for (tx_id, pos), test_results in results.items()})
+
+                    # logger.debug(f"Worker {worker_id} starts comparing data for transcript: {transcript_ref.ref_id}")
+                    # results = txComp.txCompare(kmer_data_list, transcript)
+                    # logger.debug(f"Worker {worker_id} finished comparing data for transcript: {transcript_ref.ref_id}. Results: {len(results)}")
+                    # result_queue.put((transcript_ref.ref_id, results))
                 except Exception:
                     msg = traceback.format_exc()
-                    logger.error(f"Error in Worker {worker_id} for {transcript_ref.ref_id}: {msg}")
+                    logger.error(f"Error in Worker {worker_id}: {msg}")
 
 
-    def _read_transcript_kmer_data(self, transcript_ref, cursor):
-        res = cursor.execute("""SELECT *
-                                FROM kmer_data
-                                WHERE transcript_id = ?""",
-                             (transcript_ref.id,))
+    def _read_transcript_kmer_data(self, transcript_refs, cursor):
+        params = ','.join(['?' for _ in transcript_refs])
+        res = cursor.execute(f"""SELECT *
+                                 FROM kmer_data
+                                 WHERE transcript_id IN ({params})""",
+                             [ref.id for ref in transcript_refs])
 
         kmers = [self._db_row_to_kmer(row)
                  for row in res.fetchall()]
@@ -156,13 +192,21 @@ class SampComp(object):
                         for kmer in kmers
                         for read_id in kmer.reads}
         valid_read_ids = self._get_valid_read_ids(cursor, all_read_ids)
-        logger.debug(f"Found {len(valid_read_ids)} valid reads out of {len(all_read_ids)} total for {transcript_ref.ref_id}.")
-        return [self._filter_reads(kmer, valid_read_ids) for kmer in kmers]
+        logger.debug(f"Found {len(valid_read_ids)} valid reads out of {len(all_read_ids)}.")
+        # discard invalid reads
+        kmers = [self._filter_reads(kmer, valid_read_ids) for kmer in kmers]
+        # get only kmers that have the minimum number of reads required
+        kmers = [kmer for kmer in kmers if self._enough_reads_in_kmer(kmer)]
+        # discard excesive reads
+        max_reads = self._config.get_downsample_high_coverage()
+        return [kmer.subsample_reads(max_reads, random_state=self._random_state)
+                for kmer in kmers]
 
 
     def _filter_reads(self, kmer, valid_read_ids):
         valid_mask = [read in valid_read_ids for read in kmer.reads]
-        return KmerData(kmer.pos,
+        return KmerData(kmer.transcript_id,
+                        kmer.pos,
                         kmer.kmer,
                         kmer.sample_labels[valid_mask],
                         kmer.reads[valid_mask],
@@ -171,6 +215,12 @@ class SampComp(object):
                         kmer.dwell[valid_mask],
                         None, # We don't have validity data here
                         self._config)
+
+    
+    def _enough_reads_in_kmer(self, kmer):
+        condition_counts = Counter(kmer.condition_labels)
+        return all(condition_counts.get(cond, 0) >= self._config.get_min_coverage()
+                   for cond in self._config.get_condition_labels())
 
 
     def _db_row_to_kmer(self, row):
@@ -181,7 +231,8 @@ class SampComp(object):
         sd = np.frombuffer(row[6], dtype=self._value_type)
         dwell = np.frombuffer(row[7], dtype=self._value_type)
 
-        return KmerData(row[1], # pos
+        return KmerData(row[0], # transcript id
+                        row[1], # pos
                         row[2], # kmer
                         samples,
                         read_ids,
@@ -210,7 +261,7 @@ class SampComp(object):
         with closing(sqlite3.connect(db)) as conn,\
              closing(conn.cursor()) as cursor:
             query = f"""
-            SELECT t.reference, t.id
+            SELECT DISTINCT t.reference, t.id
             FROM kmer_data kd
             INNER JOIN transcripts t ON kd.transcript_id = t.id
             """

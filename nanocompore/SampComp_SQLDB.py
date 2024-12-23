@@ -78,15 +78,20 @@ class SampCompDB():
              closing(conn.cursor()) as cursor:
             cursor.execute("INSERT INTO transcripts (name) VALUES (?)", (ref_id,))
             tx_id = cursor.lastrowid
-            test_columns = self._get_test_columns(test_results)
+            # test_columns = self._get_test_columns(test_results)
+            test_columns = dict(zip(test_results.columns, test_results.dtypes))
+            # self._create_missing_columns(test_columns, cursor)
             self._create_missing_columns(test_columns, cursor)
-            query, data = self._prepare_test_results_query_and_data(tx_id,
-                                                                    test_results,
-                                                                    test_columns)
-            cursor.execute('commit')
-            cursor.execute('begin')
-            cursor.executemany(query, data)
-            cursor.execute('commit')
+            test_results.to_sql('kmer_results', conn, if_exists='append', index=False)
+
+
+            # query, data = self._prepare_test_results_query_and_data(tx_id,
+            #                                                         test_results,
+            #                                                         test_columns)
+            # cursor.execute('commit')
+            # cursor.execute('begin')
+            # cursor.executemany(query, data)
+            # cursor.execute('commit')
 
 
     def index_database(self):
@@ -128,19 +133,19 @@ class SampCompDB():
                 for key, value in pos_results.items()}
 
 
-    def _prepare_test_results_query_and_data(self, tx_id, test_results, test_columns):
-        test_columns = list(test_columns.keys())
-        columns = ['transcript_id', 'pos', 'kmer'] + test_columns
-        params = ['?' for _ in columns]
-        data = [(tx_id,
-                 pos,
-                 encode_kmer(pos_results['kmer']),
-                 *[pos_results.get(col, None) for col in test_columns])
-                for pos, pos_results in test_results.items()]
-        query = f"""
-        INSERT INTO kmer_results ({','.join(columns)})
-        VALUES ({','.join(params)})"""
-        return query, data
+    # def _prepare_test_results_query_and_data(self, tx_id, test_results, test_columns):
+    #     test_columns = list(test_columns.keys())
+    #     columns = ['transcript_id', 'pos', 'kmer'] + test_columns
+    #     params = ['?' for _ in columns]
+    #     data = [(tx_id,
+    #              pos,
+    #              encode_kmer(pos_results['kmer']),
+    #              *[pos_results.get(col, None) for col in test_columns])
+    #             for pos, pos_results in test_results.items()]
+    #     query = f"""
+    #     INSERT INTO kmer_results ({','.join(columns)})
+    #     VALUES ({','.join(params)})"""
+    #     return query, data
 
 
     def _setup_database(self, result_exists_strategy):

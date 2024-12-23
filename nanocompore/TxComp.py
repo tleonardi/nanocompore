@@ -44,17 +44,17 @@ class TxComp():
         valid_positions = []
         condition_label_1, condition_label_2 = self._config.get_condition_labels()
         for kmer_data in kmer_data_list:
-            # Make sure we have sufficient reads for all conditions.
-            condition_counts = Counter(kmer_data.condition_labels)
-            if not all(condition_counts.get(cond, 0) >= self._config.get_min_coverage()
-                       for cond in self._config.get_condition_labels()):
-                logger.trace(f'Skipping position {kmer_data.pos} of transcript {transcript.name} due to insuffient coverage in both conditions')
-                continue
+            # # Make sure we have sufficient reads for all conditions.
+            # condition_counts = Counter(kmer_data.condition_labels)
+            # if not all(condition_counts.get(cond, 0) >= self._config.get_min_coverage()
+            #            for cond in self._config.get_condition_labels()):
+            #     logger.trace(f'Skipping position {kmer_data.pos} of transcript {transcript.name} due to insuffient coverage in both conditions')
+            #     continue
 
-            # If we have too many reads, downsample them in a way that
-            # will keep the number of reads for the two conditions equal.
-            max_reads = self._config.get_downsample_high_coverage()
-            kmer_data = kmer_data.subsample_reads(max_reads, random_state=self._random_state)
+            # # If we have too many reads, downsample them in a way that
+            # # will keep the number of reads for the two conditions equal.
+            # max_reads = self._config.get_downsample_high_coverage()
+            # kmer_data = kmer_data.subsample_reads(max_reads, random_state=self._random_state)
 
             valid_positions.append(kmer_data.pos)
             results_dict = {}

@@ -7,7 +7,18 @@ from sklearn.model_selection import train_test_split
 from nanocompore.common import NanocomporeError
 
 class KmerData:
-    def __init__(self, pos, kmer, sample_labels, reads, intensity, intensity_std, dwell, valid, config):
+    def __init__(self,
+                 transcript_id,
+                 pos,
+                 kmer,
+                 sample_labels,
+                 reads,
+                 intensity,
+                 intensity_std,
+                 dwell,
+                 valid,
+                 config):
+        self._transcript_id = transcript_id
         self._kmer = kmer
         self._pos = pos
         self._sample_labels = sample_labels
@@ -17,6 +28,11 @@ class KmerData:
         self._dwell = dwell
         self._valid = valid
         self._config = config
+
+
+    @property
+    def transcript_id(self):
+        return self._transcript_id
 
 
     @property
@@ -50,6 +66,12 @@ class KmerData:
 
 
     @property
+    def sample_ids(self):
+        sample_to_id = self._config.get_sample_ids()
+        return np.vectorize(sample_to_id.get)(self._sample_labels)
+    
+
+    @property
     def reads(self):
         return self._reads
 
@@ -63,6 +85,14 @@ class KmerData:
     def condition_labels(self):
         samp_to_cond = self._config.sample_to_condition()
         return [samp_to_cond[s] for s in self.sample_labels]
+
+
+    @property
+    def condition_ids(self):
+        depleted = self._config.get_depleted_condition()
+        samp_to_cond = self._config.sample_to_condition()
+        conditions = np.vectorize(samp_to_cond.get)(self._sample_labels)
+        return (conditions != depleted).astype(int)
 
 
     def get_condition_kmer_intensity_data(self, condition_label):
@@ -89,7 +119,8 @@ class KmerData:
         for i in all_selected:
             mask[i] = True
 
-        return KmerData(self.pos,
+        return KmerData(self,transcript_id,
+                        self.pos,
                         self.kmer,
                         self.sample_labels[mask],
                         self.reads[mask] if self.reads is not None else None,
