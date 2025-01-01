@@ -1,7 +1,9 @@
 import warnings
+import gc
 
 from collections import defaultdict
 
+import time
 import numpy as np
 import pandas as pd
 import statsmodels.discrete.discrete_model as dm
@@ -9,7 +11,7 @@ import torch
 
 from gmm_gpu.gmm import GMM
 from loguru import logger
-from scipy.stats import mannwhitneyu, ttest_ind
+from scipy.stats import mannwhitneyu, ttest_ind, chi2_contingency
 from scipy.stats.mstats import ks_twosamp
 from statsmodels.tools.sm_exceptions import ConvergenceWarning
 from statsmodels.tools.sm_exceptions import PerfectSeparationWarning
@@ -18,6 +20,8 @@ from nanocompore.common import MOTOR_DWELL_EFFECT_OFFSET
 from nanocompore.common import NanocomporeError
 from nanocompore.gof_tests import gof_test_multirep
 from nanocompore.gof_tests import gof_test_singlerep
+
+from nanocompore.gmm_statistics import fit_best_gmm
 
 
 INTENSITY = 0
@@ -36,21 +40,36 @@ class BatchComp:
     def compare_transcripts(self, kmers):
         n_positions = len(kmers)
         logger.debug("Start converting kmers to tensor format")
-        data, samples, conditions, positions, transcripts = self._kmers_to_tensor(kmers)
-        logger.debug("Finished converting kmers to tensor format")
+        t = time.time()
+        data, samples, conditions, positions, transcripts = retry(lambda: self._kmers_to_tensor(kmers),
+                                                                  exception=torch.OutOfMemoryError)
 
-        auto_test_mask = self._auto_test_mask(conditions)
+        # Standardize the data
+        data = (data - data.nanmean(1).unsqueeze(1)) / self._nanstd(data, 1).unsqueeze(1)
+        logger.debug(f"Finished converting kmers to tensor format ({time.time() - t})")
+
+        auto_test_mask = None
+        has_auto = 'auto' in self._config.get_comparison_methods()
+        if has_auto:
+            auto_test_mask = self._auto_test_mask(conditions)
         test_masks = self._get_test_masks(auto_test_mask, n_positions)
 
         results = pd.DataFrame({'transcript_id': transcripts,
                                 'pos': positions})
         for test, mask in test_masks.items():
+            logger.debug(f"Start {test}")
+            t = time.time()
             test_results = self._run_test(test,
                                           data[mask, :, :],
                                           samples[mask, :],
                                           conditions[mask, :])
-            self._merge_results(results, test_results, mask, n_positions)
-        self._add_shift_stats(results, data, conditions)
+            logger.debug(f"Finished {test} ({time.time() - t})")
+            self._merge_results(results, test_results, test, mask, auto_test_mask, n_positions)
+        logger.debug(f"Start shift stats")
+        t = time.time()
+        retry(lambda: self._add_shift_stats(results, data, conditions),
+              exception=torch.OutOfMemoryError)
+        logger.debug(f"Finished shift stats ({time.time() - t})")
 
         return results
 
@@ -69,34 +88,35 @@ class BatchComp:
             n_reads = 0
         dims = 3
 
-        data = torch.full((n_positions, n_reads, dims), np.nan)
-        samples = torch.empty(n_positions, n_reads, dtype=int)
-        conditions = torch.empty(n_positions, n_reads, dtype=int)
-        positions = torch.empty(n_positions, dtype=int)
-        transcripts = torch.empty(n_positions, dtype=int)
+        device = self._config.get_device()
+        data = torch.full((n_positions, n_reads, dims), np.nan, device=device)
+        samples = torch.empty(n_positions, n_reads, dtype=torch.float32, device=device)
+        conditions = torch.empty(n_positions, n_reads, dtype=torch.float32, device=device)
+        positions = torch.empty(n_positions, dtype=int, device=device)
+        transcripts = torch.empty(n_positions, dtype=int, device=device)
 
         for i, kmer in enumerate(kmers):
             motor_kmer = self._get_motor_kmer(kmer, kmers)
             reads = transcript_reads[kmer.transcript_id]
             read_order = np.vectorize(reads.get)(kmer.reads)
-            data[i, :, INTENSITY] = self._order_values(n_reads, read_order, kmer, kmer.intensity)
-            data[i, :, DWELL] = self._order_values(n_reads, read_order, kmer, kmer.dwell)
+            data[i, :, INTENSITY] = self._order_values(n_reads, read_order, kmer.intensity)
+            data[i, :, DWELL] = self._order_values(n_reads, read_order, kmer.dwell)
             if motor_kmer:
                 motor_read_order = np.vectorize(reads.get)(motor_kmer.reads)
                 data[i, :, MOTOR] = self._order_values(n_reads,
                                                        motor_read_order,
-                                                       motor_kmer,
                                                        motor_kmer.dwell)
-            samples[i, :] = self._order_values(n_reads, read_order, kmer, kmer.sample_ids)
-            conditions[i, :] = self._order_values(n_reads, read_order, kmer, kmer.condition_ids)
+            samples[i, :] = self._order_values(n_reads, read_order, kmer.sample_ids)
+            conditions[i, :] = self._order_values(n_reads, read_order, kmer.condition_ids)
             positions[i] = kmer.pos
             transcripts[i] = kmer.transcript_id
-        return data, samples, conditions, positions, transcripts
+        return data.cpu(), samples.cpu(), conditions.cpu(), positions.cpu(), transcripts.cpu()
 
 
-    def _order_values(self, n_reads, read_order, kmer, prop):
-        values = torch.full((n_reads,), np.nan)
-        values[read_order] = torch.tensor(prop, dtype=torch.float32)
+    def _order_values(self, n_reads, read_order, prop, dtype=torch.float32):
+        device = self._config.get_device()
+        values = torch.full((n_reads,), np.nan, device=device)
+        values[read_order] = torch.tensor(prop, dtype=dtype, device=device)
         return values
 
 
@@ -110,7 +130,7 @@ class BatchComp:
 
     def _get_test_masks(self, auto_test_mask, n_positions):
         base_tests = set(self._config.get_comparison_methods()) - {'auto'}
-        additional_tests = set(auto_test_mask) - base_tests
+        additional_tests = set(auto_test_mask or []) - base_tests
         masks = {}
         for test in base_tests:
             masks[test] = np.ones(n_positions, dtype=bool)
@@ -160,15 +180,25 @@ class BatchComp:
             raise NotImplementedError(f"Test {test} is not implemented!")
 
 
-    def _merge_results(self, results, test_results, mask, n_positions):
+    def _merge_results(self, results, test_results, test, mask, auto_test_mask, n_positions):
+        has_auto = 'auto' in self._config.get_comparison_methods()
+
+        if has_auto and 'auto_pvalue' not in results:
+            results['auto_pvalue'] = np.full(n_positions, np.nan)
+            results['auto_test'] = auto_test_mask
+        
         for column, values in test_results.items():
             assigned_values = np.full(n_positions, np.nan)
-            i = 0
-            for included in mask:
+            current_value = 0
+            for i, included in enumerate(mask):
                 if included:
-                    assigned_values[i] = values[i]
-                    i += 1
+                    assigned_values[i] = values[current_value]
+                    current_value += 1
             results[column] = assigned_values
+            if has_auto and 'pvalue' in column:
+                results['auto_pvalue'] = np.where(auto_test_mask == test,
+                                                  assigned_values,
+                                                  results['auto_pvalue'])
 
 
     def _nonparametric_test(self, test, test_data, conditions):
@@ -212,7 +242,7 @@ class BatchComp:
     def _gof_test_singlerep(self, test_data, conditions):
         pvals = []
         for i in range(test_data.shape[0]):
-            pval = gof_test_singlerep(test_data[i, :, :], conditions, self._config)
+            pval = gof_test_singlerep(test_data[i, :, :], conditions[i, :], self._config)
             pvals.append(pval)
         return {'GOF_pvalue': pvals}
 
@@ -220,7 +250,7 @@ class BatchComp:
     def _gof_test_multirep(self, test_data, samples, conditions):
         pvals = []
         for i in range(test_data.shape[0]):
-            pval = gof_test_multirep(test_data[i, :, :], conditions, self._config)
+            pval = gof_test_multirep(test_data[i, :, :], conditions[i, :], self._config)
             pvals.append(pval)
         return {'GOF_pvalue': pvals}
 
@@ -237,12 +267,14 @@ class BatchComp:
         indices = torch.arange(test_data.shape[0])
         pvals = []
         lors = []
-        dim3_results = self._gmm_test_split(dim3_data,
-                                            conditions[split == 0, :],
-                                            indices[split == 0])
-        dim2_results = self._gmm_test_split(dim2_data,
-                                            conditions[split == 1, :],
-                                            indices[split == 1])
+        if dim3_data.shape[0] > 0:
+            dim3_results = self._gmm_test_split(dim3_data,
+                                                conditions[split == 0, :],
+                                                indices[split == 0])
+        if dim2_data.shape[0] > 0:
+            dim2_results = self._gmm_test_split(dim2_data,
+                                                conditions[split == 1, :],
+                                                indices[split == 1])
         dim3_i = 0
         dim2_i = 0
         for s in split:
@@ -260,28 +292,123 @@ class BatchComp:
 
     def _gmm_test_split(self, test_data, conditions, indices):
         device = self._config.get_device()
-        gmm = GMM(n_components=2, device=device, reg_covar=1e-4)
-        gmm.fit(test_data)
-        pred = gmm.predict(test_data)
+        if device == 'cuda':
+            torch.cuda.empty_cache()
+            s = test_data.element_size() * test_data.nelement()
+            logger.info(f'Tensor size: {s}')
+            logger.info(f'Memory reserved: {torch.cuda.memory_reserved()}')
+            logger.info(f'Memory allocated: {torch.cuda.memory_allocated()}')
+            logger.info(f'meminfo: {torch.cuda.mem_get_info(torch.device("cuda"))}')
+            logger.info(f'X type: {test_data.dtype}')
+            logger.info(f'X shape: {test_data.shape}')
+        # s = time.time()
+        # attempts = 0
+        # exception = None
+        # while attempts < 10:
+        #     try:
+        #         # gmm1 = GMM(n_components=1, device=device, reg_covar=1e-4)
+        #         # gmm1.fit(test_data)
+        #         # bic1 = gmm1.bic(test_data)
+        #         # del gmm1
+        #         # gc.collect()
+        #         # if self._config.get_device() == 'cuda':
+        #         #     torch.cuda.empty_cache()
+        #         #     torch.cuda.reset_peak_memory_stats()
+        #         gmm2 = GMM(n_components=2, device=device, reg_covar=1e-4)
+        #         gmm2.fit(test_data)
+        #         # bic2 = gmm2.bic(test_data)
+        #         # gmm = GMM(n_components=2, device=device, reg_covar=1e-4, dtype=torch.bfloat16)
+        #         # gmm.fit(test_data)
+        #         break
+        #     except torch.OutOfMemoryError as e:
+        #         exception = e
+        #         logger.info(f"GMM out of memory: {attempts}")
+        #         attempts += 1
+        #         time.sleep(5)
+        # else:
+        #     logger.info(f"GMM out of memory too many times: {attempts}")
+        #     raise exception
+        # logger.info(f"GMM fitting time: {time.time() - s}")
+        # pred = gmm2.predict(test_data.to(torch.bfloat16))
+        # del gmm2
+        # gc.collect()
+        # if self._config.get_device() == 'cuda':
+        #     torch.cuda.empty_cache()
+        #     torch.cuda.reset_peak_memory_stats()
         pvals = []
         lors = []
+        dfs = 0
+        gmms = 0
+        logits = 0
         for i in range(test_data.shape[0]):
-            X = pd.DataFrame({'component': conditions[i, :],
-                              'intercept': 1})
-            logit = dm.Logit(pred[i, :], X)
+
+            s3 = time.time()
+
+            valid = ~test_data[i, :, :].isnan().any(1)
+            X = test_data[i, valid, :]
+            try:
+                gmm_fit = fit_best_gmm(X, max_components=2, cv_types=['full'], random_state=26)
+                gmm_mod, gmm_type, gmm_ncomponents = gmm_fit
+                gmms += time.time() - s3
+            except Exception as e:
+                logger.error(f"Fail in GMM fitting {e}")
+                pvals.append(np.nan)
+                lors.append(np.nan)
+                continue
+            
+            if gmm_ncomponents < 2:
+                pvals.append(1)
+                lors.append(0)
+                continue
+
+            pred = gmm_mod.predict(X)
+
+            # If the BIC with one component fits better
+            # we conclude that there's no modification.
+            # if bic1[i] <= bic2[i]:
+            #     pvals.append(1)
+            #     lors.append(0)
+            #     continue
+
+            # valid = ~conditions[i, :].isnan()
+            s2 = time.time()
+
+            # contingency = crosstab(conditions[i, valid], pred[i, valid]) + 1
+            # dfs += time.time() - s2
+            # pval = chi2_contingency(contingency).pvalue
+            # pvals.append(pval)
+            # lors.append(np.nan)
+
+            X = np.ones((valid.sum() + 4, 2))
+            X[:, 0] = np.append(conditions[i, valid], [0, 0, 1, 1])
+            # y_pred = np.append(pred[i, valid].numpy(), [0, 0, 1, 1])
+            y_pred = np.append(pred, [0, 0, 1, 1])
+            dfs += time.time() - s2
+            s = time.time()
+            logit = dm.Logit(y_pred, X)
             with warnings.catch_warnings():
                 warnings.filterwarnings('ignore', category=PerfectSeparationWarning)
                 warnings.filterwarnings('ignore', category=ConvergenceWarning)
+                warnings.filterwarnings('ignore', category=RuntimeWarning)
                 try:
-                    logit_res = logit.fit(disp=False)
-                    pval = logit_res.pvalues.iloc[1]
-                    LOR = logit_res.params.iloc[1]
+                    # m = pd.DataFrame({'m': [','.join(xs) for xs in zip(pred[i, :], conditions[i, :])]}).m.value_counts()
+                    # logger.info(f"matching: {m}")
+                    logit_res = logit.fit(method='lbfgs', disp=False)
+                    pval = logit_res.pvalues[0]
+                    LOR = logit_res.params[0]
+                    # pval = chi2_contingency(contingency_table).pvalue
+                    # LOR = np.nan
                     pvals.append(pval)
                     lors.append(LOR)
-                except ConvergenceWarning:
-                    logger.warn('Caught ConvergenceWarning')
+                except Exception as e:
+                    logger.error(f"Error in Logit: {e}")
+                    logger.error(f"Error in Logit data: {y_pred} {y_pred.shape} {sum(y_pred)}")
                     pvals.append(np.nan)
                     lors.append(np.nan)
+            logits += time.time() - s
+        logger.info(f"GMM time: {gmms}")
+        logger.info(f"Logit dataframe creation time: {dfs}")
+        logger.info(f"Logit time: {logits}")
         return {'GMM_logit_pvalue': pvals,
                 'GMM_logit_LOR': lors}
 
@@ -295,33 +422,66 @@ class BatchComp:
 
 
     def _add_shift_stats(self, results, data, conditions):
-        cond0_mask = conditions == 0
-        stats = {
-                'mean': torch.nanmean,
-                'median': torch.nanmedian,
-                'std': lambda v: self._drop_nans(v).std()
-                }
+        data = data.to(self._config.get_device())
+
+        stats = {0: {}, 1: {}}
+        cond0_mask = (conditions == 0).to(self._config.get_device())
+        cond0_data = data * cond0_mask.to(int).unsqueeze(2)
+        stats[0]['mean'] = cond0_data.nanmean(1).to('cpu')
+        stats[0]['median'] = cond0_data.nanmedian(1).values.to('cpu')
+        stats[0]['std'] = self._nanstd(torch.where(cond0_mask.unsqueeze(2).repeat(1, 1, 3) == 0, data, np.nan), 1).to('cpu')
+
+        cond1_mask = ~cond0_mask
+        cond1_data = data * cond1_mask.to(int).unsqueeze(2)
+        stats[1]['mean'] = cond1_data.nanmean(1).to('cpu')
+        stats[1]['median'] = cond1_data.nanmedian(1).values.to('cpu')
+        stats[1]['std'] = self._nanstd(torch.where(cond1_mask.unsqueeze(2).repeat(1, 1, 3) == 1, data, np.nan), 1).to('cpu')
+
         dims = {
                 'intensity': INTENSITY,
                 'dwell': DWELL,
                 'motor_dwell': MOTOR
                }
 
-        for i in range(data.shape[0]):
-            cond0_data = data[:, cond0_mask[i], :]
-            cond1_data = data[:, ~cond0_mask[i], :]
+        for cond in [0, 1]:
+            for stat in ['mean', 'median', 'std']:
+                for dim, dim_index in dims.items():
+                    label = f"c{cond+1}_{stat}_{dim}"
+                    results[label] = stats[cond][stat][:, dim_index]
 
-            conds = {
-                    'c1': cond0_data,
-                    'c2': cond1_data
-                    }
 
-            for cond in conds:
-                for stat in stats:
-                    for dim in dims:
-                        value = stats[stat](conds[cond][:, dims[dim]])
-                        label = f"{cond}_{stat}_{dim}"
-                        if label not in results.columns:
-                            results[label] = np.full(data.shape[0], np.nan)
-                        results.loc[i, label] = value.item()
+    def _nanstd(self, X, dim):
+        nonnans = ((~X.isnan()).to(int).sum(dim))
+        return (((X - X.nanmean(dim).unsqueeze(1)) ** 2).nansum(dim) / nonnans) ** 0.5
 
+
+def retry(fn, delay=5, backoff=5, max_attempts=10, exception=Exception):
+    attempts = 0
+    while attempts < max_attempts - 1:
+        try:
+            return fn()
+        except exception as e:
+            attempts += 1
+            logger.warning(f"Got error {e} on attempt {attempts}/{max_attempts}")
+            time.sleep(delay)
+            delay += backoff
+    else:
+        fn()
+
+
+def crosstab_batch(a, b):
+    B, N = a.shape
+    table = torch.zeros((B, 2, 2), dtype=torch.int64)
+    for i in range(2):
+        for j in range(2):
+            table[:, i, j] = ((a == i) & (b == j)).sum(dim=1)
+    return table
+
+
+def crosstab(a, b):
+    table = torch.zeros((2, 2), dtype=torch.int64)
+    for i in range(2):
+        for j in range(2):
+            table[i, j] = ((a == i) & (b == j)).sum()
+    return table
+    

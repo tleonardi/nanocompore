@@ -89,10 +89,10 @@ class KmerData:
 
     @property
     def condition_ids(self):
-        depleted = self._config.get_depleted_condition()
         samp_to_cond = self._config.sample_to_condition()
         conditions = np.vectorize(samp_to_cond.get)(self._sample_labels)
-        return (conditions != depleted).astype(int)
+        cond_ids = self._config.get_condition_ids()
+        return np.vectorize(cond_ids.get)(conditions)
 
 
     def get_condition_kmer_intensity_data(self, condition_label):

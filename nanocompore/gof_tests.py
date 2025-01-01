@@ -12,15 +12,18 @@ from nanocompore.common import get_kmer_data
 
 def gof_test_singlerep(data, conditions, config):
     control_label = config.get_depleted_condition()
+    control_label_id = config.get_condition_ids()[control_label]
 
     # data, sample_labels, condition_labels = get_kmer_data(kmer_data, motor_kmer, config)
 
-    control_data = data[condition_labels == control_label, :]
-    test_data = data[condition_labels != control_label, :]
+    control_data = data[conditions == control_label_id, :]
+    test_data = data[conditions != control_label_id, :]
 
     scaler = StandardScaler()
     x_control = scaler.fit_transform(control_data)
+    x_control = x_control[~np.isnan(x_control)]
     x_test = scaler.transform(test_data)
+    x_test = x_test[~np.isnan(x_test)]
 
     mean_control = np.mean(x_control, axis=0)
     cov_control = np.cov(x_control, rowvar=0)

@@ -333,6 +333,11 @@ class Config:
         return dict(zip(labels, range(len(labels))))
 
 
+    def get_condition_ids(self):
+        labels = self.get_condition_labels()
+        return dict(zip(labels, range(len(labels))))
+
+
     def sample_to_condition(self):
         return {sample: cond
                 for cond, sample_defs in self.get_data().items()

@@ -88,6 +88,7 @@ class SampComp(object):
 
         
         for ref_ids in chunks(transcripts, 1):
+            #if 'ENST00000681052.1' in ref_ids[0].ref_id:
             task_queue.put(ref_ids)
 
         # add poison pills to kill the workers
@@ -103,8 +104,8 @@ class SampComp(object):
                     break
                 continue
 
-            ref_id, results = msg
-            resultsManager.save_results(ref_id, results)
+            transcript, results = msg
+            resultsManager.save_results(transcript, results)
 
         for worker in workers:
             worker.join()
@@ -130,7 +131,8 @@ class SampComp(object):
 
                 # tx_id_to_ref_name = {ref.id: ref.ref_id
                 #                      for ref in transcript_refs}
-                tx_id_to_transcript = {ref.id: Transcript(ref_id=ref.ref_id,
+                tx_id_to_transcript = {ref.id: Transcript(id=ref.id,
+                                                          ref_id=ref.ref_id,
                                                           ref_seq=str(fasta_fh[ref.ref_id]))
                                        for ref in transcript_refs}
 
@@ -146,11 +148,10 @@ class SampComp(object):
                     for tx_id in all_test_results['transcript_id'].unique():
                         df = all_test_results[all_test_results.transcript_id == tx_id].copy()
                         transcript = tx_id_to_transcript[tx_id]
-                        ref_id = transcript.name
                         seq = transcript.seq
                         kmers = df.pos.apply(lambda pos: get_pos_kmer(pos, seq, kit))
                         df['kmer'] = kmers.apply(encode_kmer)
-                        result_queue.put((ref_id, df))
+                        result_queue.put((transcript, df))
 
                     # results = {}
                     # for (tx_id, pos), test_results in all_test_results.items():

@@ -73,11 +73,10 @@ class SampCompDB():
             return [row[0] for row in cursor.execute(query).fetchall()]
 
 
-    def save_test_results(self, ref_id, test_results):
+    def save_test_results(self, transcript, test_results):
         with closing(sqlite3.connect(self._db_path)) as conn,\
              closing(conn.cursor()) as cursor:
-            cursor.execute("INSERT INTO transcripts (name) VALUES (?)", (ref_id,))
-            tx_id = cursor.lastrowid
+            cursor.execute("INSERT INTO transcripts (id, name) VALUES (?, ?)", (transcript.id, transcript.name))
             # test_columns = self._get_test_columns(test_results)
             test_columns = dict(zip(test_results.columns, test_results.dtypes))
             # self._create_missing_columns(test_columns, cursor)
