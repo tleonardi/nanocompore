@@ -37,44 +37,111 @@ class BatchComp:
         self._config = config
 
 
-    def compare_transcripts(self, kmers):
-        n_positions = len(kmers)
-        logger.debug("Start converting kmers to tensor format")
-        t = time.time()
-        data, samples, conditions, positions, transcripts = retry(lambda: self._kmers_to_tensor(kmers),
-                                                                  exception=torch.OutOfMemoryError)
-
-        # Standardize the data
-        data = (data - data.nanmean(1).unsqueeze(1)) / self._nanstd(data, 1).unsqueeze(1)
-        logger.debug(f"Finished converting kmers to tensor format ({time.time() - t})")
-
-        auto_test_mask = None
-        has_auto = 'auto' in self._config.get_comparison_methods()
-        if has_auto:
-            auto_test_mask = self._auto_test_mask(conditions)
-        test_masks = self._get_test_masks(auto_test_mask, n_positions)
-
-        results = pd.DataFrame({'transcript_id': transcripts,
-                                'pos': positions})
-        for test, mask in test_masks.items():
-            logger.debug(f"Start {test}")
+    def compare_transcripts(self, transcript, kmers):
+        try:
+            print("!@# COMPARE TRANSCRIPTS")
+            n_positions = len(kmers)
+            logger.debug("Start converting kmers to tensor format")
             t = time.time()
-            test_results = self._run_test(test,
-                                          data[mask, :, :],
-                                          samples[mask, :],
-                                          conditions[mask, :])
-            logger.debug(f"Finished {test} ({time.time() - t})")
-            self._merge_results(results, test_results, test, mask, auto_test_mask, n_positions)
-        logger.debug(f"Start shift stats")
-        t = time.time()
-        retry(lambda: self._add_shift_stats(results, data, conditions),
-              exception=torch.OutOfMemoryError)
-        logger.debug(f"Finished shift stats ({time.time() - t})")
+            # data, samples, conditions, positions, transcripts = retry(lambda: self._kmers_to_tensor(kmers),
+            #                                                           exception=torch.OutOfMemoryError)
+            data, samples, conditions, positions = retry(lambda: self._kmers_to_tensor(kmers),
+                                                         exception=torch.OutOfMemoryError)
+            device = self._config.get_device()
+            if device == 'cuda':
+                torch.cuda.empty_cache()
+                torch.cuda.reset_peak_memory_stats()
 
-        return results
+            # TODO remove test
+            pos100 = positions == 100
+            valid = ~conditions[pos100][0].isnan()
+            logger.info(f"Pos 100 valid: {valid.shape} {valid}")
+            posdata = data[pos100, valid, :]
+            logger.info(f"Pos 100 shape: {posdata.shape}")
+            torch.save(posdata, "/work/mzdravkov/pos100_tensor.data")
+            torch.save(conditions[pos100][0, valid], "/work/mzdravkov/pos100_conditions.data")
+
+            # Standardize the data
+            data = (data - data.nanmean(1).unsqueeze(1)) / self._nanstd(data, 1).unsqueeze(1)
+            logger.debug(f"Finished converting kmers to tensor format ({time.time() - t})")
+
+            auto_test_mask = None
+            has_auto = 'auto' in self._config.get_comparison_methods()
+            if has_auto:
+                auto_test_mask = self._auto_test_mask(conditions)
+            test_masks = self._get_test_masks(auto_test_mask, n_positions)
+
+            # results = pd.DataFrame({'transcript_id': transcripts,
+            results = pd.DataFrame({'transcript_id': transcript.id,
+                                    'pos': positions})
+            for test, mask in test_masks.items():
+                logger.debug(f"Start {test}")
+                t = time.time()
+                test_results = self._run_test(test,
+                                              data[mask, :, :],
+                                              samples[mask, :],
+                                              conditions[mask, :])
+                logger.debug(f"Finished {test} ({time.time() - t})")
+                self._merge_results(results, test_results, test, mask, auto_test_mask, n_positions)
+            logger.debug(f"Start shift stats")
+            t = time.time()
+            retry(lambda: self._add_shift_stats(results, data, conditions),
+                  exception=torch.OutOfMemoryError)
+            if device == 'cuda':
+                torch.cuda.empty_cache()
+                torch.cuda.reset_peak_memory_stats()
+            logger.debug(f"Finished shift stats ({time.time() - t})")
+        except Exception as e:
+            e.transcript = transcript
+            raise e
+
+        return transcript, results
 
 
     def _kmers_to_tensor(self, kmers):
+        reads = {read
+                 for kmer in kmers
+                 for read in kmer.reads}
+        n_positions = len(kmers)
+        if len(kmers) > 0:
+            n_reads = max(len(kmer.reads) for kmer in kmers)
+        else:
+            n_reads = 0
+
+        min_pos, max_pos = np.inf, -1
+        for kmer in kmers:
+            if kmer.pos > max_pos:
+                max_pos = kmer.pos
+            if kmer.pos < min_pos:
+                min_pos = kmer.pos
+
+        read_indices = dict(zip(reads, range(len(reads))))
+        get_indices = np.vectorize(read_indices.get)
+
+        initial_positions = max_pos - min_pos + 1
+
+        device = self._config.get_device()
+
+        tensor = torch.full((initial_positions, len(reads), 6), np.nan, dtype=float, device=device)
+        for kmer in sorted(kmers, key=lambda kmer: kmer.pos, reverse=True):
+            indices = get_indices(kmer.reads)
+            pos = kmer.pos - min_pos
+            tensor[pos, indices, 0] = torch.tensor(kmer.reads, dtype=float, device=device)
+            tensor[pos, indices, 1] = torch.tensor(kmer.condition_ids, dtype=float, device=device)
+            tensor[pos, indices, 2] = torch.tensor(kmer.sample_ids, dtype=float, device=device)
+            tensor[pos, indices, 3] = torch.tensor(kmer.intensity, dtype=float, device=device)
+            tensor[pos, indices, 4] = torch.tensor(np.log10(kmer.dwell), dtype=float, device=device)
+            if pos + MOTOR_DWELL_EFFECT_OFFSET < initial_positions:
+                tensor[pos, indices, 5] = tensor[pos + MOTOR_DWELL_EFFECT_OFFSET, indices, 4]
+
+        # valid positions are those that have at least some values
+        valid_positions = ~tensor.isnan().all([1, 2]).cpu()
+        tensor = tensor[valid_positions, :, :].cpu()
+        positions = torch.arange(min_pos, max_pos+1)[valid_positions]
+        return tensor[:, :, 3:6].clone(), tensor[:, :, 2].clone(), tensor[:, :, 1].clone(), positions.clone()
+
+
+    def _kmers_to_tensor_old(self, kmers):
         # transcript_reads has type:
         # transcript_id -> {read_id -> index}
         # We'll use it to ensure the read order is the
@@ -301,7 +368,18 @@ class BatchComp:
             logger.info(f'meminfo: {torch.cuda.mem_get_info(torch.device("cuda"))}')
             logger.info(f'X type: {test_data.dtype}')
             logger.info(f'X shape: {test_data.shape}')
-        # s = time.time()
+        s = time.time()
+        def fit_model(components):
+            gmm = GMM(n_components=components, device=device, reg_covar=1e-4)
+            gmm.fit(test_data)
+            return gmm
+        # gmm1 = retry(lambda: fit_model(1), exception=torch.OutOfMemoryError)
+        # bic1 = gmm1.bic(test_data)
+        # del gmm1
+        # gc.collect()
+        gmm2 = retry(lambda: fit_model(2), exception=torch.OutOfMemoryError)
+        # bic2 = gmm2.bic(test_data)
+
         # attempts = 0
         # exception = None
         # while attempts < 10:
@@ -328,87 +406,90 @@ class BatchComp:
         # else:
         #     logger.info(f"GMM out of memory too many times: {attempts}")
         #     raise exception
-        # logger.info(f"GMM fitting time: {time.time() - s}")
-        # pred = gmm2.predict(test_data.to(torch.bfloat16))
-        # del gmm2
-        # gc.collect()
-        # if self._config.get_device() == 'cuda':
-        #     torch.cuda.empty_cache()
-        #     torch.cuda.reset_peak_memory_stats()
+
+        logger.info(f"GMM fitting time: {time.time() - s}")
+        pred = gmm2.predict(test_data.to(torch.bfloat16))
+        del gmm2
+        gc.collect()
+        if self._config.get_device() == 'cuda':
+            torch.cuda.empty_cache()
+            torch.cuda.reset_peak_memory_stats()
         pvals = []
         lors = []
         dfs = 0
         gmms = 0
         logits = 0
+        logger.info(f"Test data shape: {test_data.shape}")
         for i in range(test_data.shape[0]):
 
-            s3 = time.time()
+            # s3 = time.time()
+            # valid = ~test_data[i, :, :].isnan().any(1)
+            # X = test_data[i, valid, :]
+            # try:
+            #     gmm_fit = fit_best_gmm(X, max_components=2, cv_types=['full'], random_state=26)
+            #     gmm_mod, gmm_type, gmm_ncomponents = gmm_fit
+            #     gmms += time.time() - s3
+            # except Exception as e:
+            #     logger.error(f"Fail in GMM fitting {e}")
+            #     pvals.append(np.nan)
+            #     lors.append(np.nan)
+            #     continue
+            # 
+            # if gmm_ncomponents < 2:
+            #     pvals.append(np.nan)
+            #     lors.append(np.nan)
+            #     continue
 
-            valid = ~test_data[i, :, :].isnan().any(1)
-            X = test_data[i, valid, :]
-            try:
-                gmm_fit = fit_best_gmm(X, max_components=2, cv_types=['full'], random_state=26)
-                gmm_mod, gmm_type, gmm_ncomponents = gmm_fit
-                gmms += time.time() - s3
-            except Exception as e:
-                logger.error(f"Fail in GMM fitting {e}")
-                pvals.append(np.nan)
-                lors.append(np.nan)
-                continue
-            
-            if gmm_ncomponents < 2:
-                pvals.append(1)
-                lors.append(0)
-                continue
-
-            pred = gmm_mod.predict(X)
+            # pred = gmm_mod.predict(X)
+            # gmms += time.time() - s3
 
             # If the BIC with one component fits better
             # we conclude that there's no modification.
             # if bic1[i] <= bic2[i]:
-            #     pvals.append(1)
-            #     lors.append(0)
+            #     pvals.append(np.nan)
+            #     lors.append(np.nan)
             #     continue
 
-            # valid = ~conditions[i, :].isnan()
+            valid = ~conditions[i, :].isnan()
             s2 = time.time()
 
-            # contingency = crosstab(conditions[i, valid], pred[i, valid]) + 1
-            # dfs += time.time() - s2
-            # pval = chi2_contingency(contingency).pvalue
-            # pvals.append(pval)
-            # lors.append(np.nan)
-
-            X = np.ones((valid.sum() + 4, 2))
-            X[:, 0] = np.append(conditions[i, valid], [0, 0, 1, 1])
-            # y_pred = np.append(pred[i, valid].numpy(), [0, 0, 1, 1])
-            y_pred = np.append(pred, [0, 0, 1, 1])
+            contingency = crosstab(conditions[i, valid], pred[i, valid]) + 1
             dfs += time.time() - s2
-            s = time.time()
-            logit = dm.Logit(y_pred, X)
-            with warnings.catch_warnings():
-                warnings.filterwarnings('ignore', category=PerfectSeparationWarning)
-                warnings.filterwarnings('ignore', category=ConvergenceWarning)
-                warnings.filterwarnings('ignore', category=RuntimeWarning)
-                try:
-                    # m = pd.DataFrame({'m': [','.join(xs) for xs in zip(pred[i, :], conditions[i, :])]}).m.value_counts()
-                    # logger.info(f"matching: {m}")
-                    logit_res = logit.fit(method='lbfgs', disp=False)
-                    pval = logit_res.pvalues[0]
-                    LOR = logit_res.params[0]
-                    # pval = chi2_contingency(contingency_table).pvalue
-                    # LOR = np.nan
-                    pvals.append(pval)
-                    lors.append(LOR)
-                except Exception as e:
-                    logger.error(f"Error in Logit: {e}")
-                    logger.error(f"Error in Logit data: {y_pred} {y_pred.shape} {sum(y_pred)}")
-                    pvals.append(np.nan)
-                    lors.append(np.nan)
-            logits += time.time() - s
-        logger.info(f"GMM time: {gmms}")
-        logger.info(f"Logit dataframe creation time: {dfs}")
-        logger.info(f"Logit time: {logits}")
+            pval = chi2_contingency(contingency).pvalue
+            pvals.append(pval)
+            lors.append(np.nan)
+
+            # s2 = time.time()
+            # X = np.ones((valid.sum() + 4, 2))
+            # X[:, 0] = np.append(conditions[i, valid], [0, 0, 1, 1])
+            # # y_pred = np.append(pred[i, valid].numpy(), [0, 0, 1, 1])
+            # y_pred = np.append(pred, [0, 0, 1, 1])
+            # dfs += time.time() - s2
+            # s = time.time()
+            # logit = dm.Logit(y_pred, X)
+            # with warnings.catch_warnings():
+            #     warnings.filterwarnings('ignore', category=PerfectSeparationWarning)
+            #     warnings.filterwarnings('ignore', category=ConvergenceWarning)
+            #     warnings.filterwarnings('ignore', category=RuntimeWarning)
+            #     try:
+            #         # m = pd.DataFrame({'m': [','.join(xs) for xs in zip(pred[i, :], conditions[i, :])]}).m.value_counts()
+            #         # logger.info(f"matching: {m}")
+            #         logit_res = logit.fit(method='lbfgs', disp=False)
+            #         pval = logit_res.pvalues[0]
+            #         LOR = logit_res.params[0]
+            #         # pval = chi2_contingency(contingency_table).pvalue
+            #         # LOR = np.nan
+            #         pvals.append(pval)
+            #         lors.append(LOR)
+            #     except Exception as e:
+            #         logger.error(f"Error in Logit: {e}")
+            #         logger.error(f"Error in Logit data: {y_pred} {y_pred.shape} {sum(y_pred)}")
+            #         pvals.append(np.nan)
+            #         lors.append(np.nan)
+            # logits += time.time() - s
+        # logger.info(f"GMM time: {gmms}")
+        # logger.info(f"Logit dataframe creation time: {dfs}")
+        # logger.info(f"Logit time: {logits}")
         return {'GMM_logit_pvalue': pvals,
                 'GMM_logit_LOR': lors}
 
@@ -417,15 +498,16 @@ class BatchComp:
         any_motor_dwell_nan = (test_data[:, :, MOTOR].isnan() &
                                ~test_data[:, :, INTENSITY].isnan()).sum(1) > 0
         return (test_data[~any_motor_dwell_nan],
-                test_data[any_motor_dwell_nan],
+                test_data[any_motor_dwell_nan, :, :MOTOR],
                 any_motor_dwell_nan.int())
 
 
     def _add_shift_stats(self, results, data, conditions):
-        data = data.to(self._config.get_device())
+        device = self._config.get_device()
+        data = data.to(device)
 
         stats = {0: {}, 1: {}}
-        cond0_mask = (conditions == 0).to(self._config.get_device())
+        cond0_mask = (conditions == 0).to(device)
         cond0_data = data * cond0_mask.to(int).unsqueeze(2)
         stats[0]['mean'] = cond0_data.nanmean(1).to('cpu')
         stats[0]['median'] = cond0_data.nanmedian(1).values.to('cpu')
@@ -455,7 +537,7 @@ class BatchComp:
         return (((X - X.nanmean(dim).unsqueeze(1)) ** 2).nansum(dim) / nonnans) ** 0.5
 
 
-def retry(fn, delay=5, backoff=5, max_attempts=10, exception=Exception):
+def retry(fn, delay=5, backoff=5, max_attempts=3, exception=Exception):
     attempts = 0
     while attempts < max_attempts - 1:
         try:
@@ -466,7 +548,7 @@ def retry(fn, delay=5, backoff=5, max_attempts=10, exception=Exception):
             time.sleep(delay)
             delay += backoff
     else:
-        fn()
+        return fn()
 
 
 def crosstab_batch(a, b):

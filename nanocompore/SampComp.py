@@ -1,9 +1,11 @@
 import collections, os, traceback, datetime
 import sqlite3
 import multiprocessing as mp
+import time
 
 from contextlib import closing
 from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 
 import torch
 import numpy as np
@@ -97,6 +99,7 @@ class SampComp(object):
         # for ref_ids in chunks(transcripts, 1):
         #     task_queue.put(ref_ids)
         for transcript_ref in transcripts:
+            # if "ENST00000274606.8" in transcript_ref.ref_id:
             task_queue.put(transcript_ref)
 
         # add poison pills to kill the workers
@@ -112,8 +115,9 @@ class SampComp(object):
                     break
                 continue
 
-            ref_id, results = msg
-            resultsManager.save_results(ref_id, results)
+            transcript, results = msg
+            logger.info(f"Main process received results for {transcript.name}. Will save them now.")
+            resultsManager.save_results(transcript, results)
 
         for worker in workers:
             worker.join()
@@ -130,28 +134,35 @@ class SampComp(object):
         with closing(sqlite3.connect(db)) as conn,\
              closing(conn.cursor()) as cursor:
             while True:
-                transcript_refs = task_queue.get()
-                if transcript_refs is None:
+                transcript_ref = task_queue.get()
+                if transcript_ref is None:
                     logger.info(f"Worker {worker_id} has finished and will terminate.")
                     result_queue.put(DONE_MSG)
                     return
 
-                tx_id_to_transcript = {ref.id: Transcript(ref_id=ref.ref_id,
-                                                          ref_seq=str(fasta_fh[ref.ref_id]))
-                                       for ref in transcript_refs}
+                # tx_id_to_transcript = {ref.id: Transcript(ref_id=ref.ref_id,
+                #                                           ref_seq=str(fasta_fh[ref.ref_id]))
+                #                        for ref in transcript_refs}
+                transcript = Transcript(id=transcript_ref.id,
+                                        ref_id=transcript_ref.ref_id,
+                                        ref_seq=str(fasta_fh[transcript_ref.ref_id]))
 
                 try:
-                    kmer_data_list = self._read_transcript_kmer_data(transcript_refs, cursor)
-                    all_test_results = batch_comp.compare_transcripts(kmer_data_list)
+                    kmer_data_list = self._read_transcript_kmer_data([transcript_ref], cursor)
+                    transcript, results = batch_comp.compare_transcripts(transcript, kmer_data_list)
 
-                    for tx_id in all_test_results['transcript_id'].unique():
-                        df = all_test_results[all_test_results.transcript_id == tx_id].copy()
-                        transcript = tx_id_to_transcript[tx_id]
-                        ref_id = transcript.name
-                        seq = transcript.seq
-                        kmers = df.pos.apply(lambda pos: get_pos_kmer(pos, seq, kit))
-                        df['kmer'] = kmers.apply(encode_kmer)
-                        result_queue.put((ref_id, df))
+                    seq = transcript.seq
+                    kmers = results.pos.apply(lambda pos: get_pos_kmer(pos, seq, kit))
+                    results['kmer'] = kmers.apply(encode_kmer)
+                    result_queue.put((transcript, results))
+                    # for tx_id in all_test_results['transcript_id'].unique():
+                    #     df = all_test_results[all_test_results.transcript_id == tx_id].copy()
+                    #     transcript = tx_id_to_transcript[tx_id]
+                    #     ref_id = transcript.name
+                    #     seq = transcript.seq
+                    #     kmers = df.pos.apply(lambda pos: get_pos_kmer(pos, seq, kit))
+                    #     df['kmer'] = kmers.apply(encode_kmer)
+                    #     result_queue.put((ref_id, df))
 
                 except Exception:
                     msg = traceback.format_exc()
@@ -163,69 +174,104 @@ class SampComp(object):
         batch_comp = BatchComp(config=self._config)
         kit = self._config.get_kit()
 
-        threads = mp.ThreadPool()
         manager = mp.Manager()
+        max_threads = manager.Value('i', 1)
+        threads = mp.pool.ThreadPool(max_threads.value)
         active_threads = manager.Value('i', 0)
-        max_threads = manager.Value('i', 5)
-        async_results = manager.dict()
         retry_queue = manager.Queue()
 
-        kill_proc = False
+        # TODO add lock
+        async_results = {}
+        mem_usage_history = []
 
-        def callback(transcript, results):
+        # kill_proc = False
+        input_finished = False
+
+        def callback(args):
+            transcript, results = args
             logger.info(f"Transcript {transcript.name} has been processed, will send the results for saving.")
-            active_threads -= 1
-            del async_results[transcript.name]
-            ref_id = transcript.name
-            seq = transcript.seq
-            kmers = results.pos.apply(lambda pos: get_pos_kmer(pos, seq, kit))
-            results['kmer'] = kmers.apply(encode_kmer)
-            result_queue.put((ref_id, results))
+            try:
+                active_threads.value -= 1
+                del async_results[transcript.name]
+                # ref_id = transcript.name
+                seq = transcript.seq
+                kmers = results.pos.apply(lambda pos: get_pos_kmer(pos, seq, kit))
+                results['kmer'] = kmers.apply(encode_kmer)
+                result_queue.put((transcript, results))
+                logger.info(f"Transcript {transcript.name} has been processed and was sent for saving.")
+            except Exception as e:
+                msg = traceback.format_exc()
+                logger.error(f"Got an exception in the async callback: {msg}")
 
-        def error_callback(transcript, exception):
+        def error_callback(exception):
+            transcript = exception.transcript
             logger.error(f"Worker {worker_id} got exception {exception} while processing {transcript.name}")
-            active_threads -= 1
+            active_threads.value -= 1
+            del async_results[transcript.name]
             if isinstance(exception, torch.OutOfMemoryError):
                 logger.error(f"Worker {worker_id} got OutOfMemory error while processing {transcript.name}. Will add it to the retry queue.")
-                max_threads -= 1
+                # if max_threads.value > 1:
+                #     max_threads.value -= 1
+                max_threads.value = max(active_threads.value - 1, 1)
                 retry_queue.put(TranscriptRow(transcript.name, transcript.id))
+                torch.cuda.empty_cache()
+                torch.cuda.reset_peak_memory_stats()
             else:
                 # TODO: format stack trace and log that
+                # msg = traceback.format_exception(exception)
                 logger.error(f"Error in Worker {worker_id}: {exception}")
 
         db = self._config.get_kmer_data_db()
         with closing(sqlite3.connect(db)) as conn,\
              closing(conn.cursor()) as cursor:
+            t = time.time()
             while True:
-                # check for results, if there are, process them
-                # check for idle threads, if there are give task
+                free, total = torch.cuda.mem_get_info()
+                mem_usage = (total - free) / total
+                if time.time() - t > 10:
+                    mem_usage_history.insert(0, mem_usage)
+                    if len(mem_usage_history) > 3:
+                        mem_usage_history.pop()
+                    if len(mem_usage_history) == 3 and np.mean(mem_usage_history) < 0.65:
+                        # max_threads.value += 1
+                        mem_usage_history = []
+                    logger.info(f"Worker {worker_id}: Active threads: {active_threads.value}, max threads: {max_threads.value}, mem_usage: {mem_usage}")
+                    t = time.time()
 
-                if kill_proc and all(async_res.ready() for async_res in async_results.values()):
+                # if kill_proc and all(async_results.ready() for async_res in async_results.values()):
+                if input_finished and len(async_results) == 0 and retry_queue.empty():
                     logger.info(f"Worker {worker_id} has finished and will terminate.")
+                    threads.close()
                     result_queue.put(DONE_MSG)
                     return
                 
-                if active_threads < max_threads:
-                    if not retry_queue.empty():
-                        transcript_ref = retry_queue.get()
-                    else:
+                if active_threads.value < max_threads.value and mem_usage < 0.80:
+                    if not input_finished:
                         transcript_ref = task_queue.get()
                         if transcript_ref is None:
-                            threads.close()
-                            kill_proc = True
+                            # threads.close()
+                            # kill_proc = True
+                            input_finished = True
                             continue
+                    elif not retry_queue.empty():
+                        transcript_ref = retry_queue.get()
+                    else:
+                        continue
+
 
                     transcript = Transcript(id=transcript_ref.id,
                                             ref_id=transcript_ref.ref_id,
                                             ref_seq=str(fasta_fh[transcript_ref.ref_id]))
                     kmer_data_list = self._read_transcript_kmer_data([transcript_ref], cursor)
                     logger.info(f"Worker {worker_id} submits transcript {transcript_ref.ref_id} for processing to the thread pool.")
-                    async_res = threads.apply_async(batch_comp,
-                                                    (kmer_data_list,),
-                                                    lambda result: callback(transcript, results),
-                                                    lambda exception: error_callback(transcript, exception))
-                    async_results[transcript.ref_id] = async_res
-                    active_threads += 1
+                    async_res = threads.apply_async(batch_comp.compare_transcripts,
+                                                    args=(transcript, kmer_data_list,),
+                                                    callback=callback,
+                                                    error_callback=error_callback)
+                    async_results[transcript.name] = async_res
+                    active_threads.value += 1
+                else:
+                    time.sleep(1)
 
 
                 # transcript_refs = task_queue.get()
