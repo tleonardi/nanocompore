@@ -1,7 +1,28 @@
+import re
+
 from schema import Schema, And, Or, Optional
 
 from nanocompore.common import is_valid_fasta
 from nanocompore.common import Kit
+
+
+def valid_device(value):
+    return value in ['cpu', 'cuda'] or re.compile("cuda:\d+").match(value)
+
+
+def validate_device(value):
+    if isinstance(value, str):
+        return valid_device(value)
+    elif isinstance(value, list):
+        return all(valid_device(d) for d in value)
+    elif isinstance(value, dict):
+        for k, v in value.items():
+            if not valid_device(k) or not isinstance(v, int) or v < 0:
+                return False
+        return True
+    else:
+        raise ArgumentError("The value for 'devices' in the configuration is of unexpected type: {type(value)}")
+
 
 
 CONFIG_SCHEMA = Schema({
@@ -23,7 +44,7 @@ CONFIG_SCHEMA = Schema({
     'kmer_data_db': str,
     'resquiggler': Or('remora', 'uncalled4', 'eventalign'),
     'kit': Or(*[v.name for v in Kit]),
-    Optional('device'): Or('cpu', 'cuda'),
+    Optional('devices'): validate_device,
     Optional('bed'): And(lambda f: open(f, 'r'), error='Invalid bed file'),
     Optional('nthreads'): And(lambda n: n >= 2, error='nthreads must be >= 2'),
     Optional('min_coverage'): And(int, lambda n: n >= 0, error='min_coverage must be >= 0'),
@@ -129,12 +150,12 @@ class Config:
         return Kit[kit_name]
 
 
-    def get_device(self):
+    def get_devices(self):
         """
         Returns the device to be used for computations.
         E.g. cpu or cuda.
         """
-        return self._config.get('device', DEFAULT_DEVICE)
+        return self._config.get('devices', DEFAULT_DEVICE)
 
 
     def get_nthreads(self):

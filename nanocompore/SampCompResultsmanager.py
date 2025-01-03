@@ -22,7 +22,7 @@ class resultsManager():
         self._correction_method = config.get_correction_method()
         self._config = config
 
-        self._db = SampCompDB.SampCompDB(outpath=self._outpath, prefix=self._prefix, result_exists_strategy=self._result_exists_strategy)
+        self._db = SampCompDB.SampCompDB(config, init_db=True)
 
 
     def save_results(self, transcript, test_results):

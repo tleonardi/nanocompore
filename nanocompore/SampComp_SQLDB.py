@@ -44,16 +44,19 @@ BASE_KMER_RESULT_COLUMNS = ['id', 'transcript_id', 'pos', 'kmer']
 
 
 class SampCompDB():
-    def __init__ (self, outpath, prefix, result_exists_strategy):
-        if outpath:
-            self._outpath = outpath
+    def __init__ (self, config, init_db=False):
+        self._config = config
+
+        if config.get_outpath():
+            self._outpath = config.get_outpath()
         else:
             self._outpath = os.getcwd()
 
-        self._prefix = prefix
+        self._prefix = config.get_outprefix()
         self._db_path = os.path.join(self._outpath, f"{self._prefix}sampComp_sql.db")
-        self._setup_database(result_exists_strategy)
-        self._create_tables()
+        if init_db:
+            self._setup_database(config.get_result_exists_strategy())
+            self._create_tables()
 
 
     def get_all_results(self):

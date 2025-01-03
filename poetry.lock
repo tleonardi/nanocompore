@@ -1456,6 +1456,17 @@ files = [
 nvidia-nvjitlink-cu12 = "*"
 
 [[package]]
+name = "nvidia-ml-py"
+version = "12.560.30"
+description = "Python Bindings for the NVIDIA Management Library"
+optional = false
+python-versions = "*"
+files = [
+    {file = "nvidia-ml-py-12.560.30.tar.gz", hash = "sha256:f0254dc7400647680a072ee02509bfd46102b60bdfeca321576d4d4817e7fe97"},
+    {file = "nvidia_ml_py-12.560.30-py3-none-any.whl", hash = "sha256:fea371c94d63e38a611c17bbb85fe400e9c8ddb9e8684a9cd0e47786a4bc3c73"},
+]
+
+[[package]]
 name = "nvidia-nccl-cu12"
 version = "2.21.5"
 description = "NVIDIA Collective Communication Library (NCCL) Runtime"
@@ -1977,6 +1988,23 @@ files = [
 [package.dependencies]
 Markdown = ">=3.0.1"
 pep562 = "*"
+
+[[package]]
+name = "pynvml"
+version = "12.0.0"
+description = "Python utilities for the NVIDIA Management Library"
+optional = false
+python-versions = ">=3.9"
+files = [
+    {file = "pynvml-12.0.0-py3-none-any.whl", hash = "sha256:fdff84b62a27dbe98e08e1a647eb77342bef1aebe0878bcd15e99a83fcbecb9e"},
+    {file = "pynvml-12.0.0.tar.gz", hash = "sha256:299ce2451a6a17e6822d6faee750103e25b415f06f59abb8db65d30f794166f5"},
+]
+
+[package.dependencies]
+nvidia-ml-py = ">=12.0.0,<13.0.0a0"
+
+[package.extras]
+test = ["pytest (>=3.6)", "pytest-cov", "pytest-runner"]
 
 [[package]]
 name = "pyparsing"
@@ -2907,4 +2935,4 @@ testing = ["big-O", "jaraco.functools", "jaraco.itertools", "more-itertools", "p
 [metadata]
 lock-version = "2.0"
 python-versions = "~3.9"
-content-hash = "8be4ab7574537b7181e4131f3e9643cbf03d46ed0ba827a9983e8937ad6f1768"
+content-hash = "796a4ab04bba9f9bdcb3024ae7c2174cf8344cb4c887bedd1b7953855c9216d2"

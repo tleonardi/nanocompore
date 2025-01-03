@@ -17,9 +17,6 @@ def gmm_test(kmer_data, motor_kmer, config, random_state, anova=True, logit=Fals
         raise NanocomporeError("gmm_test only supports two conditions")
 
     data, sample_labels, condition_labels = get_kmer_data(kmer_data, motor_kmer, config)
-    if kmer_data.pos == 100:
-        np.save('/work/mzdravkov/pos100_old_data.data', data)
-        np.save('/work/mzdravkov/pos100_old_conditions.data', condition_labels)
 
     # Scale the intensity and dwell time arrays
     X = StandardScaler().fit_transform(data)

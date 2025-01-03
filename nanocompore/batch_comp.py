@@ -37,29 +37,18 @@ class BatchComp:
         self._config = config
 
 
-    def compare_transcripts(self, transcript, kmers):
+    def compare_transcript(self, transcript, kmers, device=None):
         try:
-            print("!@# COMPARE TRANSCRIPTS")
             n_positions = len(kmers)
             logger.debug("Start converting kmers to tensor format")
             t = time.time()
             # data, samples, conditions, positions, transcripts = retry(lambda: self._kmers_to_tensor(kmers),
             #                                                           exception=torch.OutOfMemoryError)
-            data, samples, conditions, positions = retry(lambda: self._kmers_to_tensor(kmers),
+            data, samples, conditions, positions = retry(lambda: self._kmers_to_tensor(kmers, device),
                                                          exception=torch.OutOfMemoryError)
-            device = self._config.get_device()
-            if device == 'cuda':
+            if device.startswith('cuda'):
                 torch.cuda.empty_cache()
                 torch.cuda.reset_peak_memory_stats()
-
-            # TODO remove test
-            pos100 = positions == 100
-            valid = ~conditions[pos100][0].isnan()
-            logger.info(f"Pos 100 valid: {valid.shape} {valid}")
-            posdata = data[pos100, valid, :]
-            logger.info(f"Pos 100 shape: {posdata.shape}")
-            torch.save(posdata, "/work/mzdravkov/pos100_tensor.data")
-            torch.save(conditions[pos100][0, valid], "/work/mzdravkov/pos100_conditions.data")
 
             # Standardize the data
             data = (data - data.nanmean(1).unsqueeze(1)) / self._nanstd(data, 1).unsqueeze(1)
@@ -80,14 +69,15 @@ class BatchComp:
                 test_results = self._run_test(test,
                                               data[mask, :, :],
                                               samples[mask, :],
-                                              conditions[mask, :])
+                                              conditions[mask, :],
+                                              device=device)
                 logger.debug(f"Finished {test} ({time.time() - t})")
                 self._merge_results(results, test_results, test, mask, auto_test_mask, n_positions)
             logger.debug(f"Start shift stats")
             t = time.time()
-            retry(lambda: self._add_shift_stats(results, data, conditions),
+            retry(lambda: self._add_shift_stats(results, data, conditions, device),
                   exception=torch.OutOfMemoryError)
-            if device == 'cuda':
+            if device.startswith('cuda'):
                 torch.cuda.empty_cache()
                 torch.cuda.reset_peak_memory_stats()
             logger.debug(f"Finished shift stats ({time.time() - t})")
@@ -98,7 +88,7 @@ class BatchComp:
         return transcript, results
 
 
-    def _kmers_to_tensor(self, kmers):
+    def _kmers_to_tensor(self, kmers, device):
         reads = {read
                  for kmer in kmers
                  for read in kmer.reads}
@@ -120,8 +110,6 @@ class BatchComp:
 
         initial_positions = max_pos - min_pos + 1
 
-        device = self._config.get_device()
-
         tensor = torch.full((initial_positions, len(reads), 6), np.nan, dtype=float, device=device)
         for kmer in sorted(kmers, key=lambda kmer: kmer.pos, reverse=True):
             indices = get_indices(kmer.reads)
@@ -139,52 +127,6 @@ class BatchComp:
         tensor = tensor[valid_positions, :, :].cpu()
         positions = torch.arange(min_pos, max_pos+1)[valid_positions]
         return tensor[:, :, 3:6].clone(), tensor[:, :, 2].clone(), tensor[:, :, 1].clone(), positions.clone()
-
-
-    def _kmers_to_tensor_old(self, kmers):
-        # transcript_reads has type:
-        # transcript_id -> {read_id -> index}
-        # We'll use it to ensure the read order is the
-        # same for all positions of the same transcript.
-        transcript_reads = self._transcript_reads(kmers)
-
-        n_positions = len(kmers)
-        if len(transcript_reads) > 0:
-            n_reads = max(len(reads) for reads in transcript_reads.values())
-        else:
-            n_reads = 0
-        dims = 3
-
-        device = self._config.get_device()
-        data = torch.full((n_positions, n_reads, dims), np.nan, device=device)
-        samples = torch.empty(n_positions, n_reads, dtype=torch.float32, device=device)
-        conditions = torch.empty(n_positions, n_reads, dtype=torch.float32, device=device)
-        positions = torch.empty(n_positions, dtype=int, device=device)
-        transcripts = torch.empty(n_positions, dtype=int, device=device)
-
-        for i, kmer in enumerate(kmers):
-            motor_kmer = self._get_motor_kmer(kmer, kmers)
-            reads = transcript_reads[kmer.transcript_id]
-            read_order = np.vectorize(reads.get)(kmer.reads)
-            data[i, :, INTENSITY] = self._order_values(n_reads, read_order, kmer.intensity)
-            data[i, :, DWELL] = self._order_values(n_reads, read_order, kmer.dwell)
-            if motor_kmer:
-                motor_read_order = np.vectorize(reads.get)(motor_kmer.reads)
-                data[i, :, MOTOR] = self._order_values(n_reads,
-                                                       motor_read_order,
-                                                       motor_kmer.dwell)
-            samples[i, :] = self._order_values(n_reads, read_order, kmer.sample_ids)
-            conditions[i, :] = self._order_values(n_reads, read_order, kmer.condition_ids)
-            positions[i] = kmer.pos
-            transcripts[i] = kmer.transcript_id
-        return data.cpu(), samples.cpu(), conditions.cpu(), positions.cpu(), transcripts.cpu()
-
-
-    def _order_values(self, n_reads, read_order, prop, dtype=torch.float32):
-        device = self._config.get_device()
-        values = torch.full((n_reads,), np.nan, device=device)
-        values[read_order] = torch.tensor(prop, dtype=dtype, device=device)
-        return values
 
 
     def _get_motor_kmer(self, kmer, kmers):
@@ -236,11 +178,11 @@ class BatchComp:
                 for ref_id, reads in transcript_reads.items()}
 
 
-    def _run_test(self, test, test_data, samples, conditions):
+    def _run_test(self, test, test_data, samples, conditions, device):
         if test.upper() in ['MW', 'KS', 'TT']:
             return self._nonparametric_test(test, test_data, conditions)
         elif test.upper() == 'GMM':
-            return self._gmm_test(test_data, conditions)
+            return self._gmm_test(test_data, conditions, device)
         elif test.upper() == 'GOF':
             return self._gof_test(test_data, samples, conditions)
         else:
@@ -322,7 +264,7 @@ class BatchComp:
         return {'GOF_pvalue': pvals}
 
 
-    def _gmm_test(self, test_data, conditions):
+    def _gmm_test(self, test_data, conditions, device):
         # For each position some reads have motor dwell
         # and others don't. We split the positions into
         # two sets: one set of positions where all reads
@@ -337,11 +279,13 @@ class BatchComp:
         if dim3_data.shape[0] > 0:
             dim3_results = self._gmm_test_split(dim3_data,
                                                 conditions[split == 0, :],
-                                                indices[split == 0])
+                                                indices[split == 0],
+                                                device)
         if dim2_data.shape[0] > 0:
             dim2_results = self._gmm_test_split(dim2_data,
                                                 conditions[split == 1, :],
-                                                indices[split == 1])
+                                                indices[split == 1],
+                                                device)
         dim3_i = 0
         dim2_i = 0
         for s in split:
@@ -357,9 +301,8 @@ class BatchComp:
                 'GMM_logit_LOR': lors}
 
 
-    def _gmm_test_split(self, test_data, conditions, indices):
-        device = self._config.get_device()
-        if device == 'cuda':
+    def _gmm_test_split(self, test_data, conditions, indices, device):
+        if device.startswith('cuda'):
             torch.cuda.empty_cache()
             s = test_data.element_size() * test_data.nelement()
             logger.info(f'Tensor size: {s}')
@@ -389,7 +332,7 @@ class BatchComp:
         #         # bic1 = gmm1.bic(test_data)
         #         # del gmm1
         #         # gc.collect()
-        #         # if self._config.get_device() == 'cuda':
+        #         # if self._config.get_devices() == 'cuda':
         #         #     torch.cuda.empty_cache()
         #         #     torch.cuda.reset_peak_memory_stats()
         #         gmm2 = GMM(n_components=2, device=device, reg_covar=1e-4)
@@ -411,7 +354,7 @@ class BatchComp:
         pred = gmm2.predict(test_data.to(torch.bfloat16))
         del gmm2
         gc.collect()
-        if self._config.get_device() == 'cuda':
+        if device.startswith('cuda'):
             torch.cuda.empty_cache()
             torch.cuda.reset_peak_memory_stats()
         pvals = []
@@ -502,8 +445,7 @@ class BatchComp:
                 any_motor_dwell_nan.int())
 
 
-    def _add_shift_stats(self, results, data, conditions):
-        device = self._config.get_device()
+    def _add_shift_stats(self, results, data, conditions, device):
         data = data.to(device)
 
         stats = {0: {}, 1: {}}
