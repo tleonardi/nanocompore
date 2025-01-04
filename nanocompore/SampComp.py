@@ -71,18 +71,6 @@ class SampComp(object):
 
         resultsManager = SampCompResultsmanager.resultsManager(self._config)
 
-        logger.info(f"Starting {self._worker_procs} worker processes.")
-
-        manager = mp.Manager()
-        db_lock = manager.Lock()
-        task_queue = mp.JoinableQueue()
-        workers = [mp.Process(target=self._worker_process,
-                              args=(worker, task_queue, db_lock, device))
-                   for worker, device in self._get_workers_with_device().items()]
-
-        for worker in workers:
-            worker.start()
-
         transcripts = self._get_transcripts_for_processing()
         if self._config.get_result_exists_strategy() == 'continue':
             all_transcripts_num = len(transcripts)
@@ -92,11 +80,23 @@ class SampComp(object):
         else:
             logger.info(f"Found a total of {len(transcripts)} transcripts for processing.")
         
+        task_queue = mp.JoinableQueue()
         # for ref_ids in chunks(transcripts, 1):
         #     task_queue.put(ref_ids)
         for transcript_ref in transcripts:
             # if "ENST00000274606.8" in transcript_ref.ref_id:
             task_queue.put((transcript_ref, 0))
+        logger.info(f"All {task_queue.qsize()} transcripts have been sent to the queue")
+
+        logger.info(f"Starting {self._worker_procs} worker processes.")
+        manager = mp.Manager()
+        db_lock = manager.Lock()
+        workers = [mp.Process(target=self._worker_process,
+                              args=(worker, task_queue, db_lock, device))
+                   for worker, device in self._get_workers_with_device().items()]
+
+        for worker in workers:
+            worker.start()
 
         task_queue.join()
         for worker in workers:
@@ -110,14 +110,16 @@ class SampComp(object):
         fasta_fh = Fasta(self._config.get_fasta_ref())
         batch_comp = BatchComp(config=self._config)
         kit = self._config.get_kit()
+        logger.info(f"Worker {worker_id} started.")
 
         db = self._config.get_kmer_data_db()
         with closing(sqlite3.connect(db)) as conn,\
              closing(conn.cursor()) as cursor:
             while True:
                 try:
-                    msg = task_queue.get(block=False)
+                    msg = task_queue.get(block=True, timeout=1)
                 except queue.Empty:
+                    logger.info(f"Worker {worker_id} could not find more tasks in the queue and will terminate.")
                     return
 
                 try:
@@ -131,6 +133,8 @@ class SampComp(object):
 
                     kmer_data_list = self._read_transcript_kmer_data([transcript_ref], cursor)
                     transcript, results = batch_comp.compare_transcript(transcript, kmer_data_list, device)
+                    if results is None:
+                        continue
 
                     seq = transcript.seq
                     kmers = results.pos.apply(lambda pos: get_pos_kmer(pos, seq, kit))
@@ -435,7 +439,7 @@ class SampComp(object):
             if not isinstance(devices, list):
                 devices = [devices]
             for worker in range(self._worker_procs):
-                result[worker] = device[worker % len(device)]
+                result[worker] = devices[worker % len(devices)]
         return result
 
 

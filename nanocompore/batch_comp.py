@@ -40,6 +40,9 @@ class BatchComp:
     def compare_transcript(self, transcript, kmers, device=None):
         try:
             n_positions = len(kmers)
+            if n_positions == 0:
+                return (transcript, None)
+
             logger.debug("Start converting kmers to tensor format")
             t = time.time()
             # data, samples, conditions, positions, transcripts = retry(lambda: self._kmers_to_tensor(kmers),
@@ -315,11 +318,13 @@ class BatchComp:
         def fit_model(components):
             gmm = GMM(n_components=components, device=device, reg_covar=1e-4)
             gmm.fit(test_data)
+            logger.info(f"GMM PRECISION {gmm.means[0].dtype}")
             return gmm
         # gmm1 = retry(lambda: fit_model(1), exception=torch.OutOfMemoryError)
         # bic1 = gmm1.bic(test_data)
         # del gmm1
         # gc.collect()
+        # with torch.autocast(device_type=device, dtype=torch.bfloat16):
         gmm2 = retry(lambda: fit_model(2), exception=torch.OutOfMemoryError)
         # bic2 = gmm2.bic(test_data)
 

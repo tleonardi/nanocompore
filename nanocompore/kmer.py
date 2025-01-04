@@ -119,7 +119,7 @@ class KmerData:
         for i in all_selected:
             mask[i] = True
 
-        return KmerData(self,transcript_id,
+        return KmerData(self.transcript_id,
                         self.pos,
                         self.kmer,
                         self.sample_labels[mask],
