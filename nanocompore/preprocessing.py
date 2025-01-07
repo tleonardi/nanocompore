@@ -692,7 +692,7 @@ class EventalignPreprocessor(Preprocessor):
             sd = self._merge_col_from_samples(5, rows, EVENTALIGN_MEASUREMENT_TYPE)
             dwell = self._merge_col_from_samples(6, rows, EVENTALIGN_MEASUREMENT_TYPE)
 
-            kmers.append(KmerData(pos, kmer, samples, read_ids, intensity, sd, dwell, None, self._config))
+            kmers.append(KmerData(None, pos, kmer, samples, read_ids, intensity, sd, dwell, None, self._config))
         return kmers
 
 

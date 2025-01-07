@@ -319,8 +319,7 @@ class BatchComp:
     def _gmm_test_split(self, test_data, conditions, indices, device):
         s = time.time()
         def fit_model(components):
-            torch.manual_seed(self._random_seed)
-            gmm = GMM(n_components=components, device=device, reg_covar=1e-4)
+            gmm = GMM(n_components=components, device=device, random_seed=self._random_seed)
             gmm.fit(test_data)
             return gmm
         gmm2 = retry(lambda: fit_model(2), exception=torch.OutOfMemoryError)

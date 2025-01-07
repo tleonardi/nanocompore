@@ -2,6 +2,7 @@ import sqlite3
 import json
 import uuid
 import sys
+import traceback
 
 import multiprocessing as mp
 
@@ -320,8 +321,9 @@ class EventalignCollapser:
                     cursor.executemany(INSERT_INTERMEDIARY_KMER_DATA_QUERY, rows)
                     cursor.execute('COMMIT')
                     logger.info(f"Wrote transcript {transcript_id} {ref_id} to tmp database.")
-                except Exception as e:
-                    logger.error(str(e) + f" for ref {ref_id}.")
+                except:
+                    exception_msg = traceback.format_exc()
+                    logger.error(f"Exception for ref {ref_id}: {exception_msg}")
                 finally:
                     if not self._file:
                         file.close()
@@ -388,7 +390,8 @@ class EventalignCollapser:
             valid_reads = ~np.isnan(intensity[:, pos])
 
             if np.any(valid_reads):
-                kmer_data = KmerData(pos,
+                kmer_data = KmerData(ref_id,
+                                     pos,
                                      kmers[pos],
                                      None,
                                      read_ids[valid_reads],

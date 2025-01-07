@@ -85,7 +85,8 @@ class Uncalled4:
             pos_sample_labels = sample_labels[valid_reads]
             pos_read_ids = read_ids[valid_reads]
 
-            yield KmerData(pos,
+            yield KmerData(self._ref_id,
+                           pos,
                            kmer,
                            pos_sample_labels,
                            pos_read_ids,
