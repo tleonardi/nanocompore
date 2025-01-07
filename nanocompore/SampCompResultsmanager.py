@@ -34,13 +34,13 @@ class resultsManager():
         logger.debug("Created all table indexes")
         logger.debug("Gathering all the data for reporting")
         data = self._db.get_all_results()
-        tests, shift_stats = self._getStatsTests(data)
         logger.debug("Data gathered")
         data = self._addGenomicPositions(data, valid_transcripts=valid_transcripts)
         data['kmer'] = data['kmer'].apply(lambda encoding: decode_kmer(encoding, self._config.get_kit().len))
         logger.debug("Added genomic positions to data")
         data = self._correct_pvalues(data, method=self._correction_method)
         logger.debug("Corrected pvalues")
+        tests, shift_stats = self._getStatsTests(data)
         self._writeResultsTSV(data, tests)
         logger.debug("Wrote results TSV output file")
         self._writeResultsShiftStats(data, shift_stats)
@@ -143,8 +143,8 @@ class resultsManager():
                 data[data[test] <= pvalue_threshold].to_csv(out_bedgraph, sep='\t', columns=columns_to_save, header=False, index=False)
 
     def _sort_headers_list(self, headers):
-        headers.sort(key=lambda x: (not 'pvalue' in x, x))
-        return headers
+        return sorted(headers,
+                      key=lambda x: (not ('pvalue' in x or 'qvalue' in x), x))
 
     def _sort_shift_stat_headers(self, strings):
         conditions = ['c1', 'c2']
@@ -161,21 +161,18 @@ class resultsManager():
         strings.sort(key=lambda x: target.index(x) if x in target else len(target))
         return strings
 
+
     def _getStatsTests(self, data):
         tests = []
         shift_stats = []
         for header in data.columns:
-            if self._any_header_in_string(['pvalue', 'LOR', 'GMM', 'logit', 'cluster_counts'], header):
+            keywords = ['pvalue', 'qvalue', 'LOR', 'GMM', 'logit', 'cluster_counts', 'auto_test']
+            if any([kw in header for kw in keywords]):
                 tests.append(header)
-            elif self._any_header_in_string(['c1', 'c2'], header):
+            elif any([kw in header for kw in ['c1', 'c2']]):
                 shift_stats.append(header)
         return self._sort_headers_list(tests), self._sort_shift_stat_headers(shift_stats)
 
-    def _any_header_in_string(self, check_list, string):
-        for substring in check_list:
-            if substring in string:
-                return True
-        return False
 
     def _correct_pvalues(self, df, method='fdr_bh'):
         for column in df.columns:
@@ -189,7 +186,8 @@ class resultsManager():
                 corrected_pvals = self.__multipletests_filter_nan(pvals, method)
 
                 # Replace the original p-values with the corrected p-values in the dataframe
-                df[column] = corrected_pvals
+                corrected_column = column.replace("pvalue", "qvalue")
+                df[corrected_column] = corrected_pvals
 
                 logger.debug(f"pvalues for {column} have been corrected using {method}")
         return df

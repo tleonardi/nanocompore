@@ -88,7 +88,14 @@ def preprocess_subcommand(args):
     with open(args.config, 'r') as f:
         config_file = yaml.safe_load(f)
 
-    config = Config(config_file)
+    try:
+        config = Config(config_file)
+    except Exception as e:
+        msg = f"ERROR: {e}"
+        sys.stderr.write(msg)
+        exit(1)
+
+    setup_logger(config, "preprocess.log")
 
     # Init the preprocessor
     if config.get_resquiggler() == "remora":
@@ -105,13 +112,23 @@ def sampcomp_subcommand(args):
     """
     Runs the sample comparison subcommand.
     """
-    logger.warning("Running SampComp")
 
     # Read the input config file
     with open(args.config, 'r') as f:
         config_file = yaml.safe_load(f)
 
-    config = Config(config_file)
+    try:
+        config = Config(config_file)
+    except Exception as e:
+        msg = f"ERROR: {e}\n"
+        sys.stderr.write(msg)
+        exit(1)
+
+    # If we'll show a progress bar then we
+    # want to prevent the default loguru
+    # logging on stderr.
+    if config.get_progress:
+        logger.remove()
 
     # Check if output folder already exists
     try:
@@ -119,6 +136,7 @@ def sampcomp_subcommand(args):
     except (NanocomporeError, FileExistsError) as E:
         raise NanocomporeError("Could not create the output folder. Try using `overwrite: true` in the input configuration or use another directory")
 
+    setup_logger(config, "run.log")
 
     # Init SampComp
     s = SampComp(config)
@@ -136,6 +154,7 @@ def eventalign_collapse_subcommand(args):
     kit = Kit[args.kit]
     EventalignCollapser(args.input, args.ref, args.output, kit, args.nthreads)()
 
+
 def init_subcommand(args):
     """
     Initializes a new input configuration file using the default template.
@@ -146,8 +165,18 @@ def init_subcommand(args):
     shutil.copyfile(template, args.path)
 
 
+def setup_logger(config, file_name):
+    if config.get_result_exists_strategy() == 'continue':
+        logger_mode = 'a'
+    else:
+        logger_mode = 'w'
+    logger.add(os.path.join(config.get_outpath(),
+                            file_name),
+                mode=logger_mode,
+                level=config.get_log_level())
+
+
 #~~~~~~~~~~~~~~CLI ENTRYPOINT~~~~~~~~~~~~~~#
 
 if __name__ == "__main__":
-    # execute only if run as a script
     main()

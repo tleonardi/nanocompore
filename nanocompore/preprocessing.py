@@ -492,8 +492,6 @@ class EventalignPreprocessor(Preprocessor):
     def __init__(self, config):
         super().__init__(config)
 
-        self._validate_eventalign_input()
-
 
     def __call__(self):
         self._reuse_collapsed_files()
@@ -743,13 +741,6 @@ class EventalignPreprocessor(Preprocessor):
         kmer_db = self._config.get_kmer_data_db()
         path = Path(kmer_db)
         return str(path.with_name(path.stem + '_' + sample + path.suffix))
-
-
-    def _validate_eventalign_input(self):
-        for condition in self._config.get_data().values():
-            for sample in condition.values():
-                if 'eventalign_tsv' not in sample and 'eventalign_db' not in sample:
-                    raise ValueError('When using the "eventalign" preprocessor each sample must contain either the field "eventalign_tsv" with a path to the eventalign tsv file or "eventalign_db" with the alreday collapsed eventalign data.')
 
 
     # Since the kmer data we read from the eventalign collapsed db

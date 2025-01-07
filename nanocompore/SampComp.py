@@ -1,12 +1,13 @@
-import collections, os, traceback, datetime
-import sqlite3
+import collections
+import datetime
 import multiprocessing as mp
+import os
 import queue
+import sqlite3
 import time
+import traceback
 
 from contextlib import closing
-from concurrent.futures import ProcessPoolExecutor, as_completed
-from concurrent.futures import ThreadPoolExecutor
 from threading import Thread
 
 import torch
@@ -25,23 +26,12 @@ from nanocompore.kmer import KmerData
 from nanocompore.SampComp_SQLDB import SampCompDB
 
 
-## Disable multithreading for MKL and openBlas
-#os.environ["MKL_NUM_THREADS"] = "1"
-#os.environ["MKL_THREADING_LAYER"] = "sequential"
-#os.environ["NUMEXPR_NUM_THREADS"] = "1"
-#os.environ["OMP_NUM_THREADS"] = "1"
-#os.environ['OPENBLAS_NUM_THREADS'] = '1'
-#
-#
-#DONE_MSG = "done"
-
-
 class SampComp(object):
     """
     SampComp reads the resquiggled and preprocessed data
     and performs comparison between the samples of the two
-    conditions for each position on every whitelisted
-    transcript to detect the presence of likely modifications.
+    conditions for each position on every transcript to
+    detect the presence of likely modifications.
     """
 
     def __init__(self, config, random_state=42):
@@ -57,7 +47,7 @@ class SampComp(object):
         log_init_state(loc=locals())
 
         self._config = config
-        self._worker_procs = self._config.get_nthreads() - 1
+        self._workers_with_device = self._get_workers_with_device()
         self._value_type = get_measurement_type(self._config.get_resquiggler())
         self._sample_labels = self._config.get_sample_labels()
         self._random_state = random_state
@@ -65,278 +55,162 @@ class SampComp(object):
 
     def __call__(self):
         """
-        Run the analysis
+        The main method that will perform the comparative analysis.
+        The function will get transcripts for processing from the input
+        database, start worker processes to compare them and write the results
+        in the output database, and finally will perform the postprocessing
+        to export TSVs with the output.
         """
         logger.info("Starting data processing")
 
         resultsManager = SampCompResultsmanager.resultsManager(self._config)
 
+        if self._config.get_progress():
+            print("Getting the list of transcripts for processing...")
         transcripts = self._get_transcripts_for_processing()
         if self._config.get_result_exists_strategy() == 'continue':
             all_transcripts_num = len(transcripts)
             transcripts = resultsManager.filter_already_processed_transcripts(transcripts)
-            already_processed = all_transcripts_num - len(transcripts)
+            already_processed = all_transcripts_num - len(u)
             logger.info(f"Found a total of {all_transcripts_num}. {already_processed} have already been processed in previous runs. Will process only for the remaining {len(transcripts)}.")
         else:
             logger.info(f"Found a total of {len(transcripts)} transcripts for processing.")
-        
-        task_queue = mp.JoinableQueue()
-        # for ref_ids in chunks(transcripts, 1):
-        #     task_queue.put(ref_ids)
-        for transcript_ref in transcripts:
-            # if "ENST00000274606.8" in transcript_ref.ref_id:
-            task_queue.put((transcript_ref, 0))
-        logger.info(f"All {task_queue.qsize()} transcripts have been sent to the queue")
 
-        logger.info(f"Starting {self._worker_procs} worker processes.")
+        task_queue = mp.JoinableQueue()
+        for transcript_ref in transcripts:
+            task_queue.put((transcript_ref, 0))
+        logger.info("All transcripts have been sent to the queue")
+
+        if self._config.get_progress():
+            print("Starting to compare the conditions for all transcripts...")
+        logger.info(f"Starting {len(self._workers_with_device)} worker processes.")
+        db_lock = mp.Lock()
+        sync_lock = mp.Lock()
         manager = mp.Manager()
-        db_lock = manager.Lock()
+        num_finished = manager.Value('i', 0)
         workers = [mp.Process(target=self._worker_process,
-                              args=(worker, task_queue, db_lock, device))
-                   for worker, device in self._get_workers_with_device().items()]
+                              args=(worker, task_queue, db_lock, sync_lock, num_finished, device))
+                   for worker, device in self._workers_with_device.items()]
 
         for worker in workers:
             worker.start()
 
-        task_queue.join()
-        for worker in workers:
-            worker.join()
+        # helper variables for the progress bar
+        max_len = 0
+        start_time = time.time()
+
+        # Wait for all workers to finish while printing
+        # the progress bar if it was requested.
+        # We use this slightly weird pattern of waiting
+        # for processes instead of a standard loop with
+        # unbounded join, because otherwise we'll have
+        # to start a separate thread for the progress bar
+        # monitoring and that doesn't work well with the
+        # multiprocess Manager.
+        while len(workers) > 0:
+            for i, worker in enumerate(workers):
+                # Try to join the worker with 1s timeout
+                worker.join(1)
+                # If the worker has completed we remove it from
+                # the worker pool.
+                if worker.exitcode is not None:
+                    workers.pop(i)
+                if self._config.get_progress():
+                    with sync_lock:
+                        num_done = num_finished.value
+                    self._print_progress_bar(num_done, len(transcripts), max_len, start_time)
+
+        if self._config.get_progress():
+            print("\nAll transcripts have been processed.")
+            print("Starting postprocessing...")
 
         resultsManager.finish()
+        if self._config.get_progress():
+            print("Done.")
 
 
-    def _worker_process(self, worker_id, task_queue, db_lock, device):
+    def _worker_process(self, worker_id, task_queue, db_lock, sync_lock, num_finished, device):
+        """
+        The main worker process function. It will
+        continuously take tasks (transcripts) from the
+        task queue, process them and write the results
+        to the database. Will quit when the task queue
+        is empty.
+
+        :param worker_id int: Id of the worker
+        :param task_queue multiprocesing.JoinableQueue: Queue with tasks for processing.
+        :param db_lock multiprocessing.Lock: Lock to prevent parallel writing to the SQLite DB.
+        :param sync_lock multiprocessing.Lock: Lock for synchronisation.
+        :param num_finished multiprocessing.managers.SyncManager.Value: number of processed transcripts.
+        :param device str: which device to use for computation (e.g. cpu or gpu).
+        """
         db_manager = SampCompDB(self._config, init_db=False)
         fasta_fh = Fasta(self._config.get_fasta_ref())
         batch_comp = BatchComp(config=self._config)
         kit = self._config.get_kit()
-        logger.info(f"Worker {worker_id} started.")
+        logger.info(f"Worker {worker_id} started with pid {os.getpid()}.")
 
         db = self._config.get_kmer_data_db()
         with closing(sqlite3.connect(db)) as conn,\
              closing(conn.cursor()) as cursor:
             while True:
-                try:
-                    msg = task_queue.get(block=True, timeout=1)
-                except queue.Empty:
-                    logger.info(f"Worker {worker_id} could not find more tasks in the queue and will terminate.")
-                    return
+                # It's weird that we have to use a lock here,
+                # but for some reason calling get in parallel from
+                # multiple processes can cause a queue.Empty
+                # exception to be raised even for non-empty queues...
+                # https://github.com/python/cpython/issues/87302
+                with sync_lock:
+                    try:
+                        logger.info(f"Worker {worker_id} getting a task from a queue with size {task_queue.qsize()}")
+                        msg = task_queue.get(block=False)
+                    except queue.Empty:
+                        logger.info(f"Worker {worker_id} could not find more tasks in the queue and will terminate.")
+                        break
 
                 try:
                     transcript_ref, retries = msg
                     if retries > 2:
-                        logger.error(f"Transcript {transcript_ref.ref_id} was retried too many times. Won't retry again.")
+                        logger.error(f"Worker {worker_id}: Transcript {transcript_ref.ref_id} was retried too many times. Won't retry again.")
                         continue
+                    logger.info(f"Worker {worker_id} starts processing {transcript_ref.ref_id}")
                     transcript = Transcript(id=transcript_ref.id,
                                             ref_id=transcript_ref.ref_id,
                                             ref_seq=str(fasta_fh[transcript_ref.ref_id]))
 
-                    kmer_data_list = self._read_transcript_kmer_data([transcript_ref], cursor)
-                    transcript, results = batch_comp.compare_transcript(transcript, kmer_data_list, device)
+                    kmer_data_list = self._read_transcript_kmer_data(transcript_ref, cursor)
+                    transcript, results = batch_comp.compare_transcript(transcript,
+                                                                        kmer_data_list,
+                                                                        device)
                     if results is None:
                         continue
 
                     seq = transcript.seq
                     kmers = results.pos.apply(lambda pos: get_pos_kmer(pos, seq, kit))
                     results['kmer'] = kmers.apply(encode_kmer)
-                    db_lock.acquire()
-                    logger.info(f"Saving the results for {transcript.name}")
-                    db_manager.save_test_results(transcript, results)
-                    db_lock.release()
+                    with db_lock:
+                        logger.info(f"Worker {worker_id}: Saving the results for {transcript.name}")
+                        db_manager.save_test_results(transcript, results)
                 except torch.OutOfMemoryError:
                     task = TranscriptRow(transcript.name, transcript.id)
-                    task_queue.put((task, retries + 1))
+                    logger.info(f"Worker {worker_id} returns {transcript_ref.ref_id} to " + \
+                                 "the queue for later processing because it failed with OutOfMemory.")
+                    with sync_lock:
+                        task_queue.put((task, retries + 1))
                 except:
                     msg = traceback.format_exc()
                     logger.error(f"Error in Worker {worker_id}: {msg}")
                 finally:
-                    logger.info(f"TASK DONE")
-                    task_queue.task_done()
+                    logger.info(f"Worker {worker_id} is finishing a task.")
+                    with sync_lock:
+                        num_finished.value += 1
+                        task_queue.task_done()
 
 
-    # def _process_transcripts(self, worker_id, task_queue, result_queue):
-    #     fasta_fh = Fasta(self._config.get_fasta_ref())
-    #     batch_comp = BatchComp(config=self._config)
-    #     kit = self._config.get_kit()
-
-    #     db = self._config.get_kmer_data_db()
-    #     with closing(sqlite3.connect(db)) as conn,\
-    #          closing(conn.cursor()) as cursor:
-    #         while True:
-    #             transcript_ref = task_queue.get()
-    #             if transcript_ref is None:
-    #                 logger.info(f"Worker {worker_id} has finished and will terminate.")
-    #                 result_queue.put(DONE_MSG)
-    #                 return
-
-    #             # tx_id_to_transcript = {ref.id: Transcript(ref_id=ref.ref_id,
-    #             #                                           ref_seq=str(fasta_fh[ref.ref_id]))
-    #             #                        for ref in transcript_refs}
-    #             transcript = Transcript(id=transcript_ref.id,
-    #                                     ref_id=transcript_ref.ref_id,
-    #                                     ref_seq=str(fasta_fh[transcript_ref.ref_id]))
-
-    #             try:
-    #                 kmer_data_list = self._read_transcript_kmer_data([transcript_ref], cursor)
-    #                 transcript, results = batch_comp.compare_transcripts(transcript, kmer_data_list)
-
-    #                 seq = transcript.seq
-    #                 kmers = results.pos.apply(lambda pos: get_pos_kmer(pos, seq, kit))
-    #                 results['kmer'] = kmers.apply(encode_kmer)
-    #                 result_queue.put((transcript, results))
-    #                 # for tx_id in all_test_results['transcript_id'].unique():
-    #                 #     df = all_test_results[all_test_results.transcript_id == tx_id].copy()
-    #                 #     transcript = tx_id_to_transcript[tx_id]
-    #                 #     ref_id = transcript.name
-    #                 #     seq = transcript.seq
-    #                 #     kmers = df.pos.apply(lambda pos: get_pos_kmer(pos, seq, kit))
-    #                 #     df['kmer'] = kmers.apply(encode_kmer)
-    #                 #     result_queue.put((ref_id, df))
-
-    #             except Exception:
-    #                 msg = traceback.format_exc()
-    #                 logger.error(f"Error in Worker {worker_id}: {msg}")
-
-
-    # def _process_transcripts_gpu(self, worker_id, task_queue, result_queue):
-    #     fasta_fh = Fasta(self._config.get_fasta_ref())
-    #     batch_comp = BatchComp(config=self._config)
-    #     kit = self._config.get_kit()
-
-    #     manager = mp.Manager()
-    #     max_threads = manager.Value('i', 1)
-    #     threads = mp.pool.ThreadPool(max_threads.value)
-    #     active_threads = manager.Value('i', 0)
-    #     retry_queue = manager.Queue()
-
-    #     # TODO add lock
-    #     async_results = {}
-    #     mem_usage_history = []
-
-    #     # kill_proc = False
-    #     input_finished = False
-
-    #     def callback(args):
-    #         transcript, results = args
-    #         logger.info(f"Transcript {transcript.name} has been processed, will send the results for saving.")
-    #         try:
-    #             active_threads.value -= 1
-    #             del async_results[transcript.name]
-    #             # ref_id = transcript.name
-    #             seq = transcript.seq
-    #             kmers = results.pos.apply(lambda pos: get_pos_kmer(pos, seq, kit))
-    #             results['kmer'] = kmers.apply(encode_kmer)
-    #             result_queue.put((transcript, results))
-    #             logger.info(f"Transcript {transcript.name} has been processed and was sent for saving.")
-    #         except Exception as e:
-    #             msg = traceback.format_exc()
-    #             logger.error(f"Got an exception in the async callback: {msg}")
-
-    #     def error_callback(exception):
-    #         transcript = exception.transcript
-    #         logger.error(f"Worker {worker_id} got exception {exception} while processing {transcript.name}")
-    #         active_threads.value -= 1
-    #         del async_results[transcript.name]
-    #         if isinstance(exception, torch.OutOfMemoryError):
-    #             logger.error(f"Worker {worker_id} got OutOfMemory error while processing {transcript.name}. Will add it to the retry queue.")
-    #             # if max_threads.value > 1:
-    #             #     max_threads.value -= 1
-    #             max_threads.value = max(active_threads.value - 1, 1)
-    #             retry_queue.put(TranscriptRow(transcript.name, transcript.id))
-    #             torch.cuda.empty_cache()
-    #             torch.cuda.reset_peak_memory_stats()
-    #         else:
-    #             # TODO: format stack trace and log that
-    #             # msg = traceback.format_exception(exception)
-    #             logger.error(f"Error in Worker {worker_id}: {exception}")
-
-    #     db = self._config.get_kmer_data_db()
-    #     with closing(sqlite3.connect(db)) as conn,\
-    #          closing(conn.cursor()) as cursor:
-    #         t = time.time()
-    #         while True:
-    #             free, total = torch.cuda.mem_get_info()
-    #             mem_usage = (total - free) / total
-    #             if time.time() - t > 10:
-    #                 mem_usage_history.insert(0, mem_usage)
-    #                 if len(mem_usage_history) > 3:
-    #                     mem_usage_history.pop()
-    #                 if len(mem_usage_history) == 3 and np.mean(mem_usage_history) < 0.65:
-    #                     # max_threads.value += 1
-    #                     mem_usage_history = []
-    #                 logger.info(f"Worker {worker_id}: Active threads: {active_threads.value}, max threads: {max_threads.value}, mem_usage: {mem_usage}")
-    #                 t = time.time()
-
-    #             # if kill_proc and all(async_results.ready() for async_res in async_results.values()):
-    #             if input_finished and len(async_results) == 0 and retry_queue.empty():
-    #                 logger.info(f"Worker {worker_id} has finished and will terminate.")
-    #                 threads.close()
-    #                 result_queue.put(DONE_MSG)
-    #                 return
-    #             
-    #             if active_threads.value < max_threads.value and mem_usage < 0.80:
-    #                 if not input_finished:
-    #                     transcript_ref = task_queue.get()
-    #                     if transcript_ref is None:
-    #                         # threads.close()
-    #                         # kill_proc = True
-    #                         input_finished = True
-    #                         continue
-    #                 elif not retry_queue.empty():
-    #                     transcript_ref = retry_queue.get()
-    #                 else:
-    #                     continue
-
-
-    #                 transcript = Transcript(id=transcript_ref.id,
-    #                                         ref_id=transcript_ref.ref_id,
-    #                                         ref_seq=str(fasta_fh[transcript_ref.ref_id]))
-    #                 kmer_data_list = self._read_transcript_kmer_data([transcript_ref], cursor)
-    #                 logger.info(f"Worker {worker_id} submits transcript {transcript_ref.ref_id} for processing to the thread pool.")
-    #                 async_res = threads.apply_async(batch_comp.compare_transcripts,
-    #                                                 args=(transcript, kmer_data_list,),
-    #                                                 callback=callback,
-    #                                                 error_callback=error_callback)
-    #                 async_results[transcript.name] = async_res
-    #                 active_threads.value += 1
-    #             else:
-    #                 time.sleep(1)
-
-
-    #             # transcript_refs = task_queue.get()
-    #             # if transcript_refs is None:
-    #             #     logger.info(f"Worker {worker_id} has finished and will terminate.")
-    #             #     result_queue.put(DONE_MSG)
-    #             #     return
-
-    #             # tx_id_to_transcript = {ref.id: Transcript(ref_id=ref.ref_id,
-    #             #                                           ref_seq=str(fasta_fh[ref.ref_id]))
-    #             #                        for ref in transcript_refs}
-
-    #             # try:
-    #             #     kmer_data_list = self._read_transcript_kmer_data(transcript_refs, cursor)
-    #             #     all_test_results = batch_comp.compare_transcripts(kmer_data_list)
-
-    #             #     for tx_id in all_test_results['transcript_id'].unique():
-    #             #         df = all_test_results[all_test_results.transcript_id == tx_id].copy()
-    #             #         transcript = tx_id_to_transcript[tx_id]
-    #             #         ref_id = transcript.name
-    #             #         seq = transcript.seq
-    #             #         kmers = df.pos.apply(lambda pos: get_pos_kmer(pos, seq, kit))
-    #             #         df['kmer'] = kmers.apply(encode_kmer)
-    #             #         result_queue.put((ref_id, df))
-
-    #             # except Exception:
-    #             #     msg = traceback.format_exc()
-    #             #     logger.error(f"Error in Worker {worker_id}: {msg}")
-
-
-    def _read_transcript_kmer_data(self, transcript_refs, cursor):
-        params = ','.join(['?' for _ in transcript_refs])
+    def _read_transcript_kmer_data(self, transcript_ref, cursor):
         res = cursor.execute(f"""SELECT *
                                  FROM kmer_data
-                                 WHERE transcript_id IN ({params})""",
-                             [ref.id for ref in transcript_refs])
+                                 WHERE transcript_id = ?""",
+                             (transcript_ref.id,))
 
         kmers = [self._db_row_to_kmer(row)
                  for row in res.fetchall()]
@@ -373,7 +247,7 @@ class SampComp(object):
                         None, # We don't have validity data here
                         self._config)
 
-    
+
     def _enough_reads_in_kmer(self, kmer):
         condition_counts = Counter(kmer.condition_labels)
         return all(condition_counts.get(cond, 0) >= self._config.get_min_coverage()
@@ -438,103 +312,41 @@ class SampComp(object):
         else:
             if not isinstance(devices, list):
                 devices = [devices]
-            for worker in range(self._worker_procs):
+            for worker in range(self._config.get_nthreads() - 1):
                 result[worker] = devices[worker % len(devices)]
         return result
 
 
-# class LoadBalancer:
-#     def __init__(self, config):
-#         self._config = config
-#         self._n_workers = config.get_nthreads() - 1
-#         self._worker_devices = {}
-#         self._init_assignment()
-#         self._gpu_devices = self.get_gpu_devices()
-# 
-#         self.lock = threading.Lock()
-#         self._gpu_memories = {}
-#         self._gpu_utilizations = {gpu: []
-#                                   for gpu in self._gpu_devices}
-# 
-#         device = config.get_devices()
-#         if device != 'cpu' and device != ['cpu']:
-#             self._monitor = Thread(target=self._start_monitor)
-#             self._monitor.start()
-# 
-#         self._queue = mp.Queue()
-#         self._listener = Thread(target=self._listen)
-#         self._listener.start()
-# 
-# 
-#     def get_queue(self):
-#         return self._channel
-# 
-# 
-#     def get_device(self):
-#         selected = None
-#         self.lock.acquire()
-#         for gpu in self._gpu_devices:
-#             mean_util = sum(self._gpu_utilizations)/len(self._gpu_utilizations)
-#             if self._gpu_memories[gpu] < 0.8 and mean_util < 0.9:
-#                 selected = gpu
-#                 break
-#         self.lock.release()
-#         return selected or 'cpu'
-# 
-# 
-#     def _listen(self):
-#         while True:
-#             worker, old_device, reply_queue = self._queue.get()
-#             if not old_device:
-#                 device = self._worker_devices[worker]
-#             else:
-#                 device = get_device()
-#             reply_queue.put(device)
-# 
-# 
-#     def _start_monitor(self):
-#         while True:
-#             time.sleep(1)
-#             for gpu in self._gpu_devices:
-#                 memory = self._get_cuda_memory_usage(device)
-#                 utilization = self._get_cuda_utilization(device)
-#                 self.lock.acquire()
-#                 self._gpu_memories[gpu] = memory
-#                 self._gpu_utilizations[gpu].insert(0, utilization)
-#                 if len(self._gpu_utilizations[gpu]) > 10:
-#                     self._gpu_utilizations.pop()
-#                 self.lock.release()
-# 
-# 
-#     def _init_assignment(self):
-#         device = _config.get_devices()
-#         if isinstance(device, str):
-#             for worker in range(self._n_workers):
-#                 self._worker_devices[worker] = device
-#         elif isinstance(device, list):
-#             for worker in range(self._n_workers):
-#                 self._worker_devices[worker] = device[worker % len(device)]
-# 
-# 
-#     def _get_cuda_memory_usage(self, device):
-#         """
-#         Return the memory usage of a cuda device in percentage.
-#         """
-#         gpu_number = int(device.split(':')[1])
-#         free, total = torch.cuda.mem_get_info(gpu_number)
-#         return (total - free) / total
-# 
-# 
-#     def _get_cuda_utilization(self, gpu_number):
-#         gpu_number = int(device.split(':')[1])
-#         return torch.cuda.utilization(gpu_number)
-# 
-# 
-#     def _get_gpu_devices(self):
-#         devices = self._config.get_devices()
-#         if isinstance(devices, str):
-#             devices = [devices]
-#         return [device
-#                 for device in devices
-#                 if device.startswith('cuda')]
-# 
+    def _print_progress_bar(self, num_done, total_transcripts, max_len, start_time):
+        progress_bar_len = 30
+        perc_done = num_done / total_transcripts
+        done_chars = int(perc_done*progress_bar_len)
+        done_bar = '▮' * done_chars
+        remaining_bar = '-' * (progress_bar_len - done_chars)
+        running_time = time.time() - start_time
+        if num_done == 0:
+            eta = 'ETA: N/A'
+        else:
+            total_expected = running_time * total_transcripts / num_done
+            remaining_sec = total_expected - running_time
+            hours, minutes, _ = self._format_time(remaining_sec)
+            eta = f'ETA: {hours:02d}h:{minutes:02d}m remaining'
+        hours, minutes, seconds = self._format_time(running_time)
+        running = f'⏱  {hours:02d}h:{minutes:02d}m:{seconds:02d}s'
+        speed = num_done / (running_time / 60)
+        bar = f'{running} |{done_bar}{remaining_bar}| ' + \
+              f'{num_done:,}/{total_transcripts:,} ' + \
+              f'({perc_done*100:3.1f}%) [{speed:.1f}tx/m] | {eta}'
+        if len(bar) > max_len:
+            max_len = len(bar)
+        if len(bar) < max_len:
+            bar = f'{bar}{(max_len - len(bar)) * " "}'
+        print(bar, end='\r', flush=True)
+        return max_len
+
+
+    def _format_time(self, seconds):
+        hours, remainder = divmod(seconds, 3600)
+        minutes, seconds = divmod(remainder, 60)
+        return int(hours), int(minutes), int(seconds)
+

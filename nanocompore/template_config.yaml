@@ -1,47 +1,107 @@
 # === REQUIRED FIELDS ===
 
 # Specify all the conditions and samples to bo analysed.
-# Each sample should have paths to a bam and a pod5 file.
+# Depending on the resquiggler used, Nanocompore expect different
+# fields to be defined for all samples:
+# - Uncalled4:
+#   - Each sample should have the "bam" field set with a path
+#     to a bam file containing the Uncalled4 resquiggling data.
+# - Eventalign:
+#   - If you haven't ran nanocompore's eventalign_collapse
+#     subcommand on your eventalign files yet, you can set
+#     the "eventalign_tsv" field to a path to the TSV output
+#     produced by Nanopolish or f5c. The preprocess command
+#     will then collapse the files for you.
+#   - If you already have ran eventalign_collapse, you can
+#     provide the path to the collapsed database with the
+#     "eventalign_db" parameter.
+#   Note: the second option may be more efficient as you
+#   can directly pipe Nanopolish/f5c to Nanocompore's
+#   eventalign_collapse and avoid having to store the
+#   raw eventalign TSV files, which are usually quite big.
 data:
   # Only two conditions are supported
   condition1:
     sample1:
       bam: "/path/to/file.bam"
       pod5: "/path/to/file.pod5"
+      eventalign_db: "/path/to/collapsed_eventalign.sqlite"
     sample2:
       bam: "/path/to/file.bam"
       pod5: "/path/to/file.pod5"
+      eventalign_db: "/path/to/collapsed_eventalign.sqlite"
     # you can list as many samples as you want
   condition2:
     sample3:
       bam: "/path/to/file.bam"
       pod5: "/path/to/file.pod5"
+      eventalign_db: "/path/to/collapsed_eventalign.sqlite"
     sample4:
       bam: "/path/to/file.bam"
       pod5: "/path/to/file.pod5"
+      eventalign_db: "/path/to/collapsed_eventalign.sqlite"
 
+# Which of the two conditions is the one that's
+# depleted of modifications.
+depleted_condition: condition1
 
-# reference genome/transcriptome in fasta format
+# Reference genome/transcriptome in fasta format
 fasta: "/path/to/reference.fa"
 
-# path to where the kmer data will be stored
+# Path to where the kmer data will be stored
 # after the preprocessing step
 kmer_data_db: "/path/to/kmer_data.sqlite"
 
+# The kit that was used for sequencing.
+kit: "RNA004"
+
+# Specify which resquiggler you have used for your data.
+# Possible options are "remora" and "uncalled4".
 resquiggler: 'remora'
+
 
 # === OPTIONAL FIELDS ===
 
-# The kit that was used for sequencing.
-# kit: "RNA002"
 
-# Number of threads to use.
-# Note that 1 thread is used for reading the data and one for writing the output.
-# The number of processing threads is hence nthreads-2
-# nthreads: 3
+# Which computing device to use for the analysis (e.g. CPU vs GPU).
+# This setting is used by the run subcommand.
+# The accepted values are: "cpu", "cuda", "cuda:N"
+# You can set the parameter using one of three methods:
+# - Single value, e.g. "cpu" to use the CPU. In this case,
+#   the number of worker processes will be determined by the
+#   "nthreads" setting and all workers will use the device
+#   specified here.
+# - List of devices, e.g. ["cpu", "cuda:0", "cuda:1"] to use
+#   the CPU and two GPUs. The worker processes (controlled
+#   with the "nthreads" setting) will be evenly split between
+#   all listed devices.
+# - A map of devices and number of worker processes,
+#   e.g. {"cpu": 4, "cuda:0": 8, "cuda:1": 8} to start 4
+#   worker processes on the CPU and 8 worker processes on
+#   each of the two GPUs. Note that if this method is used,
+#   the "nthreads" parameter will be ignored.
+# devices:
+#   "cpu": 4
+#   "cuda:0": 8
+#   "cuda:1": 8
 
-# Overwrite existing output files
-# overwrite: False
+
+# Number of processes to use.
+# Note: one process will be used as an orchestrator
+# and will not be used to compare the samples.
+# The number of worker processes is hence nthreads - 1.
+# Note: if the number of worker processes are set for
+# each device in the "devices" parameter "nthreads" will
+# be ignored by the run subcommand.
+# The default value is 2.
+# nthreads: 2
+
+# What to do if the output directory already exists.
+# Possible options are:
+# - stop (default): stop the execution with an error.
+# - overwrite: delete the existing directory and start from scratch.
+# - continue: try to continue from where the previous execution left off.
+# result_exists_strategy: "continue"
 
 # Path to the output directory
 # outpath: "nanocompore_output"
@@ -54,13 +114,13 @@ resquiggler: 'remora'
 
 # -- Transcript filtering options --
 
-# Minimum coverage to consider a transcript for analysis
+# Minimum coverage to consider a transcript for analysis.
 # min_coverage: 30
 
-# Transcripts with high coverage will be downsampled to this value
+# Transcripts with high coverage will be downsampled to this value.
 # downsample_high_coverage: 5000
 
-# Minimum length of a reference transcript to include it in the analysis
+# Minimum length of a reference transcript to include it in the analysis.
 # min_ref_length: 100
 
 # -- Statistical testing options --
@@ -71,6 +131,7 @@ resquiggler: 'remora'
 # - KOLMOGOROV_SMIRNOV
 # - MANN_WHITNEY
 # - T_TEST
+# - auto
 # You can also use abbreviations:
 # - GMM
 # - KS
@@ -109,13 +170,3 @@ resquiggler: 'remora'
 # Display a progress bar during execution
 # progress: False
 
-# Save read level data to database.
-# (That means the intensity/dwell-time measurements
-# for every position of every read will be stored.)
-# Warning: This can take up a lot of space.
-# read_level_data: False
-
-# If read_level_data is True, only save read level data for these transcripts.
-# The transcript ids must match the RNAME field from the bam file.
-# Note: empty list means all transcripts
-# read_level_data_transcripts: []

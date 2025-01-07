@@ -42,3 +42,9 @@ If you're getting error like `OSError: libcufft.so.11: cannot open shared object
 ```bash
 $ pip3 install torch  --extra-index-url https://download.pytorch.org/whl/cpu
 ```
+
+## V2 roadmap
+[] Context merging with Hou's method.
+[] AMD GPU support.
+[] Nextflow pipeline.
+[] Remora support.

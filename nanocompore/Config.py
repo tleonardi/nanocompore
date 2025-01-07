@@ -24,14 +24,34 @@ def validate_device(value):
         raise ArgumentError("The value for 'devices' in the configuration is of unexpected type: {type(value)}")
 
 
+def validate_eventalign_data(config):
+    if config['resquiggler'] != 'eventalign':
+        return True
+    for condition, cond_data in config['data'].items():
+        for sample, sample_data in cond_data.items():
+            if ('eventalign_tsv' not in sample_data and
+                'eventalign_db' not in sample_data):
+                return False
+    return True
 
-CONFIG_SCHEMA = Schema({
+
+def validate_uncalled4_data(config):
+    if config['resquiggler'] != 'uncalled4':
+        return True
+    for condition, cond_data in config['data'].items():
+        for sample, sample_data in cond_data.items():
+            if 'bam' not in sample_data:
+                return False
+    return True
+
+
+CONFIG_SCHEMA = Schema(And({
     'data': And(
         {
             str: { # condition
                 str: { # sample (replicate)
-                    'bam': lambda f: open(f, 'r'),
-                    'pod5': str,
+                    Optional('bam'): lambda f: open(f, 'r'),
+                    Optional('pod5'): str,
                     Optional('eventalign_tsv'): lambda f: open(f, 'r'),
                     Optional('eventalign_db'): lambda f: open(f, 'r')
                 }
@@ -42,7 +62,7 @@ CONFIG_SCHEMA = Schema({
     'depleted_condition': str,
     'fasta': And(is_valid_fasta, error='Invalid fasta file'),
     'kmer_data_db': str,
-    'resquiggler': Or('remora', 'uncalled4', 'eventalign'),
+    'resquiggler': Or('uncalled4', 'eventalign'),
     'kit': Or(*[v.name for v in Kit]),
     Optional('devices'): validate_device,
     Optional('bed'): And(lambda f: open(f, 'r'), error='Invalid bed file'),
@@ -75,15 +95,25 @@ CONFIG_SCHEMA = Schema({
     Optional('result_exists_strategy'): Or("stop", "continue", "overwrite"),
     Optional('log_level'): Or('warning', 'info', 'debug'),
     Optional('progress'): bool,
-    Optional('correction_method'): 'fdr_bh',
-    Optional('read_level_data'): bool,
-    Optional('read_level_data_transcripts'): And(list, lambda l: len(l) > 0),
-})
+    Optional('correction_method'): 'fdr_bh'},
+    # Additional validation of the full configuration
+    And(validate_eventalign_data,
+        error='When using the "eventalign" resquiggler ' +
+              'each sample in the configuration must contain ' +
+              'either the field "eventalign_tsv" with a path ' +
+              'to the eventalign tsv file or "eventalign_db" ' +
+              'with the alreday collapsed eventalign data.'),
+    And(validate_uncalled4_data,
+        error='When using the "uncalled4" resquiggler ' +
+              'each sample in the configuration must contain ' +
+              'the field "bam" with a path to the aligned bam file ' +
+              'that contains the resquiggling tags produced ' +
+              'by Uncalled4.')))
 
 
 DEFAULT_KIT = 'RNA002'
-DEFAULT_DEVICE = 'cpu'
-DEFAULT_NTHEARDS = 3
+DEFAULT_DEVICES = 'cpu'
+DEFAULT_NTHEARDS = 2
 DEFAULT_MIN_COVERAGE = 30
 DEFAULT_MAX_READS = 5000
 DEFAULT_DOWNSAMPLE_HIGH_COVERAGE = 5000
@@ -155,7 +185,7 @@ class Config:
         Returns the device to be used for computations.
         E.g. cpu or cuda.
         """
-        return self._config.get('devices', DEFAULT_DEVICE)
+        return self._config.get('devices', DEFAULT_DEVICES)
 
 
     def get_nthreads(self):
@@ -290,7 +320,7 @@ class Config:
         """
         Get the log level.
         """
-        return self._config.get('log_level', DEFAULT_LOG_LEVEL)
+        return self._config.get('log_level', DEFAULT_LOG_LEVEL).upper()
 
 
     def get_progress(self):
@@ -327,9 +357,9 @@ class Config:
 
 
     def get_sample_labels(self):
-        return list({sample
-                     for samples in self.get_data().values()
-                     for sample in samples})
+        return [sample
+                for samples in self.get_data().values()
+                for sample in samples]
 
 
     def get_condition_labels(self):
@@ -384,5 +414,4 @@ class Config:
         return [(sample, samp_def['pod5'], samp_def['bam'])
                 for _, samples in self.get_data().items()
                 for sample, samp_def in samples.items()]
-
 
