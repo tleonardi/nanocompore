@@ -16,19 +16,17 @@ import numpy as np
 from loguru import logger
 from pyfaidx import Fasta
 
-import nanocompore.SampCompResultsmanager as SampCompResultsmanager
-
-from nanocompore.Transcript import Transcript
-from nanocompore.TxComp import TxComp
-from nanocompore.batch_comp import BatchComp
 from nanocompore.common import *
+from nanocompore.comparisons import TranscriptComparator
+from nanocompore.database import ResultsDB
 from nanocompore.kmer import KmerData
-from nanocompore.SampComp_SQLDB import SampCompDB
+from nanocompore.postprocessing import Postprocessor
+from nanocompore.transcript import Transcript
 
 
-class SampComp(object):
+class RunCmd(object):
     """
-    SampComp reads the resquiggled and preprocessed data
+    RunCmd reads the resquiggled and preprocessed data
     and performs comparison between the samples of the two
     conditions for each position on every transcript to
     detect the presence of likely modifications.
@@ -36,12 +34,12 @@ class SampComp(object):
 
     def __init__(self, config, random_state=42):
         """
-        Initialise a `SampComp` object and generates a white list of references with sufficient coverage for subsequent analysis.
+        Initialise a `RunCmd` object and generates a white list of references with sufficient coverage for subsequent analysis.
         The retuned object can then be called to start the analysis.
         * config
             Config object containing all the parameters for the analysis.
         """
-        logger.info("Checking and initialising SampComp")
+        logger.info("Checking and initialising RunCmd")
 
         # Save init options in dict for later
         log_init_state(loc=locals())
@@ -63,16 +61,16 @@ class SampComp(object):
         """
         logger.info("Starting data processing")
 
-        resultsManager = SampCompResultsmanager.resultsManager(self._config)
-
         if self._config.get_progress():
             print("Getting the list of transcripts for processing...")
         transcripts = self._get_transcripts_for_processing()
         if self._config.get_result_exists_strategy() == 'continue':
             all_transcripts_num = len(transcripts)
-            transcripts = resultsManager.filter_already_processed_transcripts(transcripts)
+            transcripts = self._filter_processed_transcripts(transcripts)
             already_processed = all_transcripts_num - len(u)
-            logger.info(f"Found a total of {all_transcripts_num}. {already_processed} have already been processed in previous runs. Will process only for the remaining {len(transcripts)}.")
+            logger.info(f"Found a total of {all_transcripts_num}. " + \
+                        f"{already_processed} have already been processed in previous runs. " + \
+                        f"Will process only for the remaining {len(transcripts)}.")
         else:
             logger.info(f"Found a total of {len(transcripts)} transcripts for processing.")
 
@@ -124,7 +122,9 @@ class SampComp(object):
             print("\nAll transcripts have been processed.")
             print("Starting postprocessing...")
 
-        resultsManager.finish()
+        postprocessor = Postprocessor(self._config)
+        postprocessor()
+
         if self._config.get_progress():
             print("Done.")
 
@@ -144,13 +144,13 @@ class SampComp(object):
         :param num_finished multiprocessing.managers.SyncManager.Value: number of processed transcripts.
         :param device str: which device to use for computation (e.g. cpu or gpu).
         """
-        db_manager = SampCompDB(self._config, init_db=False)
+        db_manager = ResultsDB(self._config, init_db=False)
         fasta_fh = Fasta(self._config.get_fasta_ref())
-        batch_comp = BatchComp(config=self._config)
+        comparator = TranscriptComparator(config=self._config)
         kit = self._config.get_kit()
         logger.info(f"Worker {worker_id} started with pid {os.getpid()}.")
 
-        db = self._config.get_kmer_data_db()
+        db = self._config.get_preprocessing_db()
         with closing(sqlite3.connect(db)) as conn,\
              closing(conn.cursor()) as cursor:
             while True:
@@ -178,7 +178,7 @@ class SampComp(object):
                                             ref_seq=str(fasta_fh[transcript_ref.ref_id]))
 
                     kmer_data_list = self._read_transcript_kmer_data(transcript_ref, cursor)
-                    transcript, results = batch_comp.compare_transcript(transcript,
+                    transcript, results = comparator.compare_transcript(transcript,
                                                                         kmer_data_list,
                                                                         device)
                     if results is None:
@@ -288,7 +288,7 @@ class SampComp(object):
 
 
     def _get_transcripts_for_processing(self):
-        db = self._config.get_kmer_data_db()
+        db = self._config.get_preprocessing_db()
         with closing(sqlite3.connect(db)) as conn,\
              closing(conn.cursor()) as cursor:
             query = f"""
@@ -298,6 +298,11 @@ class SampComp(object):
             """
             return {TranscriptRow(row[0], row[1])
                     for row in cursor.execute(query).fetchall()}
+
+
+    def _filter_processed_transcripts(self, transcripts):
+        existing_transcripts = set(self._db.get_transcripts())
+        return [tx for tx in transcripts if tx.ref_id not in existing_transcripts]
 
 
     def _get_workers_with_device(self):

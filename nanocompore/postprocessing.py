@@ -1,19 +1,19 @@
-#Native packages
-import os, collections, sys
+import collections
+import os
+import sys
 
-#3rd party packages
 import numpy as np
 import pandas as pd
+
 from loguru import logger
 from bedparse import bedline
 from statsmodels.stats.multitest import multipletests
 
-#Local Packages
 from nanocompore.common import *
-import nanocompore.SampComp_SQLDB as SampCompDB
+from nanocompore.database import ResultsDB
 
 
-class resultsManager():
+class Postprocessor():
     def __init__ (self, config):
         self._outpath = config.get_outpath()
         self._prefix = config.get_outprefix()
@@ -21,15 +21,11 @@ class resultsManager():
         self._bed_fn = config.get_bed()
         self._correction_method = config.get_correction_method()
         self._config = config
-
-        self._db = SampCompDB.SampCompDB(config, init_db=True)
-
-
-    def save_results(self, transcript, test_results):
-        self._db.save_test_results(transcript, test_results)
+        self._db = ResultsDB(config, init_db=False)
 
 
-    def finish(self, valid_transcripts=set(), bed=False, bedgraph=False, pvalue_threshold=0):
+    def __call__(self, valid_transcripts=set(), bed=False, bedgraph=False, pvalue_threshold=0):
+        logger.debug("Creating database indices")
         self._db.index_database()
         logger.debug("Created all table indexes")
         logger.debug("Gathering all the data for reporting")
@@ -41,9 +37,9 @@ class resultsManager():
         data = self._correct_pvalues(data, method=self._correction_method)
         logger.debug("Corrected pvalues")
         tests, shift_stats = self._getStatsTests(data)
-        self._writeResultsTSV(data, tests)
+        self._write_results_tsv(data, tests)
         logger.debug("Wrote results TSV output file")
-        self._writeResultsShiftStats(data, shift_stats)
+        self._write_results_shift_stats(data, shift_stats)
         logger.debug("Wrote shift stats output file")
         if (bed or bedgraph) and self._bed_fn:
             if bed:
@@ -54,26 +50,25 @@ class resultsManager():
             raise NanocomporeError('Writing a bed file requires an input bed to map transcriptome coordinates to genome coordinates')
 
 
-    def filter_already_processed_transcripts(self, transcripts):
-        existing_transcripts = set(self._db.get_transcripts())
-        return [tx for tx in transcripts if tx.ref_id not in existing_transcripts]
-
-
-    def _writeResultsTSV(self, data, stats_tests):
+    def _write_results_tsv(self, data, stats_tests):
         #writes the results of all the statistical tests to a tsv file
         out_tsv = os.path.join(self._outpath, f"{self._prefix}nanocompore_results.tsv")
         logger.debug(f"Starting to write results to {out_tsv}")
-        columns_to_save = ['pos', 'chr', 'genomicPos', 'name', 'strand', 'kmer'] + ','.join(stats_tests).split(',')
-        aliases = ['pos', 'chr', 'genomicPos', 'ref_id', 'strand', 'ref_kmer'] + ','.join(stats_tests).split(',')
+        columns_to_save = ['pos', 'chr', 'genomicPos', 'name', 'strand', 'kmer']
+        aliases = ['pos', 'chr', 'genomicPos', 'ref_id', 'strand', 'ref_kmer']
+        columns_to_save.extend(stats_tests)
+        aliases.extend(stats_tests)
         data.to_csv(out_tsv, sep='\t', columns=columns_to_save, header=aliases, index=False)
 
-    def _writeResultsShiftStats(self, data, shift_stats):
+
+    def _write_results_shift_stats(self, data, shift_stats):
         #writes the shift stats to a tsv file
         shift_stats_tsv = os.path.join(self._outpath, f"{self._prefix}nanocompore_shift_stats.tsv")
         logger.debug(f"Starting to write results to {shift_stats_tsv}")
-        columns_to_save = ['name', 'pos'] + ','.join(shift_stats).split(',')
-        aliases = ['ref_id', 'pos'] + ','.join(shift_stats).split(',')
+        columns_to_save = ['name', 'pos'].extend(shift_stats)
+        aliases = ['ref_id', 'pos'].extend(shift_stats)
         data.to_csv(shift_stats_tsv, sep='\t', columns=columns_to_save, header=aliases, index=False)
+
 
     def _addGenomicPositions(self, data, valid_transcripts, convert='', assembly=''):
         '''

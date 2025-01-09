@@ -4,41 +4,53 @@ import schema
 import copy
 import os
 
-from nanocompore.Config import Config
+from nanocompore.config import Config
 
 
 cwd = os.getcwd()
 
-BASIC_VALID_CONFIG = {
+BASIC_CONFIG = {
     'data': {
         'kd': {
             'kd1': {
                 'pod5': os.path.join(cwd, 'tests/fixtures/kd1.pod5'),
-                'bam': os.path.join(cwd, 'tests/fixtures/kd1.bam')
+                'bam': os.path.join(cwd, 'tests/fixtures/kd1.bam'),
+                # 'eventalign_tsv': os.path.join(cwd, 'tests/fixtures/kd1.tsv'),
+                # 'eventalign_db': os.path.join(cwd, 'tests/fixtures/kd1.sqlite')
             },
             'kd2': {
                 'pod5': os.path.join(cwd, 'tests/fixtures/kd2.pod5'),
-                'bam': os.path.join(cwd, 'tests/fixtures/kd2.bam')
+                'bam': os.path.join(cwd, 'tests/fixtures/kd2.bam'),
+                # 'eventalign_tsv': os.path.join(cwd, 'tests/fixtures/kd2.tsv'),
+                # 'eventalign_db': os.path.join(cwd, 'tests/fixtures/kd2.sqlite')
             }
         },
         'wt': {
             'wt1': {
                 'pod5': os.path.join(cwd, 'tests/fixtures/wt1.pod5'),
-                'bam': os.path.join(cwd, 'tests/fixtures/wt1.bam')
+                'bam': os.path.join(cwd, 'tests/fixtures/wt1.bam'),
+                # 'eventalign_tsv': os.path.join(cwd, 'tests/fixtures/wt1.tsv'),
+                # 'eventalign_db': os.path.join(cwd, 'tests/fixtures/wt1.sqlite')
             },
             'wt2': {
                 'pod5': os.path.join(cwd, 'tests/fixtures/wt2.pod5'),
-                'bam': os.path.join(cwd, 'tests/fixtures/wt2.bam')
+                'bam': os.path.join(cwd, 'tests/fixtures/wt2.bam'),
+                # 'eventalign_tsv': os.path.join(cwd, 'tests/fixtures/wt2.tsv'),
+                # 'eventalign_db': os.path.join(cwd, 'tests/fixtures/wt2.sqlite')
             }
         }
     },
     'fasta': os.path.join(cwd, 'tests/fixtures/test_reference.fa'),
+    'depleted_condition': 'kd',
+    'kit': 'RNA004',
+    'resquiggler': 'uncalled4',
+    'kmer_data_db': 'tests/fixtures/kmer_data.sqlite'
 }
 
 
 class TestConfig:
     def test_valid_config(self):
-       yaml = BASIC_VALID_CONFIG
+       yaml = BASIC_CONFIG
 
        config = Config(yaml)
 
@@ -47,7 +59,7 @@ class TestConfig:
 
 
     def test_too_many_conditions(self):
-        yaml = copy.deepcopy(BASIC_VALID_CONFIG)
+        yaml = copy.deepcopy(BASIC_CONFIG)
         yaml['data']['third_condition'] = yaml['data']['kd']
 
         with pytest.raises(schema.SchemaError) as exception_info:
@@ -57,7 +69,7 @@ class TestConfig:
 
 
     def test_too_few_conditions(self):
-        yaml = copy.deepcopy(BASIC_VALID_CONFIG)
+        yaml = copy.deepcopy(BASIC_CONFIG)
         del yaml['data']['kd']
 
         with pytest.raises(schema.SchemaError) as exception_info:
@@ -67,7 +79,7 @@ class TestConfig:
 
 
     def test_missing_fasta(self):
-        yaml = copy.deepcopy(BASIC_VALID_CONFIG)
+        yaml = copy.deepcopy(BASIC_CONFIG)
         del yaml['fasta']
 
         with pytest.raises(schema.SchemaError) as exception_info:
@@ -77,7 +89,7 @@ class TestConfig:
 
 
     def test_invalid_fasta(self):
-        yaml = copy.deepcopy(BASIC_VALID_CONFIG)
+        yaml = copy.deepcopy(BASIC_CONFIG)
         yaml['fasta'] = yaml['data']['kd']['kd1']['pod5']
 
         with pytest.raises(schema.SchemaError) as exception_info:
@@ -87,17 +99,17 @@ class TestConfig:
 
 
     def test_too_few_threads(self):
-        yaml = copy.deepcopy(BASIC_VALID_CONFIG)
+        yaml = copy.deepcopy(BASIC_CONFIG)
         yaml['nthreads'] = 1
 
         with pytest.raises(schema.SchemaError) as exception_info:
             config = Config(yaml)
 
-        assert "nthreads must be >= 3" == str(exception_info.value)
+        assert "nthreads must be >= 2" == str(exception_info.value)
 
 
     def test_unsupported_comparison_method(self):
-        yaml = copy.deepcopy(BASIC_VALID_CONFIG)
+        yaml = copy.deepcopy(BASIC_CONFIG)
         yaml['comparison_methods'] = ['unsupported_method']
 
         with pytest.raises(schema.SchemaError) as exception_info:
@@ -107,7 +119,7 @@ class TestConfig:
 
 
     def test_comparison_method_is_case_sensitive(self):
-        yaml = copy.deepcopy(BASIC_VALID_CONFIG)
+        yaml = copy.deepcopy(BASIC_CONFIG)
         yaml['comparison_methods'] = ['gmm']
 
         with pytest.raises(schema.SchemaError) as exception_info:
@@ -117,7 +129,7 @@ class TestConfig:
 
 
     def test_incorrect_sequence_context(self):
-        yaml = copy.deepcopy(BASIC_VALID_CONFIG)
+        yaml = copy.deepcopy(BASIC_CONFIG)
         yaml['sequence_context'] = 5
 
         with pytest.raises(schema.SchemaError) as exception_info:
@@ -127,7 +139,7 @@ class TestConfig:
 
 
     def test_incorrect_pvalue_threshold(self):
-        yaml = copy.deepcopy(BASIC_VALID_CONFIG)
+        yaml = copy.deepcopy(BASIC_CONFIG)
         yaml['pvalue_threshold'] = 5
 
         with pytest.raises(schema.SchemaError) as exception_info:
@@ -137,7 +149,7 @@ class TestConfig:
 
 
     def test_unsupported_correction_method(self):
-        yaml = copy.deepcopy(BASIC_VALID_CONFIG)
+        yaml = copy.deepcopy(BASIC_CONFIG)
         yaml['correction_method'] = 'bonferroni'
 
         with pytest.raises(schema.SchemaError) as exception_info:
@@ -146,11 +158,65 @@ class TestConfig:
         assert "does not match 'bonferroni'" in str(exception_info.value)
 
 
+    def test_missing_kit(self):
+        yaml = copy.deepcopy(BASIC_CONFIG)
+        del yaml['kit']
+
+        with pytest.raises(schema.SchemaError) as exception_info:
+            config = Config(yaml)
+
+        assert "Missing key: 'kit'" in str(exception_info.value)
+
+
     def test_unsupported_kit(self):
-        yaml = copy.deepcopy(BASIC_VALID_CONFIG)
+        yaml = copy.deepcopy(BASIC_CONFIG)
         yaml['kit'] = 'RNA500'
 
         with pytest.raises(schema.SchemaError) as exception_info:
             config = Config(yaml)
 
         assert "did not validate 'RNA500'" in str(exception_info.value)
+
+
+    def test_missing_resquiggler(self):
+        yaml = copy.deepcopy(BASIC_CONFIG)
+        del yaml['resquiggler']
+
+        with pytest.raises(schema.SchemaError) as exception_info:
+            config = Config(yaml)
+
+        assert "Missing key: 'resquiggler'" in str(exception_info.value)
+
+
+    def test_missing_depleted_condition(self):
+        yaml = copy.deepcopy(BASIC_CONFIG)
+        del yaml['depleted_condition']
+
+        with pytest.raises(schema.SchemaError) as exception_info:
+            config = Config(yaml)
+
+        assert "Missing key: 'depleted_condition'" in str(exception_info.value)
+
+
+    def test_nonexisting_depleted_condition(self):
+        yaml = copy.deepcopy(BASIC_CONFIG)
+        yaml['depleted_condition'] = 'does_not_exist'
+
+        with pytest.raises(schema.SchemaError) as exception_info:
+            config = Config(yaml)
+
+
+    def test_bam_required_for_uncalled4(self):
+        yaml = copy.deepcopy(BASIC_CONFIG)
+        del yaml['data']['kd']['kd1']['bam']
+
+        with pytest.raises(schema.SchemaError) as exception_info:
+            config = Config(yaml)
+
+
+    def test_eventalign_required_for_uncalled4(self):
+        yaml = copy.deepcopy(BASIC_CONFIG)
+
+        with pytest.raises(schema.SchemaError) as exception_info:
+            config = Config(yaml)
+

@@ -1,7 +1,9 @@
 import os
 import sqlite3
+import json
 
 from contextlib import closing
+from pathlib import Path
 
 import pandas as pd
 import numpy as np
@@ -10,6 +12,30 @@ from loguru import logger
 
 from nanocompore.common import encode_kmer
 from nanocompore.common import NanocomporeError
+from nanocompore.common import CREATE_KMERS_INDEX_QUERY
+from nanocompore.common import CREATE_KMER_DATA_TABLE_QUERY
+from nanocompore.common import CREATE_METADATA_TABLE_QUERY
+from nanocompore.common import CREATE_READS_ID_INDEX_QUERY
+from nanocompore.common import CREATE_READS_TABLE_QUERY
+from nanocompore.common import CREATE_TRANSCRIPTS_ID_INDEX_QUERY
+from nanocompore.common import CREATE_TRANSCRIPTS_TABLE_QUERY
+from nanocompore.common import DB_METADATA_CONDITION_SAMPLES_KEY
+from nanocompore.common import DB_METADATA_MEASUREMENT_TYPE_KEY
+from nanocompore.common import DB_METADATA_READ_ID_TYPE_KEY
+from nanocompore.common import DB_METADATA_RESQUIGGLER_KEY
+from nanocompore.common import DB_METADATA_SAMPLE_ID_TYPE_KEY
+from nanocompore.common import DB_METADATA_SAMPLE_LABELS_KEY
+from nanocompore.common import DROP_KMERS_INDEX_QUERY
+from nanocompore.common import DROP_KMER_DATA_TABLE_QUERY
+from nanocompore.common import DROP_METADATA_TABLE_QUERY
+from nanocompore.common import DROP_READS_ID_INDEX_QUERY
+from nanocompore.common import DROP_READS_TABLE_QUERY
+from nanocompore.common import DROP_TRANSCRIPTS_ID_INDEX_QUERY
+from nanocompore.common import DROP_TRANSCRIPTS_TABLE_QUERY
+from nanocompore.common import INSERT_KMER_DATA_QUERY
+from nanocompore.common import READ_ID_TYPE
+from nanocompore.common import SAMPLE_ID_TYPE
+from nanocompore.common import get_measurement_type
 
 
 CREATE_TRANSCRIPTS_TABLE = """
@@ -43,7 +69,7 @@ CREATE INDEX IF NOT EXISTS transcripts_name_index
 BASE_KMER_RESULT_COLUMNS = ['id', 'transcript_id', 'pos', 'kmer']
 
 
-class SampCompDB():
+class ResultsDB():
     def __init__ (self, config, init_db=False):
         self._config = config
 
@@ -80,20 +106,9 @@ class SampCompDB():
         with closing(sqlite3.connect(self._db_path)) as conn,\
              closing(conn.cursor()) as cursor:
             cursor.execute("INSERT INTO transcripts (id, name) VALUES (?, ?)", (transcript.id, transcript.name))
-            # test_columns = self._get_test_columns(test_results)
             test_columns = dict(zip(test_results.columns, test_results.dtypes))
-            # self._create_missing_columns(test_columns, cursor)
             self._create_missing_columns(test_columns, cursor)
             test_results.to_sql('kmer_results', conn, if_exists='append', index=False)
-
-
-            # query, data = self._prepare_test_results_query_and_data(tx_id,
-            #                                                         test_results,
-            #                                                         test_columns)
-            # cursor.execute('commit')
-            # cursor.execute('begin')
-            # cursor.executemany(query, data)
-            # cursor.execute('commit')
 
 
     def index_database(self):
@@ -129,27 +144,6 @@ class SampCompDB():
             raise NanocomporeError(f"Database error: Failed to insert at least one of {test_columns} new labels into kmer_results of {self._db_path}")
 
 
-    def _get_test_columns(self, test_results):
-        return {key: type(value)
-                for pos_results in test_results.values()
-                for key, value in pos_results.items()}
-
-
-    # def _prepare_test_results_query_and_data(self, tx_id, test_results, test_columns):
-    #     test_columns = list(test_columns.keys())
-    #     columns = ['transcript_id', 'pos', 'kmer'] + test_columns
-    #     params = ['?' for _ in columns]
-    #     data = [(tx_id,
-    #              pos,
-    #              encode_kmer(pos_results['kmer']),
-    #              *[pos_results.get(col, None) for col in test_columns])
-    #             for pos, pos_results in test_results.items()]
-    #     query = f"""
-    #     INSERT INTO kmer_results ({','.join(columns)})
-    #     VALUES ({','.join(params)})"""
-    #     return query, data
-
-
     def _setup_database(self, result_exists_strategy):
         if os.path.isfile(self._db_path):
             if result_exists_strategy == 'overwrite':
@@ -170,4 +164,87 @@ class SampCompDB():
              closing(conn.cursor()) as cursor:
             cursor.execute(CREATE_TRANSCRIPTS_TABLE)
             cursor.execute(CREATE_KMER_RESULTS_TABLE)
+
+
+class PreprocessingDB:
+    def __init__(self, db, config):
+        self._db = db
+        self._config = config
+
+
+    def connect(self):
+        conn = sqlite3.connect(self._db, isolation_level=None)
+        conn.execute('PRAGMA synchronous = OFF')
+        conn.execute('PRAGMA journal_mode = OFF')
+        # Use largest possible page size of 65kb
+        conn.execute('PRAGMA page_size = 65536')
+        # Use cache of 2048 x page_size. That's 128MB of cache.
+        conn.execute('PRAGMA cache_size = 2000')
+        return conn
+
+
+    def setup(self):
+        with closing(self.connect()) as conn,\
+             closing(conn.cursor()) as cursor:
+            cursor.execute(DROP_KMER_DATA_TABLE_QUERY)
+            cursor.execute(CREATE_KMER_DATA_TABLE_QUERY)
+            cursor.execute(DROP_READS_TABLE_QUERY)
+            cursor.execute(CREATE_READS_TABLE_QUERY)
+            cursor.execute(DROP_TRANSCRIPTS_TABLE_QUERY)
+            cursor.execute(CREATE_TRANSCRIPTS_TABLE_QUERY)
+            cursor.execute(DROP_METADATA_TABLE_QUERY)
+            cursor.execute(CREATE_METADATA_TABLE_QUERY)
+            cursor.execute(DROP_TRANSCRIPTS_ID_INDEX_QUERY)
+            cursor.execute(DROP_READS_ID_INDEX_QUERY)
+            cursor.execute(DROP_KMERS_INDEX_QUERY)
+        self._write_metadata()
+    
+
+    def create_indices(self):
+        with closing(self.connect()) as conn,\
+             closing(conn.cursor()) as cursor:
+            cursor.execute(CREATE_READS_ID_INDEX_QUERY)
+            cursor.execute(CREATE_KMERS_INDEX_QUERY)
+            cursor.execute(CREATE_TRANSCRIPTS_ID_INDEX_QUERY)
+
+
+    def _write_metadata(self):
+        resquiggler = self._config.get_resquiggler()
+        condition_samples = self._config.get_data()
+        metadata = {
+            DB_METADATA_RESQUIGGLER_KEY: resquiggler,
+            DB_METADATA_READ_ID_TYPE_KEY: READ_ID_TYPE.__name__,
+            DB_METADATA_SAMPLE_ID_TYPE_KEY: SAMPLE_ID_TYPE.__name__,
+            DB_METADATA_MEASUREMENT_TYPE_KEY: get_measurement_type(resquiggler).__name__,
+            DB_METADATA_SAMPLE_LABELS_KEY: ','.join(self._config.get_sample_labels()),
+            DB_METADATA_CONDITION_SAMPLES_KEY: json.dumps(condition_samples),
+        }
+        with closing(self.connect()) as conn,\
+             closing(conn.cursor()) as cursor:
+            for key, value in metadata.items():
+                cursor.execute("INSERT INTO metadata (key, value) VALUES (?, ?)", (key, str(value)))
+
+
+    def merge_in_databases(self, databases, merge_reads=True):
+        with closing(self.connect()) as conn,\
+             closing(conn.cursor()) as cursor:
+            for other_db in databases:
+                cursor.execute(f"ATTACH '{other_db}' as tmp")
+                cursor.execute("BEGIN")
+                cursor.execute("INSERT INTO transcripts SELECT * FROM tmp.transcripts")
+                if merge_reads:
+                    cursor.execute("INSERT INTO reads SELECT * FROM tmp.reads")
+                cursor.execute("INSERT INTO kmer_data SELECT * FROM tmp.kmer_data")
+                conn.commit()
+                cursor.execute("DETACH DATABASE tmp")
+                # Delete the other db
+                Path(other_db).unlink()
+
+
+    @staticmethod
+    def write_kmer_rows(connection, rows):
+        with closing(connection.cursor()) as cursor:
+            cursor.execute("begin")
+            cursor.executemany(INSERT_KMER_DATA_QUERY, rows)
+            cursor.execute("commit")
 

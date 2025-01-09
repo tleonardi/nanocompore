@@ -1,13 +1,12 @@
 import csv
 import os
 import sqlite3
-import json
 
 import multiprocessing as mp
 
-from collections import Counter
 from collections import defaultdict
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import as_completed
 from contextlib import closing
 from pathlib import Path
 
@@ -17,40 +16,18 @@ import numpy as np
 from loguru import logger
 from pyfaidx import Fasta
 
-from nanocompore.Remora import Remora
-from nanocompore.Transcript import Transcript
+from nanocompore.remora_wrapper import Remora
 from nanocompore.eventalign_collapse import EventalignCollapser
 from nanocompore.kmer import KmerData
 from nanocompore.uncalled4 import Uncalled4
-from nanocompore.common import CREATE_KMERS_INDEX_QUERY
-from nanocompore.common import CREATE_KMER_DATA_TABLE_QUERY
-from nanocompore.common import CREATE_METADATA_TABLE_QUERY
-from nanocompore.common import CREATE_READS_ID_INDEX_QUERY
-from nanocompore.common import CREATE_READS_TABLE_QUERY
-from nanocompore.common import CREATE_TRANSCRIPTS_ID_INDEX_QUERY
-from nanocompore.common import CREATE_TRANSCRIPTS_TABLE_QUERY
-from nanocompore.common import DB_METADATA_CONDITION_SAMPLES_KEY
-from nanocompore.common import DB_METADATA_MEASUREMENT_TYPE_KEY
-from nanocompore.common import DB_METADATA_READ_ID_TYPE_KEY
-from nanocompore.common import DB_METADATA_RESQUIGGLER_KEY
-from nanocompore.common import DB_METADATA_SAMPLE_ID_TYPE_KEY
-from nanocompore.common import DB_METADATA_SAMPLE_LABELS_KEY
-from nanocompore.common import DROP_KMERS_INDEX_QUERY
-from nanocompore.common import DROP_KMER_DATA_TABLE_QUERY
-from nanocompore.common import DROP_METADATA_TABLE_QUERY
-from nanocompore.common import DROP_READS_ID_INDEX_QUERY
-from nanocompore.common import DROP_READS_TABLE_QUERY
-from nanocompore.common import DROP_TRANSCRIPTS_ID_INDEX_QUERY
-from nanocompore.common import DROP_TRANSCRIPTS_TABLE_QUERY
+from nanocompore.database import PreprocessingDB
 from nanocompore.common import EVENTALIGN_MEASUREMENT_TYPE
-from nanocompore.common import INSERT_KMER_DATA_QUERY
 from nanocompore.common import INSERT_READS_QUERY
 from nanocompore.common import INSERT_TRANSCRIPTS_QUERY
 from nanocompore.common import Indexer
 from nanocompore.common import Kit
 from nanocompore.common import READ_ID_TYPE
 from nanocompore.common import SAMPLE_ID_TYPE
-from nanocompore.common import get_measurement_type
 
 
 class Preprocessor:
@@ -66,12 +43,8 @@ class Preprocessor:
         logger.info("Initializing the preprocessor")
         self._config = config
 
-        # self._db_conn = sqlite3.connect(db, isolation_level=None)
-        # self._db_conn.execute('PRAGMA synchronous = OFF')
-        # self._db_conn.execute('PRAGMA journal_mode = OFF')
-        # # self._db_conn.execute('PRAGMA cache_size = -200000')
-        self._db_conn = self._get_db()
-        self._setup_db()
+        self._db = PreprocessingDB(config.get_preprocessing_db(), config)
+        self._db.setup()
 
         self._sample_ids = self._config.get_sample_ids()
 
@@ -85,45 +58,6 @@ class Preprocessor:
         self._worker_processes = self._config.get_nthreads() - 1
 
 
-    def _setup_db(self):
-        with closing(self._db_conn.cursor()) as cursor:
-            cursor.execute(DROP_KMER_DATA_TABLE_QUERY)
-            cursor.execute(CREATE_KMER_DATA_TABLE_QUERY)
-            cursor.execute(DROP_READS_TABLE_QUERY)
-            cursor.execute(CREATE_READS_TABLE_QUERY)
-            cursor.execute(DROP_TRANSCRIPTS_TABLE_QUERY)
-            cursor.execute(CREATE_TRANSCRIPTS_TABLE_QUERY)
-            cursor.execute(DROP_METADATA_TABLE_QUERY)
-            cursor.execute(CREATE_METADATA_TABLE_QUERY)
-            cursor.execute(DROP_TRANSCRIPTS_ID_INDEX_QUERY)
-            cursor.execute(DROP_READS_ID_INDEX_QUERY)
-            cursor.execute(DROP_KMERS_INDEX_QUERY)
-        self._write_metadata()
-
-
-    def _create_db_indices(self):
-        with closing(self._db_conn.cursor()) as cursor:
-            cursor.execute(CREATE_READS_ID_INDEX_QUERY)
-            cursor.execute(CREATE_KMERS_INDEX_QUERY)
-            cursor.execute(CREATE_TRANSCRIPTS_ID_INDEX_QUERY)
-
-
-    def _write_metadata(self):
-        resquiggler = self._config.get_resquiggler()
-        condition_samples = self._config.get_data()
-        metadata = {
-            DB_METADATA_RESQUIGGLER_KEY: resquiggler,
-            DB_METADATA_READ_ID_TYPE_KEY: READ_ID_TYPE.__name__,
-            DB_METADATA_SAMPLE_ID_TYPE_KEY: SAMPLE_ID_TYPE.__name__,
-            DB_METADATA_MEASUREMENT_TYPE_KEY: get_measurement_type(resquiggler).__name__,
-            DB_METADATA_SAMPLE_LABELS_KEY: ','.join(self._config.get_sample_labels()),
-            DB_METADATA_CONDITION_SAMPLES_KEY: json.dumps(condition_samples),
-        }
-        with closing(self._db_conn.cursor()) as cursor:
-            for key, value in metadata.items():
-                cursor.execute("INSERT INTO metadata (key, value) VALUES (?, ?)", (key, str(value)))
-
-
     def _get_references_from_bams(self):
         logger.info("Getting references from the BAMs.")
         references = set()
@@ -135,106 +69,6 @@ class Preprocessor:
                         references.add(read.reference_name)
         logger.info(f"Found {len(references)} references.")
         return references
-
-
-    def _get_db(self, db=None):
-        if not db:
-            db = self._config.get_kmer_data_db()
-        conn = sqlite3.connect(db, isolation_level=None)
-        conn.execute('PRAGMA synchronous = OFF')
-        conn.execute('PRAGMA journal_mode = OFF')
-        # Use largest possible page size of 65kb
-        conn.execute('PRAGMA page_size = 65536')
-        # Use cache of 2048 x page_size. That's 128MB of cache.
-        conn.execute('PRAGMA cache_size = 2000')
-        # conn.execute('PRAGMA cache_size = -400000')
-        return conn
-
-
-    def _write_kmer_rows(self, connection, rows):
-        with closing(connection.cursor()) as cursor:
-            cursor.execute("begin")
-            cursor.executemany(INSERT_KMER_DATA_QUERY, rows)
-            cursor.execute("commit")
-        # self._db_conn.commit()
-
-
-    def _process_rows_for_writing(self, ref_id, kmers_data, read_invalid_ratios):
-        with closing(self._db_conn.cursor()) as cursor:
-            cursor.execute(INSERT_TRANSCRIPTS_QUERY,
-                           (ref_id, self._current_transcript_id))
-
-        # We assume that all reads for a single
-        # transcript would be processed in a single
-        # call, so we don't need to store all
-        # read ids for all transcripts for the
-        # whole execution of the preprocessor.
-        # Instead we create a new indexer for
-        # each transcript, but we make sure
-        # that ids are not repeated by making
-        # the new indexer starting from the last
-        # id of the previous indexer.
-        read_indexer = Indexer(initial_index=self._current_read_id)
-        all_reads = {read
-                     for kmer in kmers_data
-                     for read in kmer.reads}
-        new_mappings = read_indexer.add(all_reads)
-        reads_data = [(read, idx, read_invalid_ratios[read])
-                      for read, idx in new_mappings]
-        with closing(self._db_conn.cursor()) as cursor:
-            cursor.execute("begin")
-            cursor.executemany(INSERT_READS_QUERY, reads_data)
-            cursor.execute("commit")
-
-        for kmer_data in kmers_data:
-            read_ids = read_indexer.get_ids(kmer_data.reads)
-            read_ids = np.array(read_ids, dtype=READ_ID_TYPE)
-
-            sample_ids = [self._sample_ids[label]
-                          for label in kmer_data.sample_labels]
-            sample_ids = np.array(sample_ids, dtype=SAMPLE_ID_TYPE)
-
-            yield (self._current_transcript_id,
-                   kmer_data.pos,
-                   kmer_data.kmer,
-                   sample_ids.tobytes(),
-                   read_ids.tobytes(),
-                   kmer_data.intensity.tobytes(),
-                   kmer_data.sd.tobytes(),
-                   kmer_data.dwell.tobytes())
-
-        self._current_transcript_id += 1
-        self._current_read_id = read_indexer.current_id
-
-
-    def __del__(self):
-        if '_db_conn' in self.__dict__:
-            self._db_conn.close()
-
-
-    # Note: when we use the preprocessor's instance
-    # methods with multiprocessing the library will
-    # try to pickle the instance object so that it
-    # can send the method's self to the worker process.
-    # Since the database connection cannot be pickled
-    # and we don't want to use it in the worker processes,
-    # but only in the main process, we override the
-    # getstate/setstate methods to exclude the db
-    # connection and other potentially big variables
-    # from the set of variables that will be sent to
-    # the worker processes.
-    def __getstate__(self):
-        # Copy the object's state from self.__dict__ which contains
-        # all our instance attributes.
-        state = self.__dict__.copy()
-        # Remove the unpicklable entries.
-        del state['_db_conn']
-        return state
-
-
-    def __setstate__(self, state):
-        # Restore instance attributes
-        self.__dict__.update(state)
 
 
     def _get_reads_invalid_kmer_ratio(self, kmers):
@@ -268,6 +102,10 @@ class Preprocessor:
         return (length - valid)/length
 
 
+# TODO: this preprocessor needs to be rewritten
+# as it is not efficient. Only the resquiggling is
+# parallelized and all the postprocessing and writing
+# to the database is done by the main process.
 class RemoraPreprocessor(Preprocessor):
     """
     Uses ONT's Remora internally to resquiggle
@@ -287,9 +125,9 @@ class RemoraPreprocessor(Preprocessor):
             for future in as_completed(futures):
                 ref_id, kmers, read_invalid_ratios = future.result()
                 rows = self._process_rows_for_writing(ref_id, kmers, read_invalid_ratios)
-                with closing(self._get_db()) as conn:
-                    self._write_kmer_rows(conn, rows)
-        self._create_db_indices()
+                with closing(self._db.connect()) as conn:
+                    PreprocessingDB.write_kmer_rows(conn, rows)
+        self._db.create_indices()
 
 
     def _resquiggle(self, ref_id):
@@ -305,6 +143,53 @@ class RemoraPreprocessor(Preprocessor):
         kmers = list(remora.kmer_data_generator())
         read_invalid_ratios = self._get_reads_invalid_kmer_ratio(kmers)
         return ref_id, kmers, read_invalid_ratios
+
+
+    def _process_rows_for_writing(self, ref_id, kmers_data, read_invalid_ratios):
+        # We assume that all reads for a single
+        # transcript would be processed in a single
+        # call, so we don't need to store all
+        # read ids for all transcripts for the
+        # whole execution of the preprocessor.
+        # Instead we create a new indexer for
+        # each transcript, but we make sure
+        # that ids are not repeated by making
+        # the new indexer starting from the last
+        # id of the previous indexer.
+        read_indexer = Indexer(initial_index=self._current_read_id)
+        all_reads = {read
+                     for kmer in kmers_data
+                     for read in kmer.reads}
+        new_mappings = read_indexer.add(all_reads)
+        reads_data = [(read, idx, read_invalid_ratios[read])
+                      for read, idx in new_mappings]
+        with closing(self._db.connect()) as conn,\
+             closing(conn.cursor()) as cursor:
+            cursor.execute(INSERT_TRANSCRIPTS_QUERY,
+                           (ref_id, self._current_transcript_id))
+            cursor.execute("begin")
+            cursor.executemany(INSERT_READS_QUERY, reads_data)
+            cursor.execute("commit")
+
+        for kmer_data in kmers_data:
+            read_ids = read_indexer.get_ids(kmer_data.reads)
+            read_ids = np.array(read_ids, dtype=READ_ID_TYPE)
+
+            sample_ids = [self._sample_ids[label]
+                          for label in kmer_data.sample_labels]
+            sample_ids = np.array(sample_ids, dtype=SAMPLE_ID_TYPE)
+
+            yield (self._current_transcript_id,
+                   kmer_data.pos,
+                   kmer_data.kmer,
+                   sample_ids.tobytes(),
+                   read_ids.tobytes(),
+                   kmer_data.intensity.tobytes(),
+                   kmer_data.sd.tobytes(),
+                   kmer_data.dwell.tobytes())
+
+        self._current_transcript_id += 1
+        self._current_read_id = read_indexer.current_id
 
 
 class Uncalled4Preprocessor(Preprocessor):
@@ -357,22 +242,12 @@ class Uncalled4Preprocessor(Preprocessor):
         logger.info("Merging tmp databases.")
 
         # Merge tmp databases
-        with closing(self._get_db()) as conn,\
-             closing(conn.cursor()) as cursor:
-            for i in range(self._worker_processes):
-                tmp_db = self._config.get_kmer_data_db() + f".{i}"
-                cursor.execute(f"ATTACH '{tmp_db}' as tmp")
-                cursor.execute("BEGIN")
-                cursor.execute("INSERT INTO transcripts SELECT * FROM tmp.transcripts")
-                cursor.execute("INSERT INTO reads SELECT * FROM tmp.reads")
-                cursor.execute("INSERT INTO kmer_data SELECT * FROM tmp.kmer_data")
-                conn.commit()
-                cursor.execute("DETACH DATABASE tmp")
-                # Delete the tmp db
-                Path(tmp_db).unlink()
+        tmp_dbs = [self._config.get_preprocessing_db() + f".{i}"
+                   for i in range(self._worker_processes)]
+        self._db.merge_in_databases(tmp_dbs, merge_reads=True)
 
         logger.info("Creating database indices.")
-        self._create_db_indices()
+        self._db.create_indices()
 
 
     def _resquiggle(self,
@@ -385,18 +260,11 @@ class Uncalled4Preprocessor(Preprocessor):
                     num_transcripts):
         fasta_fh = Fasta(self._config.get_fasta_ref())
 
-        tmp_db_out = self._config.get_kmer_data_db() + f".{idx}"
-        with closing(self._get_db(tmp_db_out)) as conn,\
-             closing(conn.cursor()) as cursor:
-            cursor.execute(DROP_KMER_DATA_TABLE_QUERY)
-            cursor.execute(CREATE_KMER_DATA_TABLE_QUERY)
-            cursor.execute(DROP_READS_TABLE_QUERY)
-            cursor.execute(CREATE_READS_TABLE_QUERY)
-            cursor.execute(DROP_TRANSCRIPTS_TABLE_QUERY)
-            cursor.execute(CREATE_TRANSCRIPTS_TABLE_QUERY)
-            conn.commit()
+        tmp_db_out = PreprocessingDB(self._config.get_preprocessing_db() + f".{idx}",
+                                     self._config)
+        tmp_db_out.setup()
 
-        with closing(self._get_db(tmp_db_out)) as conn:
+        with closing(tmp_db_out.connect()) as conn:
             while True:
                 ref_id = task_queue.get()
                 if ref_id == None:
@@ -425,7 +293,7 @@ class Uncalled4Preprocessor(Preprocessor):
                     cursor.execute(INSERT_TRANSCRIPTS_QUERY, (ref_id, transcript_id))
                     cursor.executemany(INSERT_READS_QUERY, offsetted_reads)
                     cursor.execute("commit")
-                self._write_kmer_rows(conn, kmer_rows)
+                PreprocessingDB.write_kmer_rows(conn, kmer_rows)
 
                 lock.acquire()
                 processed_transcripts.value += 1
@@ -454,31 +322,6 @@ class Uncalled4Preprocessor(Preprocessor):
                          kmer_data.dwell.tobytes())
             processed_kmers.append(proc_kmer)
         return processed_kmers
-
-
-    def _get_db(self, db=None):
-        if not db:
-            db = self._config.get_kmer_data_db()
-        conn = sqlite3.connect(db, isolation_level=None)
-        conn.execute('PRAGMA synchronous = OFF')
-        conn.execute('PRAGMA journal_mode = OFF')
-        # Use largest possible page size of 65kb
-        conn.execute('PRAGMA page_size = 65536')
-        # Use cache of 2048 x page_size. That's 128MB of cache.
-        conn.execute('PRAGMA cache_size = 2000')
-        # conn.execute('PRAGMA cache_size = -400000')
-        return conn
-
-
-    def _resquiggleold(self, ref_id):
-        fasta_fh = Fasta(self._config.get_fasta_ref())
-        ref_seq = str(fasta_fh[ref_id])
-        uncalled4 = Uncalled4(self._config,
-                              ref_id,
-                              ref_seq)
-        kmers = list(uncalled4.kmer_data_generator())
-        read_invalid_ratios = self._get_reads_invalid_kmer_ratio(kmers)
-        return ref_id, kmers, read_invalid_ratios
 
 
 class EventalignPreprocessor(Preprocessor):
@@ -517,9 +360,10 @@ class EventalignPreprocessor(Preprocessor):
             sample_read_offsets[sample] = current_offset
 
             db_in_path = sample_def['eventalign_db']
-            with closing(sqlite3.connect(db_in_path)) as conn,\
-                 closing(conn.cursor()) as db_in,\
-                 closing(self._db_conn.cursor()) as db_out:
+            with closing(sqlite3.connect(db_in_path)) as conn_in,\
+                 closing(conn_in.cursor()) as db_in,\
+                 closing(self._db.connect()) as conn_out,\
+                 closing(conn_out.cursor()) as db_out:
 
                 for row in db_in.execute("SELECT reference FROM transcripts").fetchall():
                     references[row[0]] = True
@@ -593,21 +437,12 @@ class EventalignPreprocessor(Preprocessor):
         logger.info("Merging tmp databases.")
 
         # Merge tmp databases
-        with closing(self._get_db()) as conn,\
-             closing(conn.cursor()) as cursor:
-            for i in range(self._worker_processes):
-                tmp_db = self._config.get_kmer_data_db() + f".{i}"
-                cursor.execute(f"ATTACH '{tmp_db}' as tmp")
-                cursor.execute("BEGIN")
-                cursor.execute("INSERT INTO transcripts SELECT * FROM tmp.transcripts")
-                cursor.execute("INSERT INTO kmer_data SELECT * FROM tmp.kmer_data")
-                conn.commit()
-                cursor.execute("DETACH DATABASE tmp")
-                # Delete the tmp db
-                Path(tmp_db).unlink()
+        tmp_dbs = [self._config.get_preprocessing_db() + f".{i}"
+                   for i in range(self._worker_processes)]
+        self._db.merge_in_databases(tmp_dbs, merge_reads=False)
 
         logger.info("Creating database indices.")
-        self._create_db_indices()
+        self._db.create_indices()
 
 
     def _read_and_merge_samples(self,
@@ -622,16 +457,9 @@ class EventalignPreprocessor(Preprocessor):
                       for condition_def in self._config.get_data().values()
                       for sample, sample_def in condition_def.items()}
 
-        tmp_db_out = self._config.get_kmer_data_db() + f".{idx}"
-        with closing(self._get_db(tmp_db_out)) as conn,\
-             closing(conn.cursor()) as cursor:
-            cursor.execute(DROP_KMER_DATA_TABLE_QUERY)
-            cursor.execute(CREATE_KMER_DATA_TABLE_QUERY)
-            cursor.execute(DROP_READS_TABLE_QUERY)
-            cursor.execute(CREATE_READS_TABLE_QUERY)
-            cursor.execute(DROP_TRANSCRIPTS_TABLE_QUERY)
-            cursor.execute(CREATE_TRANSCRIPTS_TABLE_QUERY)
-            conn.commit()
+        tmp_db_out = PreprocessingDB(self._config.get_preprocessing_db() + f".{idx}",
+                                     self._config)
+        tmp_db_out.setup()
 
         while True:
             ref_id = task_queue.get()
@@ -666,11 +494,11 @@ class EventalignPreprocessor(Preprocessor):
 
             rows = self._process_rows_for_writing(transcript_id, kmers, None)
 
-            with closing(self._get_db(tmp_db_out)) as conn,\
+            with closing(tmp_db_out.connect()) as conn,\
                  closing(conn.cursor()) as cursor:
                 cursor.execute(INSERT_TRANSCRIPTS_QUERY,
                                (ref_id, transcript_id))
-                self._write_kmer_rows(conn, rows)
+                PreprocessingDB.write_kmer_rows(conn, rows)
             lock.acquire()
             processed_transcripts.value += 1
             logger.info(f"Data for reference {processed_transcripts.value}/{num_transcripts} {ref_id} has been saved to the tmp database.")
@@ -738,7 +566,7 @@ class EventalignPreprocessor(Preprocessor):
 
 
     def _get_intermediary_db_name(self, sample):
-        kmer_db = self._config.get_kmer_data_db()
+        kmer_db = self._config.get_preprocessing_db()
         path = Path(kmer_db)
         return str(path.with_name(path.stem + '_' + sample + path.suffix))
 

@@ -1,4 +1,5 @@
 import re
+import os
 
 from schema import Schema, And, Or, Optional
 
@@ -45,13 +46,17 @@ def validate_uncalled4_data(config):
     return True
 
 
+def depleted_condition_exists(config):
+    return config['depleted_condition'] in config['data']
+
+
 CONFIG_SCHEMA = Schema(And({
     'data': And(
         {
             str: { # condition
                 str: { # sample (replicate)
                     Optional('bam'): lambda f: open(f, 'r'),
-                    Optional('pod5'): str,
+                    Optional('pod5'): lambda f: open(f, 'r'),
                     Optional('eventalign_tsv'): lambda f: open(f, 'r'),
                     Optional('eventalign_db'): lambda f: open(f, 'r')
                 }
@@ -61,10 +66,10 @@ CONFIG_SCHEMA = Schema(And({
     ),
     'depleted_condition': str,
     'fasta': And(is_valid_fasta, error='Invalid fasta file'),
-    'kmer_data_db': str,
     'resquiggler': Or('uncalled4', 'eventalign'),
     'kit': Or(*[v.name for v in Kit]),
     Optional('devices'): validate_device,
+    Optional('preprocessing_db'): str,
     Optional('bed'): And(lambda f: open(f, 'r'), error='Invalid bed file'),
     Optional('nthreads'): And(lambda n: n >= 2, error='nthreads must be >= 2'),
     Optional('min_coverage'): And(int, lambda n: n >= 0, error='min_coverage must be >= 0'),
@@ -77,6 +82,7 @@ CONFIG_SCHEMA = Schema(And({
                                          'TT',
                                          'MW',
                                          'auto',
+                                         'AUTO',
                                          'GAUSSIAN_MIXTURE_MODEL',
                                          'GOODNESS_OF_FIT',
                                          'KOLMOGOROV_SMIRNOV',
@@ -108,11 +114,15 @@ CONFIG_SCHEMA = Schema(And({
               'each sample in the configuration must contain ' +
               'the field "bam" with a path to the aligned bam file ' +
               'that contains the resquiggling tags produced ' +
-              'by Uncalled4.')))
+              'by Uncalled4.'),
+    And(depleted_condition_exists,
+        error="The condition set in 'depleted_condition' is not " + \
+              "defined in 'data'.")))
 
 
 DEFAULT_KIT = 'RNA002'
 DEFAULT_DEVICES = 'cpu'
+DEFAULT_PREPROCESSING_DB = 'preprocessing_db.sqlite'
 DEFAULT_NTHEARDS = 2
 DEFAULT_MIN_COVERAGE = 30
 DEFAULT_MAX_READS = 5000
@@ -155,12 +165,16 @@ class Config:
         return self._config['data']
 
 
-    def get_kmer_data_db(self):
+    def get_preprocessing_db(self):
         """
         Returns the path where the kmer data should
         be stored after resquiggling/preprocessing.
         """
-        return self._config['kmer_data_db']
+        path = self._config.get('preprocessing_db', DEFAULT_PREPROCESSING_DB)
+        if os.path.isabs(path):
+            return path
+        else:
+            return os.path.join(self.get_outpath(), path)
 
 
     def get_resquiggler(self):

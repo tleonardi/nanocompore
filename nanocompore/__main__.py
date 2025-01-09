@@ -10,12 +10,12 @@ from loguru import logger
 
 from nanocompore import __version__ as package_version
 from nanocompore import __description__ as package_description
-from nanocompore.SampComp import SampComp
+from nanocompore.run import RunCmd
 from nanocompore.preprocessing import RemoraPreprocessor
 from nanocompore.preprocessing import Uncalled4Preprocessor
 from nanocompore.preprocessing import EventalignPreprocessor
 from nanocompore.eventalign_collapse import EventalignCollapser
-from nanocompore.Config import Config
+from nanocompore.config import Config
 from nanocompore.common import *
 
 
@@ -138,11 +138,8 @@ def sampcomp_subcommand(args):
 
     setup_logger(config, "run.log")
 
-    # Init SampComp
-    s = SampComp(config)
-
-    # Run SampComp
-    s()
+    run_cmd = RunCmd(config)
+    run_cmd()
 
 
 def eventalign_collapse_subcommand(args):

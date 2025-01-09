@@ -20,15 +20,13 @@ from nanocompore.common import NanocomporeError
 from nanocompore.gof_tests import gof_test_multirep
 from nanocompore.gof_tests import gof_test_singlerep
 
-from nanocompore.gmm_statistics import fit_best_gmm
-
 
 INTENSITY = 0
 DWELL = 1
 MOTOR = 2
 
 
-class BatchComp:
+class TranscriptComparator:
     """
     Compare a set of positions.
     """
@@ -167,11 +165,8 @@ class BatchComp:
         min_coverage = min(condition_counts)
         if min_coverage < 256:
             return 'KS'
-        elif min_coverage < 1024:
+        else:
             return 'GMM'
-        elif min_coverage >= 1024:
-            return 'GOF'
-        return 'KS'
 
 
     def _auto_test_pvalue(self, test):
@@ -319,13 +314,16 @@ class BatchComp:
     def _gmm_test_split(self, test_data, conditions, indices, device):
         s = time.time()
         def fit_model(components):
-            gmm = GMM(n_components=components, device=device, random_seed=self._random_seed)
+            gmm = GMM(n_components=components,
+                      device=device,
+                      random_seed=self._random_seed,
+                      dtype=torch.float32)
             gmm.fit(test_data)
             return gmm
         gmm2 = retry(lambda: fit_model(2), exception=torch.OutOfMemoryError)
 
         logger.info(f"GMM fitting time: {time.time() - s}")
-        pred = gmm2.predict(test_data)
+        pred = gmm2.predict(test_data.to(torch.float32))
         del gmm2
         gc.collect()
         if device.startswith('cuda'):
