@@ -15,28 +15,24 @@ BASIC_CONFIG = {
             'kd1': {
                 'pod5': os.path.join(cwd, 'tests/fixtures/kd1.pod5'),
                 'bam': os.path.join(cwd, 'tests/fixtures/kd1.bam'),
-                # 'eventalign_tsv': os.path.join(cwd, 'tests/fixtures/kd1.tsv'),
-                # 'eventalign_db': os.path.join(cwd, 'tests/fixtures/kd1.sqlite')
+                'eventalign_tsv': os.path.join(cwd, 'tests/fixtures/kd1_eventalign.tsv'),
             },
             'kd2': {
                 'pod5': os.path.join(cwd, 'tests/fixtures/kd2.pod5'),
                 'bam': os.path.join(cwd, 'tests/fixtures/kd2.bam'),
-                # 'eventalign_tsv': os.path.join(cwd, 'tests/fixtures/kd2.tsv'),
-                # 'eventalign_db': os.path.join(cwd, 'tests/fixtures/kd2.sqlite')
+                'eventalign_tsv': os.path.join(cwd, 'tests/fixtures/kd2_eventalign.tsv'),
             }
         },
         'wt': {
             'wt1': {
                 'pod5': os.path.join(cwd, 'tests/fixtures/wt1.pod5'),
                 'bam': os.path.join(cwd, 'tests/fixtures/wt1.bam'),
-                # 'eventalign_tsv': os.path.join(cwd, 'tests/fixtures/wt1.tsv'),
-                # 'eventalign_db': os.path.join(cwd, 'tests/fixtures/wt1.sqlite')
+                'eventalign_tsv': os.path.join(cwd, 'tests/fixtures/wt1_eventalign.tsv'),
             },
             'wt2': {
                 'pod5': os.path.join(cwd, 'tests/fixtures/wt2.pod5'),
                 'bam': os.path.join(cwd, 'tests/fixtures/wt2.bam'),
-                # 'eventalign_tsv': os.path.join(cwd, 'tests/fixtures/wt2.tsv'),
-                # 'eventalign_db': os.path.join(cwd, 'tests/fixtures/wt2.sqlite')
+                'eventalign_tsv': os.path.join(cwd, 'tests/fixtures/wt2_eventalign.tsv'),
             }
         }
     },
@@ -44,7 +40,7 @@ BASIC_CONFIG = {
     'depleted_condition': 'kd',
     'kit': 'RNA004',
     'resquiggler': 'uncalled4',
-    'kmer_data_db': 'tests/fixtures/kmer_data.sqlite'
+    'preprocessing_db': 'tests/fixtures/kmer_data.sqlite'
 }
 
 
@@ -214,9 +210,21 @@ class TestConfig:
             config = Config(yaml)
 
 
-    def test_eventalign_required_for_uncalled4(self):
+    def test_eventalign_tsv_or_db_required_for_eventalign(self):
         yaml = copy.deepcopy(BASIC_CONFIG)
+        yaml['resquiggler'] = 'eventalign'
 
+        # should be okay if eventalign_tsv is set
+        config = Config(yaml)
+
+        file = yaml['data']['kd']['kd1']['eventalign_tsv']
+
+        # error when missing both
+        del yaml['data']['kd']['kd1']['eventalign_tsv']
         with pytest.raises(schema.SchemaError) as exception_info:
             config = Config(yaml)
+
+        # should be okay if eventalign_db is set
+        yaml['data']['kd']['kd1']['eventalign_db'] = file
+        config = Config(yaml)
 
