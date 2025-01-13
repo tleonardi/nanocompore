@@ -292,8 +292,9 @@ class EventalignCollapser:
                     logger.info(f"Starting to read and process data for ref {ref_id}.")
                     data = self._read_data(file, fstart, fend)
 
-                    kmers = self._process_ref(ref_id, data, fasta)
-                    read_invalid_kmer_ratios = self._get_reads_invalid_kmer_ratio(kmers)
+                    ref_len = len(str(fasta[ref_id]))
+                    kmers = self._process_ref(ref_id, data, ref_len)
+                    read_invalid_kmer_ratios = self._get_reads_invalid_kmer_ratio(kmers, ref_len)
 
                     all_reads = {read
                                  for kmer in kmers
@@ -330,9 +331,8 @@ class EventalignCollapser:
                         Path(filepath).unlink()
 
 
-    def _process_ref(self, ref_id, data, fasta_ref):
+    def _process_ref(self, ref_id, data, ref_len):
         nreads = len(data)
-        ref_len = len(str(fasta_ref[ref_id]))
 
         intensity = np.empty((nreads, ref_len), dtype=EVENTALIGN_MEASUREMENT_TYPE)
         intensity.fill(np.nan)
@@ -344,15 +344,10 @@ class EventalignCollapser:
         read_ids = []
         kmers = np.repeat('NNNNN', ref_len)
 
-        # for row, read_id in enumerate(data.keys()):
         for row, (read_id, read_data) in enumerate(data):
             read_ids.append(read_id)
-            # read_data = data[read_id]
-            # for pos, pos_data in read_data.items():
             for kmer_data in read_data:
                 pos = kmer_data.pos
-                # pos = int(pos)
-                # pos_measurements = np.concatenate(pos_data['measurements'])
                 # Note: the choice of using statistics' median
                 # instead of numpy's is not arbitrary. It seems
                 # that statistics.median is faster for small
@@ -421,17 +416,17 @@ class EventalignCollapser:
         return rows
 
 
-    def _get_reads_invalid_kmer_ratio(self, kmers_data):
-        read_totals = defaultdict(lambda: 0)
-        read_invalid = defaultdict(lambda: 0)
+    def _get_reads_invalid_kmer_ratio(self, kmers_data, ref_len):
+        read_valid = {}
         for kmer in kmers_data:
             for read, valid in zip(kmer.reads, kmer.valid):
-                read_totals[read] += 1
-                if not valid:
-                    read_invalid[read] += 1
+                if read not in read_valid:
+                    read_valid[read] = 0
+                if valid:
+                    read_valid[read] += 1
 
-        return {read: read_invalid[read]/total
-                for read, total in read_totals.items()}
+        return {read: (ref_len - valid)/ref_len
+                for read, valid in read_valid.items()}
 
 
     def _get_db(self, path):
