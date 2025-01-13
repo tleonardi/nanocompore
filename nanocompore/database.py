@@ -12,37 +12,28 @@ from loguru import logger
 
 from nanocompore.common import encode_kmer
 from nanocompore.common import NanocomporeError
-from nanocompore.common import CREATE_KMERS_INDEX_QUERY
-from nanocompore.common import CREATE_KMER_DATA_TABLE_QUERY
-from nanocompore.common import CREATE_METADATA_TABLE_QUERY
-from nanocompore.common import CREATE_READS_ID_INDEX_QUERY
-from nanocompore.common import CREATE_READS_TABLE_QUERY
-from nanocompore.common import CREATE_TRANSCRIPTS_ID_INDEX_QUERY
-from nanocompore.common import CREATE_TRANSCRIPTS_TABLE_QUERY
-from nanocompore.common import DB_METADATA_CONDITION_SAMPLES_KEY
-from nanocompore.common import DB_METADATA_MEASUREMENT_TYPE_KEY
-from nanocompore.common import DB_METADATA_READ_ID_TYPE_KEY
-from nanocompore.common import DB_METADATA_RESQUIGGLER_KEY
-from nanocompore.common import DB_METADATA_SAMPLE_ID_TYPE_KEY
-from nanocompore.common import DB_METADATA_SAMPLE_LABELS_KEY
-from nanocompore.common import DROP_KMERS_INDEX_QUERY
-from nanocompore.common import DROP_KMER_DATA_TABLE_QUERY
-from nanocompore.common import DROP_METADATA_TABLE_QUERY
-from nanocompore.common import DROP_READS_ID_INDEX_QUERY
-from nanocompore.common import DROP_READS_TABLE_QUERY
-from nanocompore.common import DROP_TRANSCRIPTS_ID_INDEX_QUERY
-from nanocompore.common import DROP_TRANSCRIPTS_TABLE_QUERY
-from nanocompore.common import INSERT_KMER_DATA_QUERY
 from nanocompore.common import READ_ID_TYPE
 from nanocompore.common import SAMPLE_ID_TYPE
 from nanocompore.common import get_measurement_type
 
+
+DB_METADATA_RESQUIGGLER_KEY = 'resquiggler'
+DB_METADATA_READ_ID_TYPE_KEY = 'read_id_type'
+DB_METADATA_SAMPLE_ID_TYPE_KEY = 'sample_id_type'
+DB_METADATA_MEASUREMENT_TYPE_KEY = 'measurement_type'
+DB_METADATA_SAMPLE_LABELS_KEY = 'sample_labels'
+DB_METADATA_CONDITION_SAMPLES_KEY = 'condition_samples'
+
+# ======= RESULT DATABASE QUERIES =======
 
 CREATE_TRANSCRIPTS_TABLE = """
 CREATE TABLE IF NOT EXISTS transcripts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name VARCHAR NOT NULL UNIQUE
 );
+"""
+INSERT_TRANSCRIPTS_QUERY = """
+INSERT INTO transcripts (id, reference) VALUES(?, ?);
 """
 
 CREATE_KMER_RESULTS_TABLE = """
@@ -64,6 +55,93 @@ CREATE INDEX IF NOT EXISTS kmer_results_transcript_id_index
 CREATE_TRANSCRIPTS_NAME_INDEX = """
 CREATE INDEX IF NOT EXISTS transcripts_name_index
     ON transcripts(name);
+"""
+
+# ======= PREPROCESSING DATABASES QUERIES =======
+
+DROP_METADATA_TABLE_QUERY = """
+DROP TABLE IF EXISTS metadata;
+"""
+CREATE_METADATA_TABLE_QUERY = """
+CREATE TABLE metadata (
+    key TEXT NOT NULL,
+    value TEXT NOT NULL,
+    PRIMARY KEY(key)
+);
+"""
+DROP_KMER_DATA_TABLE_QUERY = """
+DROP TABLE IF EXISTS kmer_data;
+"""
+CREATE_KMER_DATA_TABLE_QUERY = """
+CREATE TABLE kmer_data (
+    transcript_id INTEGER NOT NULL,
+    pos INTEGER NOT NULL,
+    kmer TEXT NOT NULL,
+    samples BLOB NOT NULL,
+    reads BLOB NOT NULL,
+    intensity BLOB,
+    intensity_std BLOB,
+    dwell BLOB
+);
+"""
+INSERT_KMER_DATA_QUERY = """
+INSERT INTO kmer_data VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+"""
+DROP_READS_TABLE_QUERY = """
+DROP TABLE IF EXISTS reads;
+"""
+CREATE_READS_TABLE_QUERY = """
+CREATE TABLE reads (
+    read TEXT NOT NULL,
+    id INTEGER NOT NULL,
+    invalid_kmers REAL
+);
+"""
+DROP_READS_ID_INDEX_QUERY = """
+DROP INDEX IF EXISTS reads_id_index;
+"""
+CREATE_READS_ID_INDEX_QUERY = """
+CREATE INDEX IF NOT EXISTS reads_id_index ON reads (id);
+"""
+DROP_KMERS_INDEX_QUERY = """
+DROP INDEX IF EXISTS kmer_index;
+"""
+CREATE_KMERS_INDEX_QUERY = """
+CREATE INDEX IF NOT EXISTS kmer_index ON kmer_data (transcript_id, pos);
+"""
+
+DROP_TRANSCRIPTS_TABLE_QUERY = """
+DROP TABLE IF EXISTS transcripts;
+"""
+CREATE_TRANSCRIPTS_TABLE_QUERY = """
+CREATE TABLE transcripts (
+    reference TEXT NOT NULL,
+    id INTEGER NOT NULL,
+    PRIMARY KEY(reference)
+);
+"""
+DROP_TRANSCRIPTS_ID_INDEX_QUERY = """
+DROP INDEX IF EXISTS transcripts_id_index;
+"""
+CREATE_TRANSCRIPTS_ID_INDEX_QUERY = """
+CREATE INDEX IF NOT EXISTS transcripts_id_index ON transcripts (id);
+"""
+CREATE_INTERMEDIARY_KMER_DATA_TABLE_QUERY = """
+CREATE TABLE kmer_data (
+    transcript_id INTEGER NOT NULL,
+    pos INTEGER NOT NULL,
+    kmer TEXT NOT NULL,
+    reads BLOB NOT NULL,
+    intensity BLOB,
+    intensity_std BLOB,
+    dwell BLOB
+);
+"""
+INSERT_INTERMEDIARY_KMER_DATA_QUERY = """
+INSERT INTO kmer_data VALUES (?, ?, ?, ?, ?, ?, ?);
+"""
+INSERT_READS_QUERY = """
+INSERT INTO reads (read, id, invalid_kmers) VALUES(?, ?, ?);
 """
 
 BASE_KMER_RESULT_COLUMNS = ['id', 'transcript_id', 'pos', 'kmer']
@@ -105,7 +183,7 @@ class ResultsDB():
     def save_test_results(self, transcript, test_results):
         with closing(sqlite3.connect(self._db_path)) as conn,\
              closing(conn.cursor()) as cursor:
-            cursor.execute("INSERT INTO transcripts (id, name) VALUES (?, ?)", (transcript.id, transcript.name))
+            cursor.execute(INSERT_TRANSCRIPTS_QUERY, (transcript.id, transcript.name))
             test_columns = dict(zip(test_results.columns, test_results.dtypes))
             self._create_missing_columns(test_columns, cursor)
             test_results.to_sql('kmer_results', conn, if_exists='append', index=False)
@@ -164,6 +242,8 @@ class ResultsDB():
              closing(conn.cursor()) as cursor:
             cursor.execute(CREATE_TRANSCRIPTS_TABLE)
             cursor.execute(CREATE_KMER_RESULTS_TABLE)
+
+
 
 
 class PreprocessingDB:

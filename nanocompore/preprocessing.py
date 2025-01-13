@@ -16,18 +16,18 @@ import numpy as np
 from loguru import logger
 from pyfaidx import Fasta
 
-from nanocompore.remora_wrapper import Remora
-from nanocompore.eventalign_collapse import EventalignCollapser
-from nanocompore.kmer import KmerData
-from nanocompore.uncalled4 import Uncalled4
-from nanocompore.database import PreprocessingDB
 from nanocompore.common import EVENTALIGN_MEASUREMENT_TYPE
-from nanocompore.common import INSERT_READS_QUERY
-from nanocompore.common import INSERT_TRANSCRIPTS_QUERY
 from nanocompore.common import Indexer
 from nanocompore.common import Kit
 from nanocompore.common import READ_ID_TYPE
 from nanocompore.common import SAMPLE_ID_TYPE
+from nanocompore.database import INSERT_READS_QUERY
+from nanocompore.database import INSERT_TRANSCRIPTS_QUERY
+from nanocompore.database import PreprocessingDB
+from nanocompore.eventalign_collapse import EventalignCollapser
+from nanocompore.kmer import KmerData
+from nanocompore.remora_wrapper import Remora
+from nanocompore.uncalled4 import Uncalled4
 
 
 class Preprocessor:
@@ -166,7 +166,7 @@ class RemoraPreprocessor(Preprocessor):
         with closing(self._db.connect()) as conn,\
              closing(conn.cursor()) as cursor:
             cursor.execute(INSERT_TRANSCRIPTS_QUERY,
-                           (ref_id, self._current_transcript_id))
+                           (self._current_transcript_id, ref_id))
             cursor.execute("begin")
             cursor.executemany(INSERT_READS_QUERY, reads_data)
             cursor.execute("commit")
@@ -290,7 +290,7 @@ class Uncalled4Preprocessor(Preprocessor):
 
                 with closing(conn.cursor()) as cursor:
                     cursor.execute("begin")
-                    cursor.execute(INSERT_TRANSCRIPTS_QUERY, (ref_id, transcript_id))
+                    cursor.execute(INSERT_TRANSCRIPTS_QUERY, (transcript_id, ref_id))
                     cursor.executemany(INSERT_READS_QUERY, offsetted_reads)
                     cursor.execute("commit")
                 PreprocessingDB.write_kmer_rows(conn, kmer_rows)
@@ -503,7 +503,7 @@ class EventalignPreprocessor(Preprocessor):
             with closing(tmp_db_out.connect()) as conn,\
                  closing(conn.cursor()) as cursor:
                 cursor.execute(INSERT_TRANSCRIPTS_QUERY,
-                               (ref_id, transcript_id))
+                               (transcript_id, ref_id))
                 PreprocessingDB.write_kmer_rows(conn, rows)
             lock.acquire()
             processed_transcripts.value += 1

@@ -334,118 +334,11 @@ def is_valid_fasta(file):
         return False
 
 
-DROP_METADATA_TABLE_QUERY = """
-DROP TABLE IF EXISTS metadata;
-"""
-CREATE_METADATA_TABLE_QUERY = """
-CREATE TABLE metadata (
-    key TEXT NOT NULL,
-    value TEXT NOT NULL,
-    PRIMARY KEY(key)
-);
-"""
-DROP_KMER_DATA_TABLE_QUERY = """
-DROP TABLE IF EXISTS kmer_data;
-"""
-CREATE_KMER_DATA_TABLE_QUERY = """
-CREATE TABLE kmer_data (
-    transcript_id INTEGER NOT NULL,
-    pos INTEGER NOT NULL,
-    kmer TEXT NOT NULL,
-    samples BLOB NOT NULL,
-    reads BLOB NOT NULL,
-    intensity BLOB,
-    intensity_std BLOB,
-    dwell BLOB
-);
-"""
-CREATE_INTERMEDIARY_KMER_DATA_TABLE_QUERY = """
-CREATE TABLE kmer_data (
-    transcript_id INTEGER NOT NULL,
-    pos INTEGER NOT NULL,
-    kmer TEXT NOT NULL,
-    reads BLOB NOT NULL,
-    intensity BLOB,
-    intensity_std BLOB,
-    dwell BLOB
-);
-"""
-INSERT_KMER_DATA_QUERY = """
-INSERT INTO kmer_data VALUES (?, ?, ?, ?, ?, ?, ?, ?);
-"""
-INSERT_INTERMEDIARY_KMER_DATA_QUERY = """
-INSERT INTO kmer_data VALUES (?, ?, ?, ?, ?, ?, ?);
-"""
-DROP_READS_TABLE_QUERY = """
-DROP TABLE IF EXISTS reads;
-"""
-CREATE_READS_TABLE_QUERY = """
-CREATE TABLE reads (
-    read TEXT NOT NULL,
-    id INTEGER NOT NULL,
-    invalid_kmers REAL
-);
-"""
-INSERT_READS_QUERY = """
-INSERT INTO reads VALUES(?, ?, ?);
-"""
-DROP_READS_ID_INDEX_QUERY = """
-DROP INDEX IF EXISTS reads_id_index;
-"""
-CREATE_READS_ID_INDEX_QUERY = """
-CREATE INDEX IF NOT EXISTS reads_id_index ON reads (id);
-"""
-DROP_KMERS_INDEX_QUERY = """
-DROP INDEX IF EXISTS kmer_index;
-"""
-CREATE_KMERS_INDEX_QUERY = """
-CREATE INDEX IF NOT EXISTS kmer_index ON kmer_data (transcript_id, pos);
-"""
-
-DROP_TRANSCRIPTS_TABLE_QUERY = """
-DROP TABLE IF EXISTS transcripts;
-"""
-CREATE_TRANSCRIPTS_TABLE_QUERY = """
-CREATE TABLE transcripts (
-    reference TEXT NOT NULL,
-    id INTEGER NOT NULL,
-    PRIMARY KEY(reference)
-);
-"""
-DROP_TRANSCRIPTS_ID_INDEX_QUERY = """
-DROP INDEX IF EXISTS transcripts_id_index;
-"""
-CREATE_TRANSCRIPTS_ID_INDEX_QUERY = """
-CREATE INDEX IF NOT EXISTS transcripts_id_index ON transcripts (id);
-"""
-INSERT_TRANSCRIPTS_QUERY = """
-INSERT INTO transcripts VALUES(?, ?);
-"""
-
-CREATE_BASE_KMER_RESULTS_QUERY = """
-CREATE TABLE kmer_results (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    transcript_id INTEGER NOT NULL,
-    pos INTEGER NOT NULL,
-    kmer INTEGER NOT NULL,
-    UNIQUE (transcript_id, pos),
-    FOREIGN KEY(transcript_id) REFERENCES transcripts(id),
-)
-"""
-
-
 READ_ID_TYPE = np.uint32
 SAMPLE_ID_TYPE = np.uint8
 REMORA_MEASUREMENT_TYPE = np.float32
 UNCALLED4_MEASUREMENT_TYPE = np.int16
 EVENTALIGN_MEASUREMENT_TYPE = np.float32
-
-DB_METADATA_RESQUIGGLER_KEY = 'resquiggler'
-DB_METADATA_READ_ID_TYPE_KEY = 'read_id_type'
-DB_METADATA_SAMPLE_ID_TYPE_KEY = 'sample_id_type'
-DB_METADATA_MEASUREMENT_TYPE_KEY = 'measurement_type'
-DB_METADATA_SAMPLE_LABELS_KEY = 'sample_labels'
-DB_METADATA_CONDITION_SAMPLES_KEY = 'condition_samples'
 
 
 def get_measurement_type(resquiggler):

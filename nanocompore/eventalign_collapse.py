@@ -17,17 +17,17 @@ from loguru import logger
 from pyfaidx import Fasta
 
 from nanocompore.kmer import KmerData
-from nanocompore.common import DROP_KMER_DATA_TABLE_QUERY
-from nanocompore.common import DROP_READS_TABLE_QUERY
-from nanocompore.common import DROP_TRANSCRIPTS_TABLE_QUERY
-from nanocompore.common import CREATE_INTERMEDIARY_KMER_DATA_TABLE_QUERY
-from nanocompore.common import CREATE_READS_TABLE_QUERY
-from nanocompore.common import CREATE_TRANSCRIPTS_TABLE_QUERY
-from nanocompore.common import INSERT_INTERMEDIARY_KMER_DATA_QUERY
-from nanocompore.common import INSERT_READS_QUERY
-from nanocompore.common import INSERT_TRANSCRIPTS_QUERY
-from nanocompore.common import CREATE_READS_ID_INDEX_QUERY
-from nanocompore.common import CREATE_KMERS_INDEX_QUERY
+from nanocompore.database import DROP_KMER_DATA_TABLE_QUERY
+from nanocompore.database import DROP_READS_TABLE_QUERY
+from nanocompore.database import DROP_TRANSCRIPTS_TABLE_QUERY
+from nanocompore.database import CREATE_INTERMEDIARY_KMER_DATA_TABLE_QUERY
+from nanocompore.database import CREATE_READS_TABLE_QUERY
+from nanocompore.database import CREATE_TRANSCRIPTS_TABLE_QUERY
+from nanocompore.database import INSERT_INTERMEDIARY_KMER_DATA_QUERY
+from nanocompore.database import INSERT_READS_QUERY
+from nanocompore.database import INSERT_TRANSCRIPTS_QUERY
+from nanocompore.database import CREATE_READS_ID_INDEX_QUERY
+from nanocompore.database import CREATE_KMERS_INDEX_QUERY
 from nanocompore.common import READ_ID_TYPE
 from nanocompore.common import EVENTALIGN_MEASUREMENT_TYPE
 from nanocompore.common import Indexer
@@ -317,7 +317,7 @@ class EventalignCollapser:
 
                     cursor.execute('BEGIN')
                     cursor.execute(INSERT_TRANSCRIPTS_QUERY,
-                                   (ref_id, transcript_id))
+                                   (transcript_id, ref_id))
                     cursor.executemany(INSERT_READS_QUERY, reads_data)
                     cursor.executemany(INSERT_INTERMEDIARY_KMER_DATA_QUERY, rows)
                     cursor.execute('COMMIT')
