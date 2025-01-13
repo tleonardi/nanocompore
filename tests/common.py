@@ -32,7 +32,7 @@ BASIC_CONFIG = {
     },
     'fasta': os.path.join(cwd, 'tests/fixtures/test_reference.fa'),
     'depleted_condition': 'kd',
-    'kit': 'RNA004',
+    'kit': 'RNA002',
     'resquiggler': 'uncalled4',
     'preprocessing_db': os.path.join(cwd, 'tests/fixtures/kmer_data.sqlite')
 }

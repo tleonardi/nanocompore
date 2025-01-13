@@ -341,10 +341,11 @@ class EventalignPreprocessor(Preprocessor):
 
         # If any of the samples has a raw eventalign
         # file as input, collapse it.
+        tmp_eventalign_dbs = None
         if any('eventalign_db' not in sample_def
                for condition_def in self._config.get_data().values()
                for sample_def in condition_def.values()):
-            self._collapse_eventaligns()
+            tmp_eventalign_dbs = self._collapse_eventaligns()
 
         logger.info("Reviewing input collapsed dbs and transferring read id mappings to the new db.")
 
@@ -443,6 +444,11 @@ class EventalignPreprocessor(Preprocessor):
 
         logger.info("Creating database indices.")
         self._db.create_indices()
+
+        if tmp_eventalign_dbs:
+            logger.info("Deleting temporary eventalign collapsed databases.")
+            for db in tmp_eventalign_dbs:
+                Path(db).unlink()
 
 
     def _read_and_merge_samples(self,
@@ -549,6 +555,7 @@ class EventalignPreprocessor(Preprocessor):
                         if 'eventalign_db' not in sample_def}
         logger.info(f"{len(noncollapsed)} samples have input eventalign files that need to be collapsed. Collapsing them now.")
 
+        dbs = []
         num_processes = min(self._worker_processes, len(noncollapsed))
         with ProcessPoolExecutor(max_workers=num_processes) as executor:
             futures = [executor.submit(collapse_eventalign,
@@ -563,6 +570,8 @@ class EventalignPreprocessor(Preprocessor):
                 logger.info(f"Input eventalign for sample {sample} has been collapsed and saved at {db}")
                 condition = self._config.sample_to_condition()[sample]
                 self._config.get_data()[condition][sample]['eventalign_db'] = db
+                dbs.append(db)
+        return dbs
 
 
     def _get_intermediary_db_name(self, sample):
@@ -597,6 +606,6 @@ class EventalignPreprocessor(Preprocessor):
 
 def collapse_eventalign(params):
     sample, eventalign, fasta_ref, output, kit = params
-    EventalignCollapser(eventalign, fasta_ref, output, kit)()
+    EventalignCollapser(eventalign, fasta_ref, output, kit, 2)()
     return sample, output
 
