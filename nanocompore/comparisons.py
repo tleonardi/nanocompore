@@ -352,23 +352,17 @@ class TranscriptComparator:
         data = data.to(device)
 
         stats = {0: {}, 1: {}}
-        cond0_mask = (conditions == 0).to(device)
-        cond0_data = data * cond0_mask.to(int).unsqueeze(2)
+        cond0_mask = (conditions == 0).unsqueeze(2).to(device)
+
+        cond0_data = torch.where(cond0_mask, data, np.nan)
         stats[0]['mean'] = cond0_data.nanmean(1).cpu()
         stats[0]['median'] = cond0_data.nanmedian(1).values.cpu()
-        stats[0]['std'] = self._nanstd(torch.where(cond0_mask.unsqueeze(2).repeat(1, 1, 3) == 0,
-                                                   data,
-                                                   np.nan),
-                                       1).cpu()
+        stats[0]['std'] = self._nanstd(cond0_data, 1).cpu()
 
-        cond1_mask = ~cond0_mask
-        cond1_data = data * cond1_mask.to(int).unsqueeze(2)
+        cond1_data = torch.where(~cond0_mask, data, np.nan)
         stats[1]['mean'] = cond1_data.nanmean(1).cpu()
         stats[1]['median'] = cond1_data.nanmedian(1).values.cpu()
-        stats[1]['std'] = self._nanstd(torch.where(cond1_mask.unsqueeze(2).repeat(1, 1, 3) == 1,
-                                                   data,
-                                                   np.nan),
-                                       1).cpu()
+        stats[1]['std'] = self._nanstd(cond1_data, 1).cpu()
 
         dims = {
                 'intensity': INTENSITY,
