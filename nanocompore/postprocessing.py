@@ -24,30 +24,34 @@ class Postprocessor():
         self._db = ResultsDB(config, init_db=False)
 
 
-    def __call__(self, valid_transcripts=set(), bed=False, bedgraph=False, pvalue_threshold=0):
-        logger.debug("Creating database indices")
+    def __call__(self):
+        logger.info("Creating database indices.")
         self._db.index_database()
-        logger.debug("Created all table indexes")
-        logger.debug("Gathering all the data for reporting")
+
+        logger.info("Gathering all the data for reporting.")
         data = self._db.get_all_results()
-        logger.debug("Data gathered")
-        data = self._addGenomicPositions(data, valid_transcripts=valid_transcripts)
-        data['kmer'] = data['kmer'].apply(lambda encoding: decode_kmer(encoding, self._config.get_kit().len))
-        logger.debug("Added genomic positions to data")
+
+        logger.info("Adding genomic positions to data.")
+        data = self._add_genomic_positions(data)
+
+        logger.info("Decoding kmers.")
+        kmer_len = self._config.get_kit().len
+        data['kmer'] = [decode_kmer(code, kmer_len) for code in data['kmer']]
+
+        logger.info(f'Correcting p-values using "{self._correction_method}"')
         data = self._correct_pvalues(data, method=self._correction_method)
-        logger.debug("Corrected pvalues")
-        tests, shift_stats = self._getStatsTests(data)
+
+        logger.info("Writing the test results to a file.")
+        tests, shift_stats = self._get_stats_tests(data)
         self._write_results_tsv(data, tests)
-        logger.debug("Wrote results TSV output file")
+
+        logger.info("Writing the shift stats to a file.")
         self._write_results_shift_stats(data, shift_stats)
-        logger.debug("Wrote shift stats output file")
-        if (bed or bedgraph) and self._bed_fn:
-            if bed:
-                self._writeBed(data, valid_transcripts=valid_transcripts, pvalue_threshold=pvalue_threshold)
-            if bedgraph:
-                self._writeBedgraph(data, valid_transcripts=valid_transcripts, pvalue_theshold=pvalue_threshold)
-        elif (bed or bedgraph) and not self._bed_fn:
-            raise NanocomporeError('Writing a bed file requires an input bed to map transcriptome coordinates to genome coordinates')
+
+        if self._bed_fn:
+            data.sort_values(['chr', 'strand', 'name', 'genomicPos'], inplace=True)
+            logger.info("Writing the results to a bed file.")
+            self._write_bed(data)
 
 
     def _write_results_tsv(self, data, stats_tests):
@@ -70,39 +74,27 @@ class Postprocessor():
         data.to_csv(shift_stats_tsv, sep='\t', columns=columns_to_save, header=aliases, index=False)
 
 
-    def _addGenomicPositions(self, data, valid_transcripts, convert='', assembly=''):
-        '''
-        if convert not in [None, "ensembl_to_ucsc", "ucsc_to_ensembl"]:
-            sys.stderr.write("Convert value not valid\n")
-            #raise NanocomporeError("Convert value not valid")
-        if convert is not None and assembly is None:
-            sys.stderr.write("The assembly argument is required in order to do the conversion. Choose one of 'hg38' or 'mm10'\n")
-            #raise NanocomporeError("The assembly argument is required in order to do the conversion. Choose one of 'hg38' or 'mm10' ")
-        '''
+    def _add_genomic_positions(self, data, convert='', assembly=''):
         if self._bed_fn:
-            bed_annot={}
+            bed_annot = {}
             try:
                 with open(self._bed_fn) as tsvfile:
                     for line in tsvfile:
-                        record_name=line.split('\t')[3]
-                        if(record_name in valid_transcripts):
-                            bed_annot[record_name]=bedline(line.split('\t'))
+                        record_name = line.split('\t')[3]
+                        bed_annot[record_name] = bedline(line.split('\t'))
 
             except:
                 raise NanocomporeError("Can't open BED file")
-            if len(bed_annot) != len(valid_transcripts):
-                raise NanocomporeError("Some references are missing from the BED file provided")
 
-            data['genomicPos'] = data.apply(lambda row: bed_annot[row['name']].tx2genome(coord=row['pos'], stranded=True),axis=1)
-            # This is very inefficient. We should get chr and strand only once per transcript, ideally when writing the BED file
-            data['chr'] = data.apply(lambda row: bed_annot[row['name']].chr,axis=1)
-            #if convert == "ensembl_to_ucsc":
-            #    data['chr'] = data.apply(lambda row: bed_annot[row['name']].translateChr(assembly=assembly, target="ucsc", patches=True),axis=1)
-            #elif convert == "ucsc_to_ensembl":
-            #    data['chr'] = data.apply(lambda row: bed_annot[row['name']].translateChr(assembly=assembly, target="ens", patches=True),axis=1)
-            data['strand'] = data.apply(lambda row: bed_annot[row['name']].strand,axis=1)
+            for i, row in data.iterrows():
+                transcript = row['name'].split('|')[0]
+                annotation = bed_annot[transcript]
+                genomic_pos = annotation.tx2genome(row['pos'], stranded=True)
+                data.loc[i, 'genomicPos'] = genomic_pos
+                data.loc[i, 'chr'] = annotation.chr
+                data.loc[i, 'strand'] = annotation.strand
+            data['genomicPos'] = data['genomicPos'].astype(int)
             logger.debug("Added genomic positions to the data")
-
         else:
             data['genomicPos'] = 'NA'
             data['chr'] = 'NA'
@@ -111,35 +103,39 @@ class Postprocessor():
 
         return data
 
-    def _writeBed(self, data, pvalue_threshold=0, span=5, title="Nanocompore Significant Sites"):
-        if span < 1:
-            #sys.stderr.write("span has to be >=1\n")
-            raise NanocomporeError("span has to be >=1")
 
-        data['end_pos'] = data['pos'] + span
+    def _write_bed(self, data):
+        kit = self._config.get_kit()
+        # The interval calculation is a bit tricky, so here's an example:
+        # Suppose we use RNA002 with kmer = 5 and center position (most infulential base)
+        # at the 4th base.
+        # If genomicPos is 3 (that's the fourth base, because it's a 0-based index).
+        # chromosome positions: 0 1 2 3 4 5
+        #                             ^
+        #                    this is the kmer center
+        # We want to obtain the interval [0, 5), because BED files use
+        # left-inclusive, right-exclusive intervals.
+        # So the proper calculation would be:
+        # start_pos = genomicPos - center + 1 = 3 - 4  + 1 = 0
+        # end_pos = genomicPos + kmer_len - center + 1 = 3 + 5 - 4 + 1 = 5
+        data['start_pos'] = data['genomicPos'] - kit.center + 1
+        data['end_pos'] = data['genomicPos'] + kit.len - kit.center + 1
         for test in data.columns:
-            if 'pvalue' in  test:
-                out_bed = os.path.join(self._outpath, f"{self._prefix}sig_sites_{test}_thr_{pvalue_threshold}.bed")
+            if 'qvalue' in test:
+                out_bed = os.path.join(self._outpath, f"{self._prefix}sig_sites_{test}.bed")
                 logger.debug(f"Starting to write results to {out_bed}\n")
-                columns_to_save = ['chr', 'genomicPos', 'end_pos', 'name', test, 'strand']
-                data[data[test] <= pvalue_threshold].to_csv(out_bed, sep='\t', columns=columns_to_save, header=False, index=False)
+                columns_to_save = ['chr', 'start_pos', 'end_pos', 'name', test, 'strand']
+                data.to_csv(out_bed,
+                            sep='\t',
+                            columns=columns_to_save,
+                            header=False,
+                            index=False)
 
-    def _writeBedgraph(self, data, pvalue_threshold=0, title="Nanocompore Significant Sites"):
-        data[data['strand'] == '+']['genomicPos'] = data[data['strand'] == '+']['genomicPos'] + 2
-        data[data['strand'] == '+']['end_pos'] = data[data['strand'] == '+']['genomicPos'] + 3
-        data[data['strand'] == '-']['genomicPos'] = data[data['strand'] == '-']['genomicPos'] - 2
-        data[data['strand'] == '-']['end_pos'] = data[data['strand'] == '-']['genomicPos'] - 1
-
-        for test in data.columns:
-            if 'pvalue' in test:
-                out_bedgraph = os.path.join(self._outpath, f"{self._prefix}sig_sites_{test}_thr_{pvalue_threshold}.bed")
-                logger.debug(f"Starting to write results to {out_bedgraph}")
-                columns_to_save = ['chr', 'genomicPos', 'end_pos', test,]
-                data[data[test] <= pvalue_threshold].to_csv(out_bedgraph, sep='\t', columns=columns_to_save, header=False, index=False)
 
     def _sort_headers_list(self, headers):
         return sorted(headers,
                       key=lambda x: (not ('pvalue' in x or 'qvalue' in x), x))
+
 
     def _sort_shift_stat_headers(self, strings):
         conditions = ['c1', 'c2']
@@ -157,7 +153,7 @@ class Postprocessor():
         return strings
 
 
-    def _getStatsTests(self, data):
+    def _get_stats_tests(self, data):
         tests = []
         shift_stats = []
         for header in data.columns:
