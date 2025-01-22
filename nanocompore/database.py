@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS transcripts (
 );
 """
 INSERT_TRANSCRIPTS_QUERY = """
-INSERT INTO transcripts (id, reference) VALUES(?, ?);
+INSERT INTO transcripts (id, name) VALUES(?, ?);
 """
 
 CREATE_KMER_RESULTS_TABLE = """
@@ -242,8 +242,6 @@ class ResultsDB():
              closing(conn.cursor()) as cursor:
             cursor.execute(CREATE_TRANSCRIPTS_TABLE)
             cursor.execute(CREATE_KMER_RESULTS_TABLE)
-
-
 
 
 class PreprocessingDB:

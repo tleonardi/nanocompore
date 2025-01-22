@@ -56,7 +56,7 @@ CONFIG_SCHEMA = Schema(And({
             str: { # condition
                 str: { # sample (replicate)
                     Optional('bam'): lambda f: open(f, 'r'),
-                    Optional('pod5'): lambda f: open(f, 'r'),
+                    Optional('pod5'): str,
                     Optional('eventalign_tsv'): lambda f: open(f, 'r'),
                     Optional('eventalign_db'): lambda f: open(f, 'r')
                 }

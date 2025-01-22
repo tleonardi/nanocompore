@@ -72,6 +72,8 @@ class RunCmd(object):
                         f"{already_processed} have already been processed in previous runs. " + \
                         f"Will process only for the remaining {len(transcripts)}.")
         else:
+            # Initialize the database
+            ResultsDB(self._config, init_db=True)
             logger.info(f"Found a total of {len(transcripts)} transcripts for processing.")
 
         task_queue = mp.JoinableQueue()

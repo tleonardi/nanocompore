@@ -111,9 +111,11 @@ class TranscriptComparator:
         initial_positions = max_pos - min_pos + 1
 
         tensor = torch.full((initial_positions, len(reads), 6), np.nan, dtype=float, device=device)
+        valid_positions = torch.full((initial_positions,), False)
         for kmer in sorted(kmers, key=lambda kmer: kmer.pos, reverse=True):
             indices = get_indices(kmer.reads)
             pos = kmer.pos - min_pos
+            valid_positions[pos] = True
             tensor[pos, indices, 0] = torch.tensor(kmer.reads, dtype=float, device=device)
             tensor[pos, indices, 1] = torch.tensor(kmer.condition_ids, dtype=float, device=device)
             tensor[pos, indices, 2] = torch.tensor(kmer.sample_ids, dtype=float, device=device)
@@ -123,7 +125,6 @@ class TranscriptComparator:
                 tensor[pos, indices, 5] = tensor[pos + MOTOR_DWELL_EFFECT_OFFSET, indices, 4]
 
         # valid positions are those that have at least some values
-        valid_positions = ~tensor.isnan().all([1, 2]).cpu()
         tensor = tensor[valid_positions, :, :].cpu()
         positions = torch.arange(min_pos, max_pos + 1)[valid_positions]
         return (tensor[:, :, 3:6].clone(), # measurements
@@ -304,26 +305,35 @@ class TranscriptComparator:
         for s in split:
             if s == 0:
                 pvals.append(dim3_results['GMM_chi2_pvalue'][dim3_i])
+                lors.append(dim3_results['GMM_LOR'][dim3_i])
                 dim3_i += 1
             else:
                 pvals.append(dim2_results['GMM_chi2_pvalue'][dim2_i])
+                lors.append(dim2_results['GMM_LOR'][dim2_i])
                 dim2_i += 1
-        return {'GMM_chi2_pvalue': pvals}
+        return {'GMM_chi2_pvalue': pvals,
+                'GMM_LOR': lors}
 
 
-    def _gmm_test_split(self, test_data, conditions, indices, device):
+    def _gmm_test_split(self, data, conditions, indices, device):
+        test_data = data.to(torch.bfloat16)
         s = time.time()
         def fit_model(components):
             gmm = GMM(n_components=components,
                       device=device,
                       random_seed=self._random_seed,
-                      dtype=torch.float32)
+                      dtype=torch.bfloat16)
             gmm.fit(test_data)
             return gmm
+        gmm1 = retry(lambda: fit_model(1), exception=torch.OutOfMemoryError)
+        bic1 = gmm1.bic(test_data)
+        del gmm1
+        gc.collect()
         gmm2 = retry(lambda: fit_model(2), exception=torch.OutOfMemoryError)
 
         logger.info(f"GMM fitting time: {time.time() - s}")
-        pred = gmm2.predict(test_data.to(torch.float32))
+        pred = gmm2.predict(test_data)
+        bic2 = gmm2.bic(test_data)
         del gmm2
         gc.collect()
         if device.startswith('cuda'):
@@ -332,13 +342,30 @@ class TranscriptComparator:
         pvals = []
         lors = []
         for i in range(test_data.shape[0]):
+            if bic1[i] <= bic2[i]:
+                pvals.append(np.nan)
+                lors.append(np.nan)
+                continue
             valid = ~conditions[i, :].isnan()
+            # Calculate LOR
+            reads0 = conditions[i, :] == 0
+            reads0_num = reads0.sum() + 2
+            reads00_num = (pred[i, reads0] == 0).sum() + 1
+            reads01_num = pred[i, reads0].nansum() + 1
+            reads1 = conditions[i, :] == 1
+            reads1_num = reads1.sum() + 2
+            reads10_num = (pred[i, reads1] == 0).sum() + 1
+            reads11_num = pred[i, reads1].nansum() + 1
+            odds0 = (reads00_num/reads0_num)/(reads01_num/reads0_num)
+            odds1 = (reads10_num/reads1_num)/(reads11_num/reads1_num)
+            lor = odds0/odds1
+            # Calculate p-value
             contingency = crosstab(conditions[i, valid], pred[i, valid]) + 1
             pval = chi2_contingency(contingency).pvalue
             pvals.append(pval)
-            lors.append(np.nan)
-        return {'GMM_chi2_pvalue': pvals}
-
+            lors.append(lor)
+        return {'GMM_chi2_pvalue': pvals,
+                'GMM_LOR': lors}
 
     def _split_by_ndim(self, test_data):
         any_motor_dwell_nan = (test_data[:, :, MOTOR].isnan() &
@@ -378,7 +405,7 @@ class TranscriptComparator:
 
 
     def _nanstd(self, X, dim):
-        nonnans = ((~X.isnan()).to(int).sum(dim))
+        nonnans = (~X.isnan()).to(int).sum(dim)
         return (((X - X.nanmean(dim).unsqueeze(1)) ** 2).nansum(dim) / nonnans) ** 0.5
 
 
