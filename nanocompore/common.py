@@ -35,6 +35,13 @@ Kit.RNA004.center = 6
 # was measured to be 11 nt.
 MOTOR_DWELL_EFFECT_OFFSET = 11
 
+READ_ID_TYPE = np.uint32
+SAMPLE_ID_TYPE = np.uint8
+REMORA_MEASUREMENT_TYPE = np.float32
+UNCALLED4_MEASUREMENT_TYPE = np.int16
+EVENTALIGN_MEASUREMENT_TYPE = np.float32
+
+
 def is_valid_position(pos, seq_len, kit):
     """
     Takes a position (in 0-based transcriptomic coords),
@@ -332,13 +339,6 @@ def is_valid_fasta(file):
     except IOError:
         # raise NanocomporeError("The fasta file cannot be opened")
         return False
-
-
-READ_ID_TYPE = np.uint32
-SAMPLE_ID_TYPE = np.uint8
-REMORA_MEASUREMENT_TYPE = np.float32
-UNCALLED4_MEASUREMENT_TYPE = np.int16
-EVENTALIGN_MEASUREMENT_TYPE = np.float32
 
 
 def get_measurement_type(resquiggler):

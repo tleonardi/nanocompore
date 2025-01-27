@@ -30,9 +30,10 @@ class TranscriptComparator:
     """
     Compare a set of positions.
     """
-    def __init__(self, config, random_seed=42):
+    def __init__(self, config, random_seed=42, dtype=torch.float32):
         self._config = config
         self._random_seed = random_seed
+        self._dtype = dtype
 
 
     def compare_transcript(self, transcript, kmers, device=None):
@@ -110,22 +111,31 @@ class TranscriptComparator:
 
         initial_positions = max_pos - min_pos + 1
 
-        tensor = torch.full((initial_positions, len(reads), 6), np.nan, dtype=float, device=device)
+        tensor = np.full((initial_positions, len(reads), 6), np.nan)
         valid_positions = torch.full((initial_positions,), False)
+        tmp_matrix = np.empty((len(reads), 5), dtype=float)
         for kmer in sorted(kmers, key=lambda kmer: kmer.pos, reverse=True):
             indices = get_indices(kmer.reads)
             pos = kmer.pos - min_pos
             valid_positions[pos] = True
-            tensor[pos, indices, 0] = torch.tensor(kmer.reads, dtype=float, device=device)
-            tensor[pos, indices, 1] = torch.tensor(kmer.condition_ids, dtype=float, device=device)
-            tensor[pos, indices, 2] = torch.tensor(kmer.sample_ids, dtype=float, device=device)
-            tensor[pos, indices, 3] = torch.tensor(kmer.intensity, dtype=float, device=device)
-            tensor[pos, indices, 4] = torch.tensor(np.log10(kmer.dwell), dtype=float, device=device)
-            if pos + MOTOR_DWELL_EFFECT_OFFSET < initial_positions:
-                tensor[pos, indices, 5] = tensor[pos + MOTOR_DWELL_EFFECT_OFFSET, indices, 4]
+            nreads = len(kmer.reads)
+            # It's a bit faster to put all the kmer data
+            # (which is numpy arrays), into one big matrix
+            # in consecutive positions and then to reorder
+            # the rows appropritately.
+            tmp_matrix[:nreads, 0] = kmer.reads
+            tmp_matrix[:nreads, 1] = kmer.condition_ids
+            tmp_matrix[:nreads, 2] = kmer.sample_ids
+            tmp_matrix[:nreads, 3] = kmer.intensity
+            tmp_matrix[:nreads, 4] = kmer.dwell
+            tensor[pos, indices, :5] = tmp_matrix[:nreads, :]
+        end = initial_positions - MOTOR_DWELL_EFFECT_OFFSET
+        tensor[:end, :, 5] = tensor[MOTOR_DWELL_EFFECT_OFFSET:initial_positions, :, 4]
 
         # valid positions are those that have at least some values
-        tensor = tensor[valid_positions, :, :].cpu()
+        tensor = torch.tensor(tensor[valid_positions.numpy()],
+                              dtype=self._dtype)
+
         positions = torch.arange(min_pos, max_pos + 1)[valid_positions]
         return (tensor[:, :, 3:6].clone(), # measurements
                 tensor[:, :, 2].clone(), # samples
@@ -316,13 +326,13 @@ class TranscriptComparator:
 
 
     def _gmm_test_split(self, data, conditions, indices, device):
-        test_data = data.to(torch.bfloat16)
+        test_data = data.to(self._dtype)
         s = time.time()
         def fit_model(components):
             gmm = GMM(n_components=components,
                       device=device,
                       random_seed=self._random_seed,
-                      dtype=torch.bfloat16)
+                      dtype=self._dtype)
             gmm.fit(test_data)
             return gmm
         gmm1 = retry(lambda: fit_model(1), exception=torch.OutOfMemoryError)
@@ -339,33 +349,30 @@ class TranscriptComparator:
         if device.startswith('cuda'):
             torch.cuda.empty_cache()
             torch.cuda.reset_peak_memory_stats()
+        lors = self._calculate_log_odds_ratios(pred, conditions)
         pvals = []
-        lors = []
         for i in range(test_data.shape[0]):
             if bic1[i] <= bic2[i]:
                 pvals.append(np.nan)
-                lors.append(np.nan)
+                lors[i] = np.nan
                 continue
             valid = ~conditions[i, :].isnan()
-            # Calculate LOR
-            reads0 = conditions[i, :] == 0
-            reads0_num = reads0.sum() + 2
-            reads00_num = (pred[i, reads0] == 0).sum() + 1
-            reads01_num = pred[i, reads0].nansum() + 1
-            reads1 = conditions[i, :] == 1
-            reads1_num = reads1.sum() + 2
-            reads10_num = (pred[i, reads1] == 0).sum() + 1
-            reads11_num = pred[i, reads1].nansum() + 1
-            odds0 = (reads00_num/reads0_num)/(reads01_num/reads0_num)
-            odds1 = (reads10_num/reads1_num)/(reads11_num/reads1_num)
-            lor = odds0/odds1
-            # Calculate p-value
             contingency = crosstab(conditions[i, valid], pred[i, valid]) + 1
             pval = chi2_contingency(contingency).pvalue
             pvals.append(pval)
-            lors.append(lor)
         return {'GMM_chi2_pvalue': pvals,
                 'GMM_LOR': lors}
+
+
+    def _calculate_log_odds_ratios(self, pred, conditions):
+        cond0 = (conditions == 0).any(0)
+        reads00_num = (pred[:, cond0] == 0).sum(1) + 1
+        reads01_num = pred[:, cond0].nansum(1) + 1
+        cond1 = (conditions == 1).any(0)
+        reads10_num = (pred[:, cond1] == 0).sum(1) + 1
+        reads11_num = pred[:, cond1].nansum(1) + 1
+        return torch.log((reads00_num/reads01_num)/(reads10_num/reads11_num))
+
 
     def _split_by_ndim(self, test_data):
         any_motor_dwell_nan = (test_data[:, :, MOTOR].isnan() &
@@ -424,7 +431,7 @@ def retry(fn, delay=5, backoff=5, max_attempts=3, exception=Exception):
 
 
 def crosstab(a, b):
-    table = torch.zeros((2, 2), dtype=torch.int64)
+    table = torch.zeros((2, 2), dtype=torch.int)
     for i in range(2):
         for j in range(2):
             table[i, j] = ((a == i) & (b == j)).sum()
