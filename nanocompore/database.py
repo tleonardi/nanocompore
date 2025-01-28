@@ -26,7 +26,7 @@ DB_METADATA_CONDITION_SAMPLES_KEY = 'condition_samples'
 
 # ======= RESULT DATABASE QUERIES =======
 
-CREATE_TRANSCRIPTS_TABLE = """
+CREATE_TRANSCRIPTS_RESULTS_TABLE = """
 CREATE TABLE IF NOT EXISTS transcripts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name VARCHAR NOT NULL UNIQUE
@@ -115,9 +115,9 @@ DROP TABLE IF EXISTS transcripts;
 """
 CREATE_TRANSCRIPTS_TABLE_QUERY = """
 CREATE TABLE transcripts (
-    reference TEXT NOT NULL,
+    name TEXT NOT NULL,
     id INTEGER NOT NULL,
-    PRIMARY KEY(reference)
+    PRIMARY KEY(name)
 );
 """
 DROP_TRANSCRIPTS_ID_INDEX_QUERY = """
@@ -240,7 +240,7 @@ class ResultsDB():
     def _create_tables(self):
         with closing(sqlite3.connect(self._db_path)) as conn,\
              closing(conn.cursor()) as cursor:
-            cursor.execute(CREATE_TRANSCRIPTS_TABLE)
+            cursor.execute(CREATE_TRANSCRIPTS_RESULTS_TABLE)
             cursor.execute(CREATE_KMER_RESULTS_TABLE)
 
 
