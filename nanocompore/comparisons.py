@@ -130,7 +130,8 @@ class TranscriptComparator:
             tmp_matrix[:nreads, 4] = kmer.dwell
             tensor[pos, indices, :5] = tmp_matrix[:nreads, :]
         end = initial_positions - MOTOR_DWELL_EFFECT_OFFSET
-        tensor[:end, :, 5] = tensor[MOTOR_DWELL_EFFECT_OFFSET:initial_positions, :, 4]
+        if end > 0:
+            tensor[:end, :, 5] = tensor[MOTOR_DWELL_EFFECT_OFFSET:initial_positions, :, 4]
 
         # valid positions are those that have at least some values
         tensor = torch.tensor(tensor[valid_positions.numpy()],

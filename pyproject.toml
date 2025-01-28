@@ -40,7 +40,7 @@ pysam = "^0.22.0"
 ont-remora = "3.2"
 schema = "^0.7.5"
 pynvml = "^12.0.0"
-gmm-gpu = "^0.1.15"
+gmm-gpu = "^0.1.17"
 
 [tool.poetry.dev-dependencies]
 pytest = "~4"
