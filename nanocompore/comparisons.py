@@ -42,6 +42,15 @@ class TranscriptComparator:
 
         data, samples, conditions, positions = retry(lambda: self._kmers_to_tensor(kmers, device),
                                                      exception=torch.OutOfMemoryError)
+
+        max_reads = self._config.get_downsample_high_coverage()
+        if data.shape[1] > max_reads:
+            read_valid_positions = (~data.isnan().any(2)).sum(0)
+            selected = read_valid_positions.argsort(descending=True)[:max_reads]
+            data = data[:, selected, :]
+            samples = samples[:, selected]
+            conditions = conditions[:, selected]
+
         if device.startswith('cuda'):
             torch.cuda.empty_cache()
             torch.cuda.reset_peak_memory_stats()

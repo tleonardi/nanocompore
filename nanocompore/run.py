@@ -230,10 +230,7 @@ class RunCmd(object):
         kmers = [self._filter_reads(kmer, valid_read_ids) for kmer in kmers]
         # get only kmers that have the minimum number of reads required
         kmers = [kmer for kmer in kmers if self._enough_reads_in_kmer(kmer)]
-        # discard excesive reads
-        max_reads = self._config.get_downsample_high_coverage()
-        return [kmer.subsample_reads(max_reads, random_state=self._random_state)
-                for kmer in kmers]
+        return kmers
 
 
     def _filter_reads(self, kmer, valid_read_ids):
@@ -294,7 +291,7 @@ class RunCmd(object):
         with closing(sqlite3.connect(db)) as conn,\
              closing(conn.cursor()) as cursor:
             query = f"""
-            SELECT DISTINCT t.reference, t.id
+            SELECT DISTINCT t.name, t.id
             FROM kmer_data kd
             INNER JOIN transcripts t ON kd.transcript_id = t.id
             """
