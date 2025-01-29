@@ -176,7 +176,7 @@ def test_uncalled4_preprocessing():
                 '8a3709ea-cd84-4b19-a33e-83198f9f323f'}
 
 
-        get_actb_id = 'SELECT id FROM transcripts WHERE reference LIKE "%ENST00000674681.1%"'
+        get_actb_id = 'SELECT id FROM transcripts WHERE name LIKE "%ENST00000674681.1%"'
         transcript_id = conn.execute(get_actb_id).fetchone()[0]
 
         kmer_304 = [row
@@ -245,7 +245,7 @@ def test_eventalign_preprocessing():
                 '598b375f-cdfe-41c8-aca2-78ffc0adbaf7'}
 
 
-        get_actb_id = 'SELECT id FROM transcripts WHERE reference LIKE "%ENST00000674681.1%"'
+        get_actb_id = 'SELECT id FROM transcripts WHERE name LIKE "%ENST00000674681.1%"'
         transcript_id = conn.execute(get_actb_id).fetchone()[0]
         kmer_304 = [row
                     for row in kmer_data

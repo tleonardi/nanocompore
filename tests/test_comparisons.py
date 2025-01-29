@@ -107,8 +107,8 @@ def test_kmers_to_tensor():
                 [98.8, np.log10(0.012), np.log10(0.03)], # read 2
                 [84.3, np.log10(0.4), np.nan], # read 3
                 [113.2, np.log10(0.06), np.nan], # read 4
-                [np.nan, np.nan, np.nan], # read 5
-                [np.nan, np.nan, np.nan] # read 6
+                [np.nan, np.nan, np.log10(0.07)], # read 5
+                [np.nan, np.nan, np.log10(0.01)] # read 6
             ],
             # pos 5
             [
@@ -128,7 +128,7 @@ def test_kmers_to_tensor():
                 [96.5, np.log10(0.07), np.nan], # read 5
                 [97.8, np.log10(0.01), np.nan] # read 6
             ]
-        ], dtype=float)
+        ], dtype=torch.float32)
     # Apparently torch doesn't have a function to compare
     # two tensors that handles nans...
     assert torch.equal(

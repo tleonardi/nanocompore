@@ -366,7 +366,7 @@ class EventalignPreprocessor(Preprocessor):
                  closing(self._db.connect()) as conn_out,\
                  closing(conn_out.cursor()) as db_out:
 
-                for row in db_in.execute("SELECT reference FROM transcripts").fetchall():
+                for row in db_in.execute("SELECT name FROM transcripts").fetchall():
                     references[row[0]] = True
 
                 # Get all reads from the collapsed sample db,
@@ -476,7 +476,7 @@ class EventalignPreprocessor(Preprocessor):
             for sample, db in sample_dbs.items():
                 with closing(sqlite3.connect(db)) as conn,\
                      closing(conn.cursor()) as cursor:
-                    transcript = cursor.execute("SELECT id FROM transcripts WHERE reference = ?",
+                    transcript = cursor.execute("SELECT id FROM transcripts WHERE name = ?",
                                                 (ref_id,)).fetchone()
                     if transcript:
                         transcript_id = transcript[0]

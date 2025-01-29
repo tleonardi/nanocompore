@@ -136,7 +136,7 @@ class TranscriptComparator:
             tmp_matrix[:nreads, 1] = kmer.condition_ids
             tmp_matrix[:nreads, 2] = kmer.sample_ids
             tmp_matrix[:nreads, 3] = kmer.intensity
-            tmp_matrix[:nreads, 4] = kmer.dwell
+            tmp_matrix[:nreads, 4] = np.log10(kmer.dwell)
             tensor[pos, indices, :5] = tmp_matrix[:nreads, :]
         end = initial_positions - MOTOR_DWELL_EFFECT_OFFSET
         if end > 0:
