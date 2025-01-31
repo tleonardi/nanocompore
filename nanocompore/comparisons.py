@@ -46,7 +46,11 @@ class TranscriptComparator:
         max_reads = self._config.get_downsample_high_coverage()
         if data.shape[1] > max_reads:
             read_valid_positions = (~data.isnan().any(2)).sum(0)
-            selected = read_valid_positions.argsort(descending=True)[:max_reads]
+            read_order = read_valid_positions.argsort(descending=True)
+            selected = torch.full((read_order.shape[0],), False)
+            for cond in [0, 1]:
+                cond_selected = read_order[conditions[0, read_order] == cond][:max_reads]
+                selected[cond_selected] = True
             data = data[:, selected, :]
             samples = samples[:, selected]
             conditions = conditions[:, selected]
