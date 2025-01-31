@@ -75,8 +75,32 @@ class TranscriptComparator:
             torch.cuda.reset_peak_memory_stats()
         logger.debug(f"Finished shift stats ({time.time() - t})")
 
+        std = nanstd(data, 1).unsqueeze(1)
+        outliers = (((data - data.nanmean(1, keepdim=True)) / std).abs() > 3).any(2)
+        data[outliers] = np.nan
+
         # Standardize the data
-        data = (data - data.nanmean(1).unsqueeze(1)) / self._nanstd(data, 1).unsqueeze(1)
+        std = nanstd(data, 1)
+        data = (data - data.nanmean(1).unsqueeze(1)) / std.unsqueeze(1)
+
+        # If we get the same value for a variable in most of the reads
+        # the others will be removed as outliers and we cannot calculate
+        # the std to scale the data. I've noticed this only in Uncalled4
+        # because sometimes it would return the -32768 for the intensity
+        # for all/most reads.
+        bad_stds = std.isnan().any(1) | (std == 0).any(1)
+        if bad_stds.any():
+            logger.warning(f"The standard deviation cannot be calculated for some positions on " + \
+                           f"transcript {transcript.name}, but are required for scaling the data. " + \
+                           f"The positions {positions[bad_stds].tolist()} will be skipped.")
+            data = data[~bad_stds]
+            samples = samples[~bad_stds]
+            conditions = conditions[~bad_stds]
+            positions = positions[~bad_stds]
+            n_positions = positions.shape[0]
+            results.drop(np.arange(results.shape[0])[bad_stds],
+                         inplace=True,
+                         axis=0)
 
         auto_test_mask = None
         has_auto = 'auto' in self._config.get_comparison_methods()
@@ -405,12 +429,12 @@ class TranscriptComparator:
         cond0_data = torch.where(cond0_mask, data, np.nan)
         stats[0]['mean'] = cond0_data.nanmean(1).cpu()
         stats[0]['median'] = cond0_data.nanmedian(1).values.cpu()
-        stats[0]['std'] = self._nanstd(cond0_data, 1).cpu()
+        stats[0]['std'] = nanstd(cond0_data, 1).cpu()
 
         cond1_data = torch.where(~cond0_mask, data, np.nan)
         stats[1]['mean'] = cond1_data.nanmean(1).cpu()
         stats[1]['median'] = cond1_data.nanmedian(1).values.cpu()
-        stats[1]['std'] = self._nanstd(cond1_data, 1).cpu()
+        stats[1]['std'] = nanstd(cond1_data, 1).cpu()
 
         dims = {
                 'intensity': INTENSITY,
@@ -425,9 +449,9 @@ class TranscriptComparator:
                     results[label] = stats[cond][stat][:, dim_index]
 
 
-    def _nanstd(self, X, dim):
-        nonnans = (~X.isnan()).to(int).sum(dim)
-        return (((X - X.nanmean(dim).unsqueeze(1)) ** 2).nansum(dim) / nonnans) ** 0.5
+def nanstd(X, dim):
+    nonnans = (~X.isnan()).sum(dim)
+    return (((X - X.nanmean(dim).unsqueeze(1)) ** 2).nansum(dim) / nonnans) ** 0.5
 
 
 def retry(fn, delay=5, backoff=5, max_attempts=3, exception=Exception):
