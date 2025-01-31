@@ -5,6 +5,8 @@ import numpy as np
 import pandas as pd
 
 from nanocompore.comparisons import TranscriptComparator
+from nanocompore.comparisons import calculate_lor
+from nanocompore.comparisons import contingency_to_str
 from nanocompore.config import Config
 from nanocompore.kmer import KmerData
 
@@ -232,6 +234,18 @@ def test_combine_context_pvalues():
                          0.9504729672694502])
     assert np.equal(np.nan_to_num(actual.round(3), -1),
                     np.nan_to_num(expected.round(3), -1)).all()
+
+
+def test_calculate_lor():
+    contingency = np.array([[13, 11],
+                            [12, 10]])
+    assert calculate_lor(contingency) == -0.015
+
+
+def test_contingency_to_str():
+    contingency = np.array([[13, 11],
+                            [12, 10]])
+    assert contingency_to_str(contingency) == '13|12,11|10'
 
 
 def get_float(value):

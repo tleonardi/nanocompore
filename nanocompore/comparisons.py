@@ -345,35 +345,35 @@ class TranscriptComparator:
         # where some reads are missing the motor dwell -
         # those would be tested with a 2D GMM.
         dim3_data, dim2_data, split = self._split_by_ndim(test_data)
-        indices = torch.arange(test_data.shape[0])
-        pvals = []
-        lors = []
         if dim3_data.shape[0] > 0:
             dim3_results = self._gmm_test_split(dim3_data,
                                                 conditions[split == 0, :],
-                                                indices[split == 0],
                                                 device)
         if dim2_data.shape[0] > 0:
             dim2_results = self._gmm_test_split(dim2_data,
                                                 conditions[split == 1, :],
-                                                indices[split == 1],
                                                 device)
-        dim3_i = 0
-        dim2_i = 0
-        for s in split:
-            if s == 0:
-                pvals.append(dim3_results['GMM_chi2_pvalue'][dim3_i])
-                lors.append(dim3_results['GMM_LOR'][dim3_i])
-                dim3_i += 1
-            else:
-                pvals.append(dim2_results['GMM_chi2_pvalue'][dim2_i])
-                lors.append(dim2_results['GMM_LOR'][dim2_i])
-                dim2_i += 1
-        return {'GMM_chi2_pvalue': pvals,
-                'GMM_LOR': lors}
+
+        results = {}
+        for column in ['GMM_chi2_pvalue', 'GMM_LOR', 'GMM_cluster_counts']:
+            dim3_values = dim3_results[column]
+            dim2_values = dim2_results[column]
+            dim3_i = 0
+            dim2_i = 0
+
+            merged = []
+            for s in split:
+                if s == 0:
+                    merged.append(dim3_values[dim3_i])
+                    dim3_i += 1
+                else:
+                    merged.append(dim2_values[dim2_i])
+                    dim2_i += 1
+            results[column] = merged
+        return results
 
 
-    def _gmm_test_split(self, data, conditions, indices, device):
+    def _gmm_test_split(self, data, conditions, device):
         test_data = data.to(self._dtype)
         s = time.time()
         def fit_model(components):
@@ -397,29 +397,29 @@ class TranscriptComparator:
         if device.startswith('cuda'):
             torch.cuda.empty_cache()
             torch.cuda.reset_peak_memory_stats()
-        lors = self._calculate_log_odds_ratios(pred, conditions)
         pvals = []
+        lors = []
+        cluster_counts = []
         for i in range(test_data.shape[0]):
             if bic1[i] <= bic2[i]:
                 pvals.append(np.nan)
-                lors[i] = np.nan
+                lors.append(np.nan)
+                cluster_counts.append(np.nan)
                 continue
             valid = ~conditions[i, :].isnan()
             contingency = crosstab(conditions[i, valid], pred[i, valid]) + 1
+
             pval = chi2_contingency(contingency).pvalue
             pvals.append(pval)
+
+            lor = calculate_lor(contingency)
+            lors.append(lor)
+
+            clusters = contingency_to_str(contingency)
+            cluster_counts.append(clusters)
         return {'GMM_chi2_pvalue': pvals,
-                'GMM_LOR': lors}
-
-
-    def _calculate_log_odds_ratios(self, pred, conditions):
-        cond0 = (conditions == 0).any(0)
-        reads00_num = (pred[:, cond0] == 0).sum(1) + 1
-        reads01_num = pred[:, cond0].nansum(1) + 1
-        cond1 = (conditions == 1).any(0)
-        reads10_num = (pred[:, cond1] == 0).sum(1) + 1
-        reads11_num = pred[:, cond1].nansum(1) + 1
-        return torch.log((reads00_num/reads01_num)/(reads10_num/reads11_num))
+                'GMM_LOR': lors,
+                'GMM_cluster_counts': cluster_counts}
 
 
     def _split_by_ndim(self, test_data):
@@ -606,4 +606,15 @@ def combine_pvalues_hou(pvalues, weights, cor_mat):
     if combined_p_value == 0:
         combined_p_value = np.finfo(np.float).tiny
     return combined_p_value
+
+
+def calculate_lor(contingency):
+    odds1 = (contingency[0, 0]/contingency[0, 1])
+    odds2 = (contingency[1, 0]/contingency[1, 1])
+    return np.round(np.log(odds1/odds2), 3)
+
+
+def contingency_to_str(contingency):
+    return ','.join(['|'.join([str(n.item()) for n in contingency[:, 0]]),
+                     '|'.join([str(n.item()) for n in contingency[:, 1]])])
 
