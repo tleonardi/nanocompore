@@ -1,5 +1,8 @@
+import copy
+
 import torch
 import numpy as np
+import pandas as pd
 
 from nanocompore.comparisons import TranscriptComparator
 from nanocompore.config import Config
@@ -179,5 +182,58 @@ def test_nonparametric_test_KS():
     assert len(results['KS_dwell_pvalue']) == 3
 
 
+def test_combine_context_pvalues():
+    yaml = copy.deepcopy(BASIC_CONFIG)
+    yaml['sequence_context_weights'] = 'harmonic'
+    yaml['sequence_context'] = 3
+    config = Config(yaml)
+    comparator = TranscriptComparator(config)
+    results = pd.DataFrame({'pos': range(1, 17),
+                            'GMM_chi2_pvalue': [0.001,
+                                                np.nan,
+                                                0.01,
+                                                0.103,
+                                                0.1,
+                                                0.301,
+                                                0.901,
+                                                np.nan,
+                                                0.001,
+                                                0.701,
+                                                np.nan,
+                                                0.98,
+                                                0.99,
+                                                0.03,
+                                                0.99,
+                                                0.99]})
+    # Remove the first two nan to simulate low coverage
+    # positions that were not tested. The third nan is
+    # left in place to simulate a tested position that
+    # has failed.
+    results.drop([1, 7], axis='index', inplace=True)
+
+    actual = comparator._combine_context_pvalues(results, 'GMM_chi2_pvalue')
+    actual = np.array(actual)
+
+    # These values are the results taken from the
+    # v1 implementation of the context merging.
+    expected = np.array([0.002123656975661474,
+                         0.0019018653049881877,
+                         0.00711410035724805,
+                         0.06601202462390741,
+                         0.04439107441454254,
+                         0.17963717597756168,
+                         0.011383510423954581,
+                         0.27956447545269386,
+                         np.nan,
+                         0.471918623078623,
+                         0.8109385225797305,
+                         0.3482236872871895,
+                         0.8342987523763911,
+                         0.9504729672694502])
+    assert np.equal(np.nan_to_num(actual.round(3), -1),
+                    np.nan_to_num(expected.round(3), -1)).all()
+
+
 def get_float(value):
     return round(float(value), 3)
+

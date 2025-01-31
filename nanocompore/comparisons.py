@@ -8,9 +8,10 @@ import numpy as np
 import pandas as pd
 import torch
 
+from numpy.lib.stride_tricks import sliding_window_view
 from gmm_gpu.gmm import GMM
 from loguru import logger
-from scipy.stats import mannwhitneyu, ttest_ind, chi2_contingency
+from scipy.stats import mannwhitneyu, ttest_ind, chi2_contingency, chi2
 from scipy.stats.mstats import ks_twosamp
 from statsmodels.tools.sm_exceptions import ConvergenceWarning
 from statsmodels.tools.sm_exceptions import PerfectSeparationWarning
@@ -118,6 +119,15 @@ class TranscriptComparator:
                                           device=device)
             logger.debug(f"Finished {test} ({time.time() - t})")
             self._merge_results(results, test_results, test, mask, auto_test_mask, n_positions)
+
+        context = self._config.get_sequence_context()
+        if context > 0:
+            tests = [col for col in results.columns if 'pvalue' in col]
+            for test in tests:
+                combined_pvals = self._combine_context_pvalues(results, test)
+
+                label = f"{test}_context_{context}"
+                results[label] = combined_pvals
 
         return transcript, results
 
@@ -449,6 +459,47 @@ class TranscriptComparator:
                     results[label] = stats[cond][stat][:, dim_index]
 
 
+    def _combine_context_pvalues(self, results, test):
+        sequence_context = self._config.get_sequence_context()
+        sequence_context_weights = self._config.get_sequence_context_weights()
+        if sequence_context_weights == "harmonic":
+            # Generate weights as a symmetrical harmonic series
+            weights = harmomic_series(sequence_context)
+        else:
+            weights = [1]*(2*sequence_context + 1)
+
+        min_pos = results.pos.min()
+        max_pos = results.pos.max()
+
+        # We want to combine pvalues of neighbouring
+        # positions, but the results dataframe may
+        # have missing positions.
+        # Additionally, applying a window function
+        # means we lose the results for the positions
+        # at the ends so we have to pad the results.
+        padded_size = max_pos + 1 - min_pos + 2*sequence_context
+        pvalues = np.ones(padded_size, dtype=float)
+        indices = results.pos - min_pos
+        pvalues[indices + sequence_context] = results[test]
+
+        corr = cross_corr_matrix(pvalues[sequence_context:-sequence_context],
+                                 sequence_context)
+
+        window_size = 2*sequence_context + 1
+        def func(window):
+            if np.isnan(window[sequence_context]):
+                return np.nan
+            else:
+                return combine_pvalues_hou(np.nan_to_num(window, nan=1),
+                                           weights,
+                                           corr)
+        combinator = np.vectorize(func, signature='(n)->()')
+        windows = sliding_window_view(pvalues, window_shape=window_size)
+        combined_pvals = np.apply_along_axis(combinator, 1, windows)
+
+        return combined_pvals[indices]
+
+
 def nanstd(X, dim):
     nonnans = (~X.isnan()).sum(dim)
     return (((X - X.nanmean(dim).unsqueeze(1)) ** 2).nansum(dim) / nonnans) ** 0.5
@@ -474,4 +525,85 @@ def crosstab(a, b):
         for j in range(2):
             table[i, j] = ((a == i) & (b == j)).sum()
     return table
+
+
+def cross_corr_matrix(pvalues, context=2):
+    """
+    Calculate the cross correlation matrix of the
+    pvalues for a given context.
+    """
+    if len(pvalues) < (3*context) + 3:
+        raise RuntimeError("Not enough p-values for a context of order %s"%context)
+
+    pvalues = np.nan_to_num(pvalues, nan=1)
+    if any(pvalues == 0) or any(np.isinf(pvalues)) or any(pvalues > 1):
+        raise RuntimeError("At least one p-value is invalid")
+
+    if all(pvalues == 1):
+        return(np.ones((2*context + 1, 2*context + 1)))
+
+    matrix = np.zeros((2*context + 1, 2*context + 1))
+    s = pvalues.size
+    for i in range(-context, context + 1):
+        for j in range(-context, i + 1):
+            x = i + context
+            y = j + context
+            matrix[x, y] = np.corrcoef(
+                    np.roll(pvalues, i)[context:s-context],
+                    np.roll(pvalues, j)[context:s-context])[0, 1]
+    return matrix + np.tril(matrix, -1).T
+
+
+def harmomic_series(sequence_context):
+    return [1/(abs(i) + 1)
+            for i in range(-sequence_context, sequence_context + 1)]
+
+
+def combine_pvalues_hou(pvalues, weights, cor_mat):
+    """ Hou's method for the approximation for the distribution of the weighted
+        combination of non-independent or independent probabilities.
+        If any pvalue is nan, returns nan.
+        https://doi.org/10.1016/j.spl.2004.11.028
+        pvalues: list of pvalues to be combined
+        weights: the weights of the pvalues
+        cor_mat: a matrix containing the correlation coefficients between pvalues
+        Test: when weights are equal and cor=0, hou is the same as Fisher
+        print(combine_pvalues([0.1,0.02,0.1,0.02,0.3], method='fisher')[1])
+        print(hou([0.1,0.02,0.1,0.02,0.3], [1,1,1,1,1], np.zeros((5,5))))
+    """
+    if len(pvalues) != len(weights):
+        raise ValueError("Can't combine pvalues if pvalues and weights are not the same length.")
+    if cor_mat.shape[0] != cor_mat.shape[1] or cor_mat.shape[0] != len(pvalues):
+        raise ValueError("The correlation matrix needs to be square, with each" + \
+                         "dimension equal to the length of the pvalued vector.")
+    if all(p == 1 for p in pvalues):
+        return 1
+    if any(p == 0 or np.isinf(p) or p > 1 for p in pvalues):
+        raise ValueError("At least one p-value is invalid")
+
+    # Covariance estimation as in Kost and McDermott (eq:8)
+    # https://doi.org/10.1016/S0167-7152(02)00310-3
+    cov = lambda r: (3.263*r) + (0.710*r**2) + (0.027*r**3)
+    k = len(pvalues)
+    cov_sum = np.float64(0)
+    sw_sum = np.float64(0)
+    w_sum = np.float64(0)
+    tau = np.float64(0)
+    for i in range(k):
+        for j in range(i + 1, k):
+            cov_sum += weights[i]*weights[j]*cov(cor_mat[i][j])
+        sw_sum += weights[i]**2
+        w_sum += weights[i]
+        # Calculate the weighted Fisher's combination statistic
+        tau += weights[i] * (-2*np.log(pvalues[i]))
+    # Correction factor
+    c = (2*sw_sum+cov_sum) / (2*w_sum)
+    # Degrees of freedom
+    f = (4*w_sum**2) / (2*sw_sum+cov_sum)
+    # chi2.sf is the same as 1-chi2.cdf but is more accurate
+    combined_p_value = chi2.sf(tau/c, f)
+    # Return a very small number if pvalue = 0
+    if combined_p_value == 0:
+        combined_p_value = np.finfo(np.float).tiny
+    return combined_p_value
 
