@@ -5,12 +5,12 @@ from contextlib import closing
 import numpy as np
 import pandas as pd
 
-from nanocompore.common import DB_METADATA_RESQUIGGLER_KEY
-from nanocompore.common import DB_METADATA_READ_ID_TYPE_KEY
-from nanocompore.common import DB_METADATA_SAMPLE_ID_TYPE_KEY
-from nanocompore.common import DB_METADATA_MEASUREMENT_TYPE_KEY
-from nanocompore.common import DB_METADATA_SAMPLE_LABELS_KEY
-from nanocompore.common import DB_METADATA_CONDITION_SAMPLES_KEY
+from nanocompore.database import DB_METADATA_RESQUIGGLER_KEY
+from nanocompore.database import DB_METADATA_READ_ID_TYPE_KEY
+from nanocompore.database import DB_METADATA_SAMPLE_ID_TYPE_KEY
+from nanocompore.database import DB_METADATA_MEASUREMENT_TYPE_KEY
+from nanocompore.database import DB_METADATA_SAMPLE_LABELS_KEY
+from nanocompore.database import DB_METADATA_CONDITION_SAMPLES_KEY
 
 SAMPLE_TO_CONDITION_KEY = 'sample_to_condition'
 

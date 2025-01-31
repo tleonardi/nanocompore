@@ -86,14 +86,17 @@ class Postprocessor():
             except:
                 raise NanocomporeError("Can't open BED file")
 
+
+            data['genomicPos'] = pd.Series(dtype='int')
+            data['chr'] = pd.Series(dtype='str')
+            data['strand'] = pd.Series(dtype='str')
             for i, row in data.iterrows():
                 transcript = row['name'].split('|')[0]
                 annotation = bed_annot[transcript]
                 genomic_pos = annotation.tx2genome(row['pos'], stranded=True)
-                data.loc[i, 'genomicPos'] = genomic_pos
+                data.loc[i, 'genomicPos'] = int(genomic_pos)
                 data.loc[i, 'chr'] = annotation.chr
                 data.loc[i, 'strand'] = annotation.strand
-            data['genomicPos'] = data['genomicPos'].astype(int)
             logger.debug("Added genomic positions to the data")
         else:
             data['genomicPos'] = 'NA'

@@ -71,46 +71,6 @@ def test_get_reads_invalid_kmer_ratio_uncalled4():
 
 
 def test_uncalled4_preprocessing():
-    yaml = copy.deepcopy(BASIC_CONFIG)
-    yaml['preprocessing_db'] += '.tmp'
-    config = Config(yaml)
-    try:
-        preprocessor = Preprocessor(config)
-        kmer_1 = KmerData('transcript1',
-                          1,
-                          'AGCAC',
-                          np.array(['WT', 'KD', 'WT', 'KD']),
-                          np.array([1, 2, 3, 4]),
-                          np.array([97.5, 98.8, 84.3, 113.2]),
-                          np.array([3.1, 4.2, 2.1, 1.9]),
-                          np.array([0.08, 0.012, 0.4, 0.06]),
-                          # Validity information is not available
-                          # from Uncalled4 and Remora
-                          None,
-                          config)
-        kmer_10 = KmerData('transcript1',
-                           10,
-                           'AGCAC',
-                           np.array(['WT', 'KD', 'WT', 'KD']),
-                           np.array([1, 2, 3, 4]),
-                           np.array([97.5, 98.8, 84.3, 113.2]),
-                           np.array([3.1, 4.2, 2.1, 1.9]),
-                           np.array([0.08, 0.012, 0.4, 0.06]),
-                          # Validity information is not available
-                          # from Uncalled4 and Remora
-                           None,
-                           config)
-
-        invalid_ratios = preprocessor._get_reads_invalid_kmer_ratio([kmer_1, kmer_10])
-        assert invalid_ratios == {1: 0.8,
-                                  2: 0.8,
-                                  3: 0.8,
-                                  4: 0.8}
-    finally:
-        Path(config.get_preprocessing_db()).unlink()
-
-
-def test_uncalled4_preprocessing():
     """
     Integration test for Uncalled4Preprocessor
     """

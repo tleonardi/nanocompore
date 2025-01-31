@@ -69,13 +69,13 @@ def get_pos_kmer(pos, seq, kit):
     return seq[(pos - kit.center + 1):(pos + kit.len - kit.center + 1)]
 
 
-class NanocomporeError (Exception):
+class NanocomporeError(Exception):
     """ Basic exception class for nanocompore module """
     def __init__(self, message=""):
         super().__init__(message)
 
 
-class NanocomporeWarning (Warning):
+class NanocomporeWarning(Warning):
     """ Basic Warning class for nanocompore module """
     pass
 
