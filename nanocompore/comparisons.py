@@ -356,8 +356,10 @@ class TranscriptComparator:
 
         results = {}
         for column in ['GMM_chi2_pvalue', 'GMM_LOR', 'GMM_cluster_counts']:
-            dim3_values = dim3_results[column]
-            dim2_values = dim2_results[column]
+            if dim3_data.shape[0] > 0:
+                dim3_values = dim3_results[column]
+            if dim2_data.shape[0] > 0:
+                dim2_values = dim2_results[column]
             dim3_i = 0
             dim2_i = 0
 
