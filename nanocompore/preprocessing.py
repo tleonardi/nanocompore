@@ -102,108 +102,11 @@ class Preprocessor:
         return (length - valid)/length
 
 
-# TODO: this preprocessor needs to be rewritten
-# as it is not efficient. Only the resquiggling is
-# parallelized and all the postprocessing and writing
-# to the database is done by the main process.
-class RemoraPreprocessor(Preprocessor):
-    """
-    Uses ONT's Remora internally to resquiggle
-    the input and write the results to an SQLite
-    database for later analysis.
-    """
+class GenericPreprocessor(Preprocessor):
 
     def __init__(self, config):
         super().__init__(config)
-        self._references = self._get_references_from_bams()
-
-
-    def __call__(self):
-        with ProcessPoolExecutor(max_workers=self._worker_processes) as executor:
-            futures = [executor.submit(self._resquiggle, ref_id)
-                       for ref_id in self._references]
-            for future in as_completed(futures):
-                ref_id, kmers, read_invalid_ratios = future.result()
-                rows = self._process_rows_for_writing(ref_id, kmers, read_invalid_ratios)
-                with closing(self._db.connect()) as conn:
-                    PreprocessingDB.write_kmer_rows(conn, rows)
-        self._db.create_indices()
-
-
-    def _resquiggle(self, ref_id):
-        fasta_fh = Fasta(self._config.get_fasta_ref())
-        ref_seq = str(fasta_fh[ref_id])
-
-        remora = Remora(self._config,
-                        ref_id=ref_id,
-                        start=0,
-                        end=len(ref_seq),
-                        seq=ref_seq,
-                        strand='+')
-        kmers = list(remora.kmer_data_generator())
-        read_invalid_ratios = self._get_reads_invalid_kmer_ratio(kmers)
-        return ref_id, kmers, read_invalid_ratios
-
-
-    def _process_rows_for_writing(self, ref_id, kmers_data, read_invalid_ratios):
-        # We assume that all reads for a single
-        # transcript would be processed in a single
-        # call, so we don't need to store all
-        # read ids for all transcripts for the
-        # whole execution of the preprocessor.
-        # Instead we create a new indexer for
-        # each transcript, but we make sure
-        # that ids are not repeated by making
-        # the new indexer starting from the last
-        # id of the previous indexer.
-        read_indexer = Indexer(initial_index=self._current_read_id)
-        all_reads = {read
-                     for kmer in kmers_data
-                     for read in kmer.reads}
-        new_mappings = read_indexer.add(all_reads)
-        reads_data = [(read, idx, read_invalid_ratios[read])
-                      for read, idx in new_mappings]
-        with closing(self._db.connect()) as conn,\
-             closing(conn.cursor()) as cursor:
-            cursor.execute(INSERT_TRANSCRIPTS_QUERY,
-                           (self._current_transcript_id, ref_id))
-            cursor.execute("begin")
-            cursor.executemany(INSERT_READS_QUERY, reads_data)
-            cursor.execute("commit")
-
-        for kmer_data in kmers_data:
-            read_ids = read_indexer.get_ids(kmer_data.reads)
-            read_ids = np.array(read_ids, dtype=READ_ID_TYPE)
-
-            sample_ids = [self._sample_ids[label]
-                          for label in kmer_data.sample_labels]
-            sample_ids = np.array(sample_ids, dtype=SAMPLE_ID_TYPE)
-
-            yield (self._current_transcript_id,
-                   kmer_data.pos,
-                   kmer_data.kmer,
-                   sample_ids.tobytes(),
-                   read_ids.tobytes(),
-                   kmer_data.intensity.tobytes(),
-                   kmer_data.sd.tobytes(),
-                   kmer_data.dwell.tobytes())
-
-        self._current_transcript_id += 1
-        self._current_read_id = read_indexer.current_id
-
-
-class Uncalled4Preprocessor(Preprocessor):
-    """
-    Preprocess a bam file produced by the
-    uncalled4 resquiggler's align command.
-    The signal data would be transfered
-    to an SQLite DB to be used by Nanocompore
-    for later analysis.
-    """
-
-    def __init__(self, config):
-        super().__init__(config)
-        self._references = self._get_references_from_bams()
+        self._references = self._get_references()
 
 
     def __call__(self):
@@ -250,6 +153,16 @@ class Uncalled4Preprocessor(Preprocessor):
         self._db.create_indices()
 
 
+    def _get_references(self):
+        raise NotImplementedError("This method should be overriden by specific " + \
+                                  "resquiggler preprocessor implementations.")
+
+
+    def _get_kmer_generator(self, ref_id, ref_seq):
+        raise NotImplementedError("This method should be overriden by specific " + \
+                                  "resquiggler preprocessor implementations.")
+
+
     def _resquiggle(self,
                     idx,
                     task_queue,
@@ -271,10 +184,7 @@ class Uncalled4Preprocessor(Preprocessor):
                     break
 
                 ref_seq = str(fasta_fh[ref_id])
-                uncalled4 = Uncalled4(self._config,
-                                      ref_id,
-                                      ref_seq)
-                kmers = list(uncalled4.kmer_data_generator())
+                kmers = list(self._get_kmer_generator(ref_id, ref_seq))
                 read_invalid_ratios = self._get_reads_invalid_kmer_ratio(kmers)
 
                 lock.acquire()
@@ -322,6 +232,50 @@ class Uncalled4Preprocessor(Preprocessor):
                          kmer_data.dwell.tobytes())
             processed_kmers.append(proc_kmer)
         return processed_kmers
+
+
+class Uncalled4Preprocessor(GenericPreprocessor):
+    """
+    Preprocess a bam file produced by the
+    Uncalled4 resquiggler's align command.
+    The signal data would be transfered
+    to an SQLite DB to be used by Nanocompore
+    for later analysis.
+    """
+
+    def _get_references(self):
+        return self._get_references_from_bams()
+
+
+    def _get_kmer_generator(self, ref_id, ref_seq):
+        uncalled4 = Uncalled4(self._config, ref_id, ref_seq)
+        return uncalled4.kmer_data_generator()
+
+
+class RemoraPreprocessor(GenericPreprocessor):
+    """
+    Preprocess data using the Remora resquiggler.
+    Remora resquiggling is done during the
+    preprocessing (as oposed to Uncalled4 and
+    Eventalign where the preprocessor will only
+    populate the DB with signal alignment data
+    that have already been produced by the resquiggler).
+    The signal data would be transfered
+    to an SQLite DB to be used by Nanocompore
+    for later analysis.
+    """
+    def _get_references(self):
+        return self._get_references_from_bams()
+
+
+    def _get_kmer_generator(self, ref_id, ref_seq):
+        remora = Remora(self._config,
+                        ref_id=ref_id,
+                        start=0,
+                        end=len(ref_seq),
+                        seq=ref_seq,
+                        strand='+')
+        return remora.kmer_data_generator()
 
 
 class EventalignPreprocessor(Preprocessor):

@@ -4,7 +4,7 @@ import numpy as np
 
 from loguru import logger
 from pkg_resources import resource_filename
-from remora import io, refine_signal_map
+from remora import io, refine_signal_map, RemoraError
 
 from nanocompore.kmer import KmerData
 from nanocompore.common import Kit
@@ -65,16 +65,13 @@ class Remora:
 
 
     def _get_samples_metrics(self):
-        try:
-            samples_metrics, bam_reads = self._remora_resquiggle(
-                    self._config.get_downsample_high_coverage(),
-                    self._config.get_kit())
+        samples_metrics, bam_reads = self._remora_resquiggle(
+                self._config.get_downsample_high_coverage(),
+                self._config.get_kit())
 
-            bam_reads = [[r.qname for r in reads] for reads in bam_reads]
+        bam_reads = [[r.qname for r in reads] for reads in bam_reads]
 
-            return samples_metrics, bam_reads
-        except:
-            raise NanocomporeError (f"failed to resquiggle with Remora")
+        return samples_metrics, bam_reads
 
 
     def _build_pod5_bam_tuple(self):
@@ -162,9 +159,7 @@ class Remora:
         # each position of the transcript. The result is list of dicts
         # with one dict per sample and each dict has the type:
         # {metric: <numpy appray with shape (reads, positions)>, ...}
-<<<<<<< Updated upstream
         samples_metrics, bam_reads = self._get_samples_metrics()
-=======
         try:
             samples_metrics, bam_reads = self._get_samples_metrics()
         except RemoraError as e:
@@ -173,7 +168,6 @@ class Remora:
             raise NanocomporeError("failed to resquiggle with Remora") from e
         except Exception as e:
             raise NanocomporeError("failed to resquiggle with Remora") from e
->>>>>>> Stashed changes
 
         # Get [(reads, positions, vars), ...] with one 3d tensor per sample
         per_sample_tensors = [np.stack([d[v] for v in VAR_ORDER], axis=2, dtype=REMORA_MEASUREMENT_TYPE)
@@ -211,7 +205,8 @@ class Remora:
             pos_sample_labels = sample_labels[non_nan_rows]
             pos_reads = reads[non_nan_rows]
 
-            yield KmerData(pos,
+            yield KmerData(None,
+                           pos,
                            kmer_seq,
                            pos_sample_labels,
                            pos_reads,

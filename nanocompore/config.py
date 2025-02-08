@@ -66,7 +66,7 @@ CONFIG_SCHEMA = Schema(And({
     ),
     'depleted_condition': str,
     'fasta': And(is_valid_fasta, error='Invalid fasta file'),
-    'resquiggler': Or('uncalled4', 'eventalign'),
+    'resquiggler': Or('uncalled4', 'eventalign', 'remora'),
     'kit': Or(*[v.name for v in Kit]),
     Optional('devices'): validate_device,
     Optional('preprocessing_db'): str,
