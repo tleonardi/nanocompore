@@ -14,7 +14,6 @@ from threading import Thread, Lock
 import pandas as pd
 import numpy as np
 
-from bedparse import bedline
 
 parser = argparse.ArgumentParser(description='Add genomic positions to Nanocompore results.')
 parser.add_argument('input_tsv', help='The results tsv file from Nanocompore.')

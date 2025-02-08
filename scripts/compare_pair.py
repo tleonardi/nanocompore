@@ -55,7 +55,7 @@ print(ref)
 # sites.loc[ref_mods_binned.index, 'modified'] = True
 
 # print(sites)
-    
+
 
 tsvs = [args.tsv1, args.tsv2]
 cols = [args.col1, args.col2]
@@ -63,7 +63,7 @@ names = [args.name1, args.name2]
 
 
 def get_binned(run):
-    df = pd.read_csv(tsvs[run], sep='\t') #, nrows=1000000)
+    df = pd.read_csv(tsvs[run], sep='\t') #, nrows=100000)
     col = cols[run]
     # The q-value for positions we miss is set to 1.0
     df[col] = df[col].fillna(1.0)
@@ -96,19 +96,20 @@ def get_binned(run):
     # The -log10 q-value for positions we miss is set to 0
     binned['predicted'] = binned['predicted'].fillna(0)
     print(binned)
-    binned.to_csv(f'df{i}.csv')
 
     return binned
 
 # figure, axes = plt.subplots(3, 2, figsize=(12, 15))
-fig = plt.figure(figsize=(10, 14))
+fig = plt.figure(figsize=(14, 12))
 
-gs = fig.add_gridspec(3, 2, height_ratios=[1, 5, 5])
+gs = fig.add_gridspec(3, 3, height_ratios=[1, 5, 5])
 ax0 = fig.add_subplot(gs[0, :])
 ax10 = fig.add_subplot(gs[1, 0])
 ax11 = fig.add_subplot(gs[1, 1])
+ax12 = fig.add_subplot(gs[1, 2])
 ax20 = fig.add_subplot(gs[2, 0])
 ax21 = fig.add_subplot(gs[2, 1])
+ax22 = fig.add_subplot(gs[2, 2])
 
 
 table_data = []
@@ -121,7 +122,7 @@ ax0.axis('tight')
 if __name__ == '__main__':
     df1 = get_binned(0)
     df2 = get_binned(1)
-    
+
     # PRC
     for i, df in enumerate([df1, df2]):
         ytrue = df['modified']
@@ -160,22 +161,6 @@ if __name__ == '__main__':
     xmax = max(df1.LOR.max(), df2.LOR.max()) + 0.15
     ymax = max(df1.predicted.max(), df2.predicted.max()) + 15
 
-    # correlation plot
-    joined = df1.join(df2,
-                      on=['chr', 'strand', 'bin'],
-                      how='inner',
-                      rsuffix='_2')
-    spearman_corr = spearmanr(joined['predicted'], joined['predicted_2']).statistic
-    sns.scatterplot(data=joined, x='predicted', y='predicted_2', hue='modified', s=10, alpha=0.5, linewidth=0, ax=ax11)
-    ax11.set_xlabel(f'-log10(q-value) {names[0]}')
-    ax11.set_ylabel(f'-log10(q-value) {names[1]}')
-    ax11.set_title(f'q-value correlation (r={spearman_corr:.2f})')
-    ax11.set_xlim(-5, ymax)
-    ax11.set_ylim(-5, ymax)
-    ax11.set_aspect('equal', adjustable='box')
-    # ax11.set_xscale('log')
-    # ax11.set_yscale('log')
-    
     # sharkfin plots
 
     sns.scatterplot(data=df1,
@@ -185,12 +170,13 @@ if __name__ == '__main__':
                     s=10,
                     alpha=0.5,
                     linewidth=0,
-                    ax=ax20)
-    ax20.set_title(f'{names[0]}')
-    ax20.set_xlabel('|LOR|')
-    ax20.set_ylabel('-log10(q-value)')
-    ax20.set_xlim(0, xmax)
-    ax20.set_ylim(0, ymax)
+                    ax=ax11)
+    ax11.set_title(f'{names[0]}')
+    ax11.set_xlabel('|LOR|')
+    ax11.set_ylabel('-log10(q-value)')
+    ax11.set_xlim(0, xmax)
+    ax11.set_ylim(0, ymax)
+    ax11.set_aspect(xmax/ymax)
     sns.scatterplot(data=df2,
                     x='LOR',
                     y='predicted',
@@ -198,12 +184,72 @@ if __name__ == '__main__':
                     s=10,
                     alpha=0.5,
                     linewidth=0,
+                    ax=ax12)
+    ax12.set_title(f'{names[1]}')
+    ax12.set_xlabel('|LOR|')
+    ax12.set_ylabel('-log10(q-value)')
+    ax12.set_xlim(0, xmax)
+    ax12.set_ylim(0, ymax)
+    ax12.set_aspect(xmax/ymax)
+
+    # correlation plots
+    # all
+    joined = df1.join(df2,
+                      on=['chr', 'strand', 'bin'],
+                      how='inner',
+                      rsuffix='_2')
+    spearman_corr = spearmanr(joined['predicted'],
+                              joined['predicted_2']).statistic
+    sns.scatterplot(data=joined,
+                    x='predicted',
+                    y='predicted_2',
+                    hue='modified',
+                    s=10,
+                    alpha=0.5,
+                    linewidth=0,
+                    ax=ax20)
+    ax20.set_xlabel(f'-log10(q-value) {names[0]}')
+    ax20.set_ylabel(f'-log10(q-value) {names[1]}')
+    ax20.set_title(f'q-value correlation (r={spearman_corr:.2f})')
+    ax20.set_xlim(-5, ymax)
+    ax20.set_ylim(-5, ymax)
+    ax20.set_aspect('equal', adjustable='box')
+
+    # modified
+    spearman_corr_mod = spearmanr(joined[joined.modified]['predicted'],
+                                  joined[joined.modified]['predicted_2']).statistic
+    sns.scatterplot(data=joined[joined.modified],
+                    x='predicted',
+                    y='predicted_2',
+                    s=10,
+                    alpha=0.5,
+                    linewidth=0,
+                    color='tab:orange',
                     ax=ax21)
-    ax21.set_title(f'{names[1]}')
-    ax21.set_xlabel('|LOR|')
-    ax21.set_ylabel('-log10(q-value)')
-    ax21.set_xlim(0, xmax)
-    ax21.set_ylim(0, ymax)
+    ax21.set_xlabel(f'-log10(q-value) {names[0]}')
+    ax21.set_ylabel(f'-log10(q-value) {names[1]}')
+    ax21.set_title(f'Modified: q-value correlation (r={spearman_corr_mod:.2f})')
+    ax21.set_xlim(-5, ymax)
+    ax21.set_ylim(-5, ymax)
+    ax21.set_aspect('equal', adjustable='box')
+
+    # non-modified
+    spearman_corr_nomod = spearmanr(joined[~joined.modified]['predicted'],
+                                  joined[~joined.modified]['predicted_2']).statistic
+    sns.scatterplot(data=joined[~joined.modified],
+                    x='predicted',
+                    y='predicted_2',
+                    s=10,
+                    alpha=0.5,
+                    linewidth=0,
+                    ax=ax22)
+    ax22.set_xlabel(f'-log10(q-value) {names[0]}')
+    ax22.set_ylabel(f'-log10(q-value) {names[1]}')
+    ax22.set_title(f'Non-modified: q-value correlation (r={spearman_corr_nomod:.2f})')
+    ax22.set_xlim(-5, ymax)
+    ax22.set_ylim(-5, ymax)
+    ax22.set_aspect('equal', adjustable='box')
+
 
 
 plt.tight_layout()
