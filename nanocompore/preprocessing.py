@@ -64,9 +64,9 @@ class Preprocessor:
         for condition_def in self._config.get_data().values():
             for sample, sample_def in condition_def.items():
                 bam = pysam.AlignmentFile(sample_def['bam'], "rb")
-                for read in bam.fetch(until_eof=True):
-                    if read.reference_name:
-                        references.add(read.reference_name)
+                for line in bam.get_index_statistics():
+                    if line.mapped > 0:
+                        references.add(line.contig)
         logger.info(f"Found {len(references)} references.")
         return references
 
@@ -264,6 +264,7 @@ class RemoraPreprocessor(GenericPreprocessor):
     to an SQLite DB to be used by Nanocompore
     for later analysis.
     """
+
     def _get_references(self):
         return self._get_references_from_bams()
 
