@@ -1,5 +1,3 @@
-import collections
-import datetime
 import multiprocessing as mp
 import os
 import queue
@@ -8,15 +6,21 @@ import time
 import traceback
 
 from contextlib import closing
-from threading import Thread
 
-import torch
 import numpy as np
+import torch
 
 from loguru import logger
 from pyfaidx import Fasta
 
-from nanocompore.common import *
+from nanocompore.common import Counter
+from nanocompore.common import READ_ID_TYPE
+from nanocompore.common import SAMPLE_ID_TYPE
+from nanocompore.common import TranscriptRow
+from nanocompore.common import encode_kmer
+from nanocompore.common import get_measurement_type
+from nanocompore.common import get_pos_kmer
+from nanocompore.common import log_init_state
 from nanocompore.comparisons import TranscriptComparator
 from nanocompore.database import ResultsDB
 from nanocompore.kmer import KmerData
@@ -64,10 +68,13 @@ class RunCmd(object):
         if self._config.get_progress():
             print("Getting the list of transcripts for processing...")
         transcripts = self._get_transcripts_for_processing()
-        if self._config.get_result_exists_strategy() == 'continue':
+        db_path = ResultsDB(self._config, init_db=False).db_path
+        db_exists = os.path.isfile(db_path)
+        if db_exists and self._config.get_result_exists_strategy() == 'continue':
+
             all_transcripts_num = len(transcripts)
             transcripts = self._filter_processed_transcripts(transcripts)
-            already_processed = all_transcripts_num - len(u)
+            already_processed = all_transcripts_num - len(transcripts)
             logger.info(f"Found a total of {all_transcripts_num}. " + \
                         f"{already_processed} have already been processed in previous runs. " + \
                         f"Will process only for the remaining {len(transcripts)}.")
@@ -209,9 +216,9 @@ class RunCmd(object):
 
 
     def _read_transcript_kmer_data(self, transcript_ref, cursor):
-        res = cursor.execute(f"""SELECT *
-                                 FROM kmer_data
-                                 WHERE transcript_id = ?""",
+        res = cursor.execute("""SELECT *
+                                FROM kmer_data
+                                WHERE transcript_id = ?""",
                              (transcript_ref.id,))
 
         kmers = [self._db_row_to_kmer(row)
@@ -290,7 +297,7 @@ class RunCmd(object):
         db = self._config.get_preprocessing_db()
         with closing(sqlite3.connect(db)) as conn,\
              closing(conn.cursor()) as cursor:
-            query = f"""
+            query = """
             SELECT DISTINCT t.name, t.id
             FROM kmer_data kd
             INNER JOIN transcripts t ON kd.transcript_id = t.id
@@ -300,7 +307,9 @@ class RunCmd(object):
 
 
     def _filter_processed_transcripts(self, transcripts):
-        existing_transcripts = set(self._db.get_transcripts())
+        db = ResultsDB(self._config, init_db=False)
+        logger.info(f'Preprocessing db: {db._db_path}')
+        existing_transcripts = set(db.get_transcripts())
         return [tx for tx in transcripts if tx.ref_id not in existing_transcripts]
 
 

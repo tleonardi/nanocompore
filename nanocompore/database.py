@@ -10,7 +10,6 @@ import numpy as np
 
 from loguru import logger
 
-from nanocompore.common import encode_kmer
 from nanocompore.common import NanocomporeError
 from nanocompore.common import READ_ID_TYPE
 from nanocompore.common import SAMPLE_ID_TYPE
@@ -157,14 +156,14 @@ class ResultsDB():
             self._outpath = os.getcwd()
 
         self._prefix = config.get_outprefix()
-        self._db_path = os.path.join(self._outpath, f"{self._prefix}sampComp_sql.db")
+        self.db_path = os.path.join(self._outpath, f"{self._prefix}sampComp_sql.db")
         if init_db:
             self._setup_database(config.get_result_exists_strategy())
             self._create_tables()
 
 
     def get_all_results(self):
-        with closing(sqlite3.connect(self._db_path)) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn:
             query = """
             SELECT *
             FROM kmer_results res
@@ -174,14 +173,14 @@ class ResultsDB():
 
 
     def get_transcripts(self):
-        with closing(sqlite3.connect(self._db_path)) as conn,\
+        with closing(sqlite3.connect(self.db_path)) as conn,\
              closing(conn.cursor()) as cursor:
             query = "SELECT name FROM transcripts"
             return [row[0] for row in cursor.execute(query).fetchall()]
 
 
     def save_test_results(self, transcript, test_results):
-        with closing(sqlite3.connect(self._db_path)) as conn,\
+        with closing(sqlite3.connect(self.db_path)) as conn,\
              closing(conn.cursor()) as cursor:
             cursor.execute(INSERT_TRANSCRIPTS_QUERY, (transcript.id, transcript.name))
             test_columns = dict(zip(test_results.columns, test_results.dtypes))
@@ -190,7 +189,7 @@ class ResultsDB():
 
 
     def index_database(self):
-        with closing(sqlite3.connect(self._db_path)) as conn,\
+        with closing(sqlite3.connect(self.db_path)) as conn,\
              closing(conn.cursor()) as cursor:
             cursor.execute(CREATE_TRANSCRIPTS_NAME_INDEX)
             cursor.execute(CREATE_KMER_RESULTS_TRANSCRIPT_ID_INDEX)
@@ -219,26 +218,26 @@ class ResultsDB():
                 existing_columns.add(column)
                 logger.trace(f"Added {column} to kmer_results")
         except:
-            raise NanocomporeError(f"Database error: Failed to insert at least one of {test_columns} new labels into kmer_results of {self._db_path}")
+            raise NanocomporeError(f"Database error: Failed to insert at least one of {test_columns} new labels into kmer_results of {self.db_path}")
 
 
     def _setup_database(self, result_exists_strategy):
-        if os.path.isfile(self._db_path):
+        if os.path.isfile(self.db_path):
             if result_exists_strategy == 'overwrite':
-                os.remove(self._db_path)
-                logger.debug(f"Removed existing database file '{self._db_path}'")
+                os.remove(self.db_path)
+                logger.debug(f"Removed existing database file '{self.db_path}'")
             elif result_exists_strategy == 'continue':
-                logger.info(f"Database file '{self._db_path}' already exists and result_exists_strategy is set to 'continue'. Will try to reuse it.")
+                logger.info(f"Database file '{self.db_path}' already exists and result_exists_strategy is set to 'continue'. Will try to reuse it.")
             else:
-                raise NanocomporeError(f"Database file '{self._db_path}' exists and 'results_exists_strategy' is 'stop'")
-        with closing(sqlite3.connect(self._db_path)) as conn:
+                raise NanocomporeError(f"Database file '{self.db_path}' exists and 'results_exists_strategy' is 'stop'")
+        with closing(sqlite3.connect(self.db_path)) as conn:
             conn.execute('PRAGMA foreign_keys = ON')
             conn.execute('PRAGMA journal_mode = wal')
             conn.execute('PRAGMA synchronous = NORMAL')
 
 
     def _create_tables(self):
-        with closing(sqlite3.connect(self._db_path)) as conn,\
+        with closing(sqlite3.connect(self.db_path)) as conn,\
              closing(conn.cursor()) as cursor:
             cursor.execute(CREATE_TRANSCRIPTS_RESULTS_TABLE)
             cursor.execute(CREATE_KMER_RESULTS_TABLE)
