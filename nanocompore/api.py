@@ -5,7 +5,6 @@ from contextlib import closing
 import numpy as np
 import pandas as pd
 
-from nanocompore.database import DB_METADATA_RESQUIGGLER_KEY
 from nanocompore.database import DB_METADATA_READ_ID_TYPE_KEY
 from nanocompore.database import DB_METADATA_SAMPLE_ID_TYPE_KEY
 from nanocompore.database import DB_METADATA_MEASUREMENT_TYPE_KEY
@@ -101,7 +100,7 @@ def get_read(db,
                                          reads=[read_id],
                                          positions=positions,
                                          variables=variables)
-    return signal[0], samples[0]
+    return signal_data[0], samples[0]
 
 
 def get_reads(db,
@@ -137,7 +136,7 @@ def get_reads(db,
 
     for var in variables:
         if var not in ['intensity', 'intensity_std', 'dwell']:
-            raise ArgumentError(f"Variable {var} not supported. You can use 'intensity', 'intensity_std' and 'dwell'.")
+            raise ValueError(f"Variable {var} not supported. You can use 'intensity', 'intensity_std' and 'dwell'.")
 
     conn = sqlite3.connect(db)
     cursor = conn.cursor()

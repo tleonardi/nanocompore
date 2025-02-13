@@ -1,11 +1,8 @@
 import pysam
 import random
 import numpy as np
-import pandas as pd
-from loguru import logger
 
 from nanocompore.kmer import KmerData
-from nanocompore.common import NanocomporeError, Kit
 from nanocompore.common import UNCALLED4_MEASUREMENT_TYPE
 from nanocompore.common import is_valid_position
 from nanocompore.common import get_pos_kmer

@@ -22,7 +22,7 @@ def validate_device(value):
                 return False
         return True
     else:
-        raise ArgumentError("The value for 'devices' in the configuration is of unexpected type: {type(value)}")
+        raise ValueError("The value for 'devices' in the configuration is of unexpected type: {type(value)}")
 
 
 def validate_eventalign_data(config):

@@ -13,8 +13,6 @@ from gmm_gpu.gmm import GMM
 from loguru import logger
 from scipy.stats import mannwhitneyu, ttest_ind, chi2_contingency, chi2
 from scipy.stats.mstats import ks_twosamp
-from statsmodels.tools.sm_exceptions import ConvergenceWarning
-from statsmodels.tools.sm_exceptions import PerfectSeparationWarning
 
 from nanocompore.common import MOTOR_DWELL_EFFECT_OFFSET
 from nanocompore.common import NanocomporeError
@@ -67,7 +65,7 @@ class TranscriptComparator:
         results = pd.DataFrame({'transcript_id': transcript.id,
                                 'pos': positions})
 
-        logger.debug(f"Start shift stats")
+        logger.debug("Start shift stats")
         t = time.time()
         retry(lambda: self._add_shift_stats(results, data, conditions, device),
               exception=torch.OutOfMemoryError)
@@ -91,7 +89,7 @@ class TranscriptComparator:
         # for all/most reads.
         bad_stds = std.isnan().any(1) | (std == 0).any(1)
         if bad_stds.any():
-            logger.warning(f"The standard deviation cannot be calculated for some positions on " + \
+            logger.warning("The standard deviation cannot be calculated for some positions on " + \
                            f"transcript {transcript.name}, but are required for scaling the data. " + \
                            f"The positions {positions[bad_stds].tolist()} will be skipped.")
             data = data[~bad_stds]
@@ -278,11 +276,11 @@ class TranscriptComparator:
 
     def _nonparametric_test(self, test, test_data, conditions):
         if test in ["mann_whitney", "MW"]:
-            stat_test = lambda x,y: mannwhitneyu(x, y, alternative='two-sided')
+            stat_test = lambda x, y: mannwhitneyu(x, y, alternative='two-sided')
         elif test in ["kolmogorov_smirnov", "KS"]:
             stat_test = ks_twosamp
         elif test in ["t_test", "TT"]:
-            stat_test = lambda x,y: ttest_ind(x, y, equal_var=False)
+            stat_test = lambda x, y: ttest_ind(x, y, equal_var=False)
         else:
             raise NanocomporeError("Invalid statistical method name (MW, KS, TT)")
 
@@ -297,13 +295,13 @@ class TranscriptComparator:
                 pval = stat_test(self._drop_nans(cond0_data[:, INTENSITY]),
                                  self._drop_nans(cond1_data[:, INTENSITY])).pvalue
                 intensity_pvals.append(pval)
-            except:
+            except Exception:
                 intensity_pvals.append(np.nan)
             try:
                 pval = stat_test(self._drop_nans(cond0_data[:, DWELL]),
                                  self._drop_nans(cond1_data[:, DWELL])).pvalue
                 dwell_pvals.append(pval)
-            except:
+            except Exception:
                 dwell_pvals.append(np.nan)
         return {f'{test}_intensity_pvalue': intensity_pvals,
                 f'{test}_dwell_pvalue': dwell_pvals}

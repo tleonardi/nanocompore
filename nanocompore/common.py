@@ -1,10 +1,12 @@
 # -*- coding: utf-8 -*-
 
-from email.policy import default
 from enum import Enum
 import sys
 import os
-from collections import *
+from collections import Counter
+from collections import OrderedDict
+from collections import defaultdict
+from collections import namedtuple
 import inspect
 import datetime
 
@@ -122,16 +124,16 @@ def build_eventalign_fn_dict_from_tsv(infile):
                     sample, cond, pod5, bam = line.strip().split('\t')
                     num_samples.add(sample)
                     fn_dict[cond][sample] = {'pod5':pod5, 'bam':bam}
-                except:
-                    raise NanocomporeError (f"Error with entry {i} in input samples tsv file\n")
+                except Exception:
+                    raise NanocomporeError(f"Error with entry {i} in input samples tsv file\n")
 
     if len(num_samples) != i+1:
-        raise NanocomporeError (f"Not all sample labels are unique\nCheck sample label column in input samples tsv file\n")
+        raise NanocomporeError("Not all sample labels are unique\nCheck sample label column in input samples tsv file\n")
 
     return fn_dict
 
 
-def set_logger (log_level, log_fn=None):
+def set_logger(log_level, log_fn=None):
     log_level = log_level.upper()
     logger.remove()
     logger.add(sys.stderr, format="{time} {level} - {process.name} | {message}", enqueue=True, level=log_level)
@@ -150,20 +152,20 @@ def log_init_state(loc):
             logger.debug("\t{}: {}".format(i,j))
 
 
-def mkdir (fn, exist_ok=False):
+def mkdir(fn, exist_ok=False):
     """ Create directory recursivelly. Raise IO error if path exist or if error at creation """
     try:
-        os.makedirs (fn, exist_ok=exist_ok)
-    except:
-        raise NanocomporeError ("Error creating output folder `{}`".format(fn))
+        os.makedirs(fn, exist_ok=exist_ok)
+    except Exception:
+        raise NanocomporeError("Error creating output folder `{}`".format(fn))
 
 
-def access_file (fn, **kwargs):
+def access_file(fn, **kwargs):
     """ Check if the file is readable """
     return os.path.isfile (fn) and os.access (fn, os.R_OK)
 
 
-def numeric_cast_list (l):
+def numeric_cast_list(l):
     """ Cast str values to integer or float from a list """
     l2 = []
     for v in l:
@@ -171,7 +173,7 @@ def numeric_cast_list (l):
     return l2
 
 
-def numeric_cast_dict (keys, values):
+def numeric_cast_dict(keys, values):
     """ Cast str values to integer or float from a list """
     d = OrderedDict()
     for k, v in zip(keys, values):
@@ -179,8 +181,8 @@ def numeric_cast_dict (keys, values):
     return d
 
 
-def numeric_cast (v):
-    if type(v)== str:
+def numeric_cast(v):
+    if type(v) is str:
         try:
             v = int(v)
         except ValueError:
@@ -202,7 +204,7 @@ def counter_to_str (c):
 def all_values_in (required_val_list, all_val_list):
     """Check that all values in required_val_list are found in all_val_list"""
     for v in required_val_list:
-        if not v in all_val_list:
+        if v not in all_val_list:
             return False
     return True
 
@@ -231,9 +233,9 @@ def make_arg_dict (func):
         # Parse arguments default values and annotations
         d = OrderedDict()
         for name, p in inspect.signature(func).parameters.items():
-            if not p.name in ["self","cls"]: # Object stuff. Does not make sense to include in doc
+            if p.name not in ["self","cls"]: # Object stuff. Does not make sense to include in doc
                 d[name] = OrderedDict()
-                if not name in ["kwargs","args"]: # Include but skip default required and type
+                if name not in ["kwargs","args"]: # Include but skip default required and type
                     # Get Annotation
                     if p.annotation != inspect._empty:
                         d[name]["type"] = p.annotation
@@ -262,7 +264,7 @@ def make_arg_dict (func):
         return d
 
 
-def arg_opt (func, arg, **kwargs):
+def arg_opt(func, arg, **kwargs):
     """Get options corresponding to argumant name and deal with special cases"""
     arg_dict = make_arg_dict(func)[arg]
 
@@ -273,22 +275,22 @@ def arg_opt (func, arg, **kwargs):
         arg_dict["help"] += " [%(type)s]"
 
     # Special case for boolean args
-    if arg_dict["type"] == bool:
-        if arg_dict["default"] == False:
+    if arg_dict["type"] is bool:
+        if arg_dict["default"] is False:
             arg_dict["action"] = 'store_true'
             del arg_dict["type"]
-        elif arg_dict["default"] == True:
+        elif arg_dict["default"] is True:
             arg_dict["action"] = 'store_false'
             del arg_dict["type"]
 
     # Special case for lists args
-    elif arg_dict["type"] == list:
-        arg_dict["nargs"]='*'
+    elif arg_dict["type"] is list:
+        arg_dict["nargs"] = '*'
 
     return arg_dict
 
 
-def jhelp (f:"python function or method"):
+def jhelp(f:"python function or method"):
     """
     Display a Markdown pretty help message for functions and class methods (default __init__ is a class is passed)
     jhelp also display default values and type annotations if available.
@@ -349,7 +351,7 @@ def get_measurement_type(resquiggler):
     elif resquiggler == 'eventalign':
         return EVENTALIGN_MEASUREMENT_TYPE
     else:
-        raise NotImplementedError(f"Unsupported resquiggler '{self._config.get_resquiggler()}'")
+        raise NotImplementedError(f"Unsupported resquiggler '{resquiggler}'")
 
 
 class Indexer:

@@ -1,20 +1,13 @@
-from collections import Counter
-
 import numpy as np
 
-from loguru import logger
 from scipy.stats import kstest
 from scipy.stats import multivariate_normal
 from sklearn.preprocessing import StandardScaler
-
-from nanocompore.common import get_kmer_data
 
 
 def gof_test_singlerep(data, conditions, config):
     control_label = config.get_depleted_condition()
     control_label_id = config.get_condition_ids()[control_label]
-
-    # data, sample_labels, condition_labels = get_kmer_data(kmer_data, motor_kmer, config)
 
     control_data = data[conditions == control_label_id, :]
     test_data = data[conditions != control_label_id, :]
@@ -44,13 +37,6 @@ def gof_test_singlerep(data, conditions, config):
 def gof_test_multirep(data, samples, conditions, config):
     control_label = config.get_depleted_condition()
     test_label = config.get_test_condition()
-
-    # data, sample_labels, condition_labels = get_kmer_data(kmer_data, motor_kmer, config)
-
-    # sample_counts = Counter(samples)
-    # if len(sample_counts) < len(config.get_sample_labels()) or \
-    #    min(sample_counts.values()) < config.get_min_coverage():
-    #     return None
 
     internal_likelihoods = []
     external_likelihoods = []

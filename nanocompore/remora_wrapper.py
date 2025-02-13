@@ -1,9 +1,6 @@
-from collections import Counter
-
 import pod5
 import pysam
 import numpy as np
-import pandas as pd
 
 from loguru import logger
 from pkg_resources import resource_filename
@@ -30,8 +27,6 @@ class Remora:
                  end=1,
                  seq='',
                  strand='+'):
-
-        ########## Private fields ##########
         self._config = config
         self._seq = seq
         self._min_coverage = config.get_min_coverage()
@@ -49,15 +44,15 @@ class Remora:
         #Without the signal refiner, it will not resquiggle, but instead merely return the ionic current stream
         try:
             self._sig_map_refiner = self._check_signal_refiner(kit=config.get_kit())
-        except Exception as e:
-            raise NanocomporeError ("failed to create the signal map refiner. Check that the kmer model table is up-to-date")
+        except Exception:
+            raise NanocomporeError("failed to create the signal map refiner. Check that the kmer model table is up-to-date")
 
         #Remora requires a specific region in the reference to focus the resquiggling algorithm
         #This is part of the Remora API for creating the reference region
         try:
             self._ref_reg = io.RefRegion(ctg=ref_id, strand=strand, start=start, end=end)
-        except:
-            raise NanocomporeError (f"failed to create the remora reference region for {ref_id}")
+        except Exception:
+            raise NanocomporeError(f"failed to create the remora reference region for {ref_id}")
 
         #TODO test Nanocompore accuracy using seconds per kmer or samples per kmer
         #Remora returns the number of datapoints per kmer, not the number of seconds the kmer persisted in the
@@ -65,8 +60,8 @@ class Remora:
         #sequencing (hz) to time per sample (seconds)
         try:
             self._time_per_sample = self._get_time_per_sample()
-        except:
-            raise NanocomporeError (f"failed to check for sampling rate. Likely something wrong with the pod5 file")
+        except Exception:
+            raise NanocomporeError("failed to check for sampling rate. Likely something wrong with the pod5 file")
 
 
     def _get_samples_metrics(self):
@@ -86,13 +81,13 @@ class Remora:
         for sample, pod5_fn, bam in self._config.get_sample_pod5_bam_data():
             try:
                 pod5_fh = pod5.Reader(pod5_fn)
-            except:
-                raise NanocomporeError (f"failed to open pod5 file {pod5}")
+            except Exception:
+                raise NanocomporeError(f"failed to open pod5 file {pod5}")
 
             try:
                 bam_fh = pysam.AlignmentFile(bam)
-            except:
-                raise NanocomporeError (f"failed to open bam file {bam}")
+            except Exception:
+                raise NanocomporeError(f"failed to open bam file {bam}")
 
             self._pod5_bam_tuples.append((pod5_fh, bam_fh))
             self._sample_labels.append(sample)
@@ -109,7 +104,7 @@ class Remora:
             do_rough_rescale=True,
             do_fix_guage=True,
         )
-        logger.debug(f"sig_map_refiner properly opened")
+        logger.debug("sig_map_refiner properly opened")
         return sig_map_refiner
 
 
@@ -167,7 +162,18 @@ class Remora:
         # each position of the transcript. The result is list of dicts
         # with one dict per sample and each dict has the type:
         # {metric: <numpy appray with shape (reads, positions)>, ...}
+<<<<<<< Updated upstream
         samples_metrics, bam_reads = self._get_samples_metrics()
+=======
+        try:
+            samples_metrics, bam_reads = self._get_samples_metrics()
+        except RemoraError as e:
+            if str(e) == "No reads covering region":
+                return 
+            raise NanocomporeError("failed to resquiggle with Remora") from e
+        except Exception as e:
+            raise NanocomporeError("failed to resquiggle with Remora") from e
+>>>>>>> Stashed changes
 
         # Get [(reads, positions, vars), ...] with one 3d tensor per sample
         per_sample_tensors = [np.stack([d[v] for v in VAR_ORDER], axis=2, dtype=REMORA_MEASUREMENT_TYPE)

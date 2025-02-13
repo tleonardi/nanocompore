@@ -1,15 +1,14 @@
-import collections
 import os
-import sys
 
 import numpy as np
 import pandas as pd
 
-from loguru import logger
 from bedparse import bedline
+from loguru import logger
 from statsmodels.stats.multitest import multipletests
 
-from nanocompore.common import *
+from nanocompore.common import NanocomporeError
+from nanocompore.common import decode_kmer
 from nanocompore.database import ResultsDB
 
 
@@ -83,7 +82,7 @@ class Postprocessor():
                         record_name = line.split('\t')[3]
                         bed_annot[record_name] = bedline(line.split('\t'))
 
-            except:
+            except Exception:
                 raise NanocomporeError("Can't open BED file")
 
 
