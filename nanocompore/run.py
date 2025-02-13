@@ -205,7 +205,7 @@ class RunCmd(object):
                                  "the queue for later processing because it failed with OutOfMemory.")
                     with sync_lock:
                         task_queue.put((task, retries + 1))
-                except:
+                except Exception:
                     msg = traceback.format_exc()
                     logger.error(f"Error in Worker {worker_id}: {msg}")
                 finally:

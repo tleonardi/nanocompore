@@ -196,19 +196,19 @@ class ResultsDB():
 
 
     def _create_missing_columns(self, test_columns, cursor):
-        info = cursor.execute(f"SELECT * FROM kmer_results LIMIT 1")
+        info = cursor.execute("SELECT * FROM kmer_results LIMIT 1")
         existing_columns = {item[0] for item in info.description}
-        logger.trace(f"Adding columns to table kmer_results")
+        logger.trace("Adding columns to table kmer_results")
         try:
             for column, column_type in test_columns.items():
                 if column in existing_columns:
                     continue
 
-                if column_type == float or column_type == np.float64:
+                if column_type is float or column_type == np.float64:
                     column_type = 'FLOAT'
-                elif column_type == str:
+                elif column_type is str:
                     column_type = 'VARCHR'
-                elif column_type == int:
+                elif column_type is int:
                     column_type = 'INTEGER'
                 else:
                     column_type = 'VARCHAR'
@@ -217,7 +217,7 @@ class ResultsDB():
                 cursor.execute(update_query)
                 existing_columns.add(column)
                 logger.trace(f"Added {column} to kmer_results")
-        except:
+        except Exception:
             raise NanocomporeError(f"Database error: Failed to insert at least one of {test_columns} new labels into kmer_results of {self.db_path}")
 
 

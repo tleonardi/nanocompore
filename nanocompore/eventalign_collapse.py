@@ -8,7 +8,6 @@ import multiprocessing as mp
 
 from contextlib import closing
 from pathlib import Path
-from collections import defaultdict
 
 import numpy as np
 import statistics
@@ -17,9 +16,6 @@ from loguru import logger
 from pyfaidx import Fasta
 
 from nanocompore.kmer import KmerData
-from nanocompore.database import DROP_KMER_DATA_TABLE_QUERY
-from nanocompore.database import DROP_READS_TABLE_QUERY
-from nanocompore.database import DROP_TRANSCRIPTS_TABLE_QUERY
 from nanocompore.database import CREATE_INTERMEDIARY_KMER_DATA_TABLE_QUERY
 from nanocompore.database import CREATE_READS_TABLE_QUERY
 from nanocompore.database import CREATE_TRANSCRIPTS_TABLE_QUERY
@@ -30,7 +26,6 @@ from nanocompore.database import CREATE_READS_ID_INDEX_QUERY
 from nanocompore.database import CREATE_KMERS_INDEX_QUERY
 from nanocompore.common import READ_ID_TYPE
 from nanocompore.common import EVENTALIGN_MEASUREMENT_TYPE
-from nanocompore.common import Indexer
 
 
 class Kmer:
@@ -52,7 +47,7 @@ class EventalignCollapser:
     """
     def __init__(self, file, fasta_ref, output, kit, nthreads):
         if nthreads < 2:
-            raise ValueError(f"At least 2 threads required.")
+            raise ValueError("At least 2 threads required.")
 
         self._file = file
         self._fasta_ref = fasta_ref
@@ -104,6 +99,13 @@ class EventalignCollapser:
 
         logger.info("Merging tmp databases.")
 
+        # Make sure there's no old existing database file.
+        # If a previous run was abruptly stopped the database
+        # may be corrupted, thus breaking the process when
+        # we try to open it.
+        db_path = Path(self._output)
+        if db_path.is_file():
+            db_path.unlink()
         self._create_tables(self._output)
 
         with closing(self._get_db(self._output)) as conn,\
@@ -160,7 +162,6 @@ class EventalignCollapser:
         tmp_file_name = 'tmp_' + str(uuid.uuid4())
         tmp_file = open(tmp_file_name, 'w')
         prev_ref_id = None
-        current_line_pos = None
         while True:
             line = sys.stdin.readline()
             if not line:
@@ -207,7 +208,6 @@ class EventalignCollapser:
                 break
 
             cols = line.split('\t')
-            ref_id = cols[0]
             # The position in the eventalign is
             # the 0-based index of the initial
             # base in the k-mer.
@@ -263,6 +263,13 @@ class EventalignCollapser:
         fasta = Fasta(self._fasta_ref)
 
         tmp_db = self._output + f".{idx}"
+        # Make sure there's no old existing database file.
+        # If a previous run was abruptly stopped the database
+        # may be corrupted, thus breaking the process when
+        # we try to open it.
+        db_path = Path(self._output)
+        if db_path.is_file():
+            db_path.unlink()
         self._create_tables(tmp_db)
 
         if self._file:
@@ -443,11 +450,8 @@ class EventalignCollapser:
     def _create_tables(self, path):
         with closing(self._get_db(path)) as conn,\
              closing(conn.cursor()) as cursor:
-            cursor.execute(DROP_KMER_DATA_TABLE_QUERY)
             cursor.execute(CREATE_INTERMEDIARY_KMER_DATA_TABLE_QUERY)
-            cursor.execute(DROP_READS_TABLE_QUERY)
             cursor.execute(CREATE_READS_TABLE_QUERY)
-            cursor.execute(DROP_TRANSCRIPTS_TABLE_QUERY)
             cursor.execute(CREATE_TRANSCRIPTS_TABLE_QUERY)
 
 
