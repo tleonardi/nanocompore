@@ -1,14 +1,17 @@
 # -*- coding: utf-8 -*-
 
-from enum import Enum
-import sys
+import datetime
+import inspect
 import os
+import sys
+import time
+import multiprocessing as mp
+
+from enum import Enum
 from collections import Counter
 from collections import OrderedDict
 from collections import defaultdict
 from collections import namedtuple
-import inspect
-import datetime
 
 import numpy as np
 
@@ -474,4 +477,25 @@ def chunks(iterator, chunk_size):
             i = 0
     if len(chunk) > 0:
         yield chunk
+
+
+def monitor_workers(workers, delay_sec=5):
+    """
+    Check every *delay_sec* if any of the
+    worker processes have been terminated
+    with an error. If so, log an error and
+    kill the all remaining workers and self.
+    """
+    terminated_ok = 0
+    while terminated_ok < len(workers):
+        time.sleep(delay_sec)
+        for proc in workers:
+            if proc.exitcode is not None:
+                if proc.exitcode == 0:
+                    terminated_ok += 1
+                    continue
+                logger.error(f"ERROR: A worker encountered an error (exitcode: {proc.exitcode}). Will terminate all other workers and stop.")
+                for child in mp.active_children():
+                    child.terminate()
+                sys.exit(1)
 

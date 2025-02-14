@@ -2,6 +2,7 @@ import multiprocessing as mp
 import os
 import queue
 import sqlite3
+import sys
 import time
 import traceback
 
@@ -21,6 +22,7 @@ from nanocompore.common import encode_kmer
 from nanocompore.common import get_measurement_type
 from nanocompore.common import get_pos_kmer
 from nanocompore.common import log_init_state
+from nanocompore.common import monitor_workers
 from nanocompore.comparisons import TranscriptComparator
 from nanocompore.database import ResultsDB
 from nanocompore.kmer import KmerData
@@ -121,7 +123,13 @@ class RunCmd(object):
                 # If the worker has completed we remove it from
                 # the worker pool.
                 if worker.exitcode is not None:
-                    workers.pop(i)
+                    if worker.exitcode == 0:
+                        workers.pop(i)
+                    else:
+                        logger.error(f"ERROR: A worker encountered an error (exitcode: {worker.exitcode}). Will terminate all other workers and stop.")
+                        for child in mp.active_children():
+                            child.terminate()
+                        sys.exit(1)
                 if self._config.get_progress():
                     with sync_lock:
                         num_done = num_finished.value

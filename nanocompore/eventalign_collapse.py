@@ -1,8 +1,8 @@
 import sqlite3
-import json
-import uuid
 import sys
 import traceback
+import threading
+import uuid
 
 import multiprocessing as mp
 
@@ -26,6 +26,7 @@ from nanocompore.database import CREATE_READS_ID_INDEX_QUERY
 from nanocompore.database import CREATE_KMERS_INDEX_QUERY
 from nanocompore.common import READ_ID_TYPE
 from nanocompore.common import EVENTALIGN_MEASUREMENT_TYPE
+from nanocompore.common import monitor_workers
 
 
 class Kmer:
@@ -85,6 +86,9 @@ class EventalignCollapser:
         for worker in workers:
             worker.start()
 
+        worker_monitor = threading.Thread(target=monitor_workers, args=(workers, ))
+        worker_monitor.start()
+
         if self._file:
             self._file_indexer(task_queue)
         else:
@@ -96,6 +100,7 @@ class EventalignCollapser:
 
         for worker in workers:
             worker.join()
+        worker_monitor.join()
 
         logger.info("Merging tmp databases.")
 
@@ -267,7 +272,7 @@ class EventalignCollapser:
         # If a previous run was abruptly stopped the database
         # may be corrupted, thus breaking the process when
         # we try to open it.
-        db_path = Path(self._output)
+        db_path = Path(tmp_db)
         if db_path.is_file():
             db_path.unlink()
         self._create_tables(tmp_db)
@@ -329,7 +334,7 @@ class EventalignCollapser:
                     cursor.executemany(INSERT_INTERMEDIARY_KMER_DATA_QUERY, rows)
                     cursor.execute('COMMIT')
                     logger.info(f"Wrote transcript {transcript_id} {ref_id} to tmp database.")
-                except:
+                except Exception:
                     exception_msg = traceback.format_exc()
                     logger.error(f"Exception for ref {ref_id}: {exception_msg}")
                 finally:

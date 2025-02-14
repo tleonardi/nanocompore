@@ -1,8 +1,7 @@
-import csv
+import multiprocessing as mp
 import os
 import sqlite3
-
-import multiprocessing as mp
+import threading
 
 from collections import defaultdict
 from concurrent.futures import ProcessPoolExecutor
@@ -17,10 +16,9 @@ from loguru import logger
 from pyfaidx import Fasta
 
 from nanocompore.common import EVENTALIGN_MEASUREMENT_TYPE
-from nanocompore.common import Indexer
-from nanocompore.common import Kit
 from nanocompore.common import READ_ID_TYPE
 from nanocompore.common import SAMPLE_ID_TYPE
+from nanocompore.common import monitor_workers
 from nanocompore.database import INSERT_READS_QUERY
 from nanocompore.database import INSERT_TRANSCRIPTS_QUERY
 from nanocompore.database import PreprocessingDB
@@ -132,6 +130,9 @@ class GenericPreprocessor(Preprocessor):
         for worker in workers:
             worker.start()
 
+        worker_monitor = threading.Thread(target=monitor_workers, args=(workers, ))
+        worker_monitor.start()
+
         for ref_id in self._references:
             task_queue.put(ref_id)
 
@@ -141,6 +142,7 @@ class GenericPreprocessor(Preprocessor):
 
         for worker in workers:
             worker.join()
+        worker_monitor.join()
 
         logger.info("Merging tmp databases.")
 
@@ -180,7 +182,7 @@ class GenericPreprocessor(Preprocessor):
         with closing(tmp_db_out.connect()) as conn:
             while True:
                 ref_id = task_queue.get()
-                if ref_id == None:
+                if ref_id is None:
                     break
 
                 ref_seq = str(fasta_fh[ref_id])
@@ -342,7 +344,7 @@ class EventalignPreprocessor(Preprocessor):
         logger.info(f"{len(references)} references found.")
         logger.info(f"{total_reads} read mappings were transfered.")
 
-        logger.info(f"Starting to read kmer data from sample dbs and merging it.")
+        logger.info("Starting to read kmer data from sample dbs and merging it.")
 
         # Merge the information from the collapsed eventalign_dbs
 
@@ -424,7 +426,7 @@ class EventalignPreprocessor(Preprocessor):
 
         while True:
             ref_id = task_queue.get()
-            if ref_id == None:
+            if ref_id is None:
                 break
 
             pos_data = defaultdict(list)
