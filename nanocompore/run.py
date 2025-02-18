@@ -22,7 +22,6 @@ from nanocompore.common import encode_kmer
 from nanocompore.common import get_measurement_type
 from nanocompore.common import get_pos_kmer
 from nanocompore.common import log_init_state
-from nanocompore.common import monitor_workers
 from nanocompore.comparisons import TranscriptComparator
 from nanocompore.database import ResultsDB
 from nanocompore.kmer import KmerData
@@ -126,7 +125,8 @@ class RunCmd(object):
                     if worker.exitcode == 0:
                         workers.pop(i)
                     else:
-                        logger.error(f"ERROR: A worker encountered an error (exitcode: {worker.exitcode}). Will terminate all other workers and stop.")
+                        logger.error(f"ERROR: A worker encountered an error (exitcode: {worker.exitcode}). "
+                                     "Will terminate all other workers and stop.")
                         for child in mp.active_children():
                             child.terminate()
                         sys.exit(1)

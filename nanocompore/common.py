@@ -494,7 +494,8 @@ def monitor_workers(workers, delay_sec=5):
                 if proc.exitcode == 0:
                     terminated_ok += 1
                     continue
-                logger.error(f"ERROR: A worker encountered an error (exitcode: {proc.exitcode}). Will terminate all other workers and stop.")
+                logger.error(f"ERROR: A worker encountered an error (exitcode: {proc.exitcode}). "
+                             "Will terminate all other workers and stop.")
                 for child in mp.active_children():
                     child.terminate()
                 sys.exit(1)

@@ -525,13 +525,13 @@ tqdm = ["tqdm"]
 
 [[package]]
 name = "gmm-gpu"
-version = "0.1.17"
+version = "0.2.1"
 description = "A small library for quick fitting of multiple Gaussian Mixture Models in parallel on the GPU."
 optional = false
 python-versions = "<4.0,>=3.9"
 files = [
-    {file = "gmm_gpu-0.1.17-py3-none-any.whl", hash = "sha256:06c4ad5b470d1e5fddc41fa3102cdaf834a23eeaf5f7c0f2aea3e412c4b7535d"},
-    {file = "gmm_gpu-0.1.17.tar.gz", hash = "sha256:f38024a152d8c1b513a08476629e8ef5172413492a5f8ab2e2d4dc8851cb4e04"},
+    {file = "gmm_gpu-0.2.1-py3-none-any.whl", hash = "sha256:8f244bec8653578b9b67709382d5a35da8bf49ad97f74447a51cb1f71ccb9950"},
+    {file = "gmm_gpu-0.2.1.tar.gz", hash = "sha256:d63d8e109923a73bc96718e121e9a874c6b91525a52394add4aef7a6619db0a1"},
 ]
 
 [package.dependencies]
@@ -2930,4 +2930,4 @@ testing = ["big-O", "jaraco.functools", "jaraco.itertools", "more-itertools", "p
 [metadata]
 lock-version = "2.0"
 python-versions = "~3.9"
-content-hash = "f5393c93adb20728ea978d81a9a5a41f6bcc956d012304686f59b2447981d120"
+content-hash = "7935103d8959c5458449b4f036f41640ec503ed6d8d42b1b5288716b634ed41f"

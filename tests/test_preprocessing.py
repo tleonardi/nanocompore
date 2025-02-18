@@ -1,4 +1,3 @@
-import os
 import copy
 import sqlite3
 
@@ -14,7 +13,7 @@ from nanocompore.kmer import KmerData
 from nanocompore.preprocessing import Preprocessor
 from nanocompore.preprocessing import Uncalled4Preprocessor
 from nanocompore.preprocessing import EventalignPreprocessor
-from tests.common import BASIC_CONFIG, cwd
+from tests.common import BASIC_CONFIG
 
 
 def test_get_references_from_bams():
