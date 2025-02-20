@@ -14,26 +14,33 @@ classifiers = [
         'License :: OSI Approved :: GNU General Public License v3 (GPLv3)',
         'Programming Language :: Python :: 3'
 ]
-include = ["nanocompore/models/kmers_model_RNA_r9.4_180mv.tsv"]
+include = ["nanocompore/models/rna002_5mer_levels_v1.txt",
+           "nanocompore/models/rna004_9mer_levels_v1.txt"]
 
 [tool.poetry.scripts]
 nanocompore = 'nanocompore.__main__:main'
 
 
 [tool.poetry.dependencies]
-python = ">=3.6.1"
-numpy = "~1.19"
-scipy = "~1.5"
+python = "~3.9"
+numpy = "~1.26"
+scipy = "~1.12"
 tqdm = "~4"
-pyfaidx = "~0.5"
-matplotlib = "~3.1"
+pyfaidx = "~0.8"
+matplotlib = "~3.8"
 seaborn = "~0"
-pandas = "~1"
-statsmodels = "~0.12"
-scikit-learn = "~0.23"
+pandas = "~2.2"
+statsmodels = "~0.14"
+scikit-learn = "~1.4"
 bedparse = "~0.2"
 pyyaml = "~5"
 loguru = "~0.5"
+pod5 = "^0.3.6"
+pysam = "^0.22.0"
+ont-remora = "3.3"
+schema = "^0.7.5"
+pynvml = "^12.0.0"
+gmm-gpu = "^0.2.1"
 
 [tool.poetry.dev-dependencies]
 pytest = "~4"
