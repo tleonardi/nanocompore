@@ -23,6 +23,7 @@ from nanocompore.common import get_measurement_type
 from nanocompore.common import get_pos_kmer
 from nanocompore.common import log_init_state
 from nanocompore.comparisons import TranscriptComparator
+from nanocompore.config import Config
 from nanocompore.database import ResultsDB
 from nanocompore.kmer import KmerData
 from nanocompore.postprocessing import Postprocessor
@@ -37,7 +38,7 @@ class RunCmd(object):
     detect the presence of likely modifications.
     """
 
-    def __init__(self, config, random_state=42):
+    def __init__(self, config: Config, random_state: int=42):
         """
         Initialise a `RunCmd` object and generates a white list of references with sufficient coverage for subsequent analysis.
         The retuned object can then be called to start the analysis.
@@ -146,7 +147,13 @@ class RunCmd(object):
             print("Done.")
 
 
-    def _worker_process(self, worker_id, task_queue, db_lock, sync_lock, num_finished, device):
+    def _worker_process(self,
+                        worker_id: int,
+                        task_queue: mp.JoinableQueue,
+                        db_lock: mp.Lock,
+                        sync_lock: mp.Lock,
+                        num_finished: mp.managers.SyncManager.Value,
+                        device: str):
         """
         The main worker process function. It will
         continuously take tasks (transcripts) from the
@@ -154,12 +161,20 @@ class RunCmd(object):
         to the database. Will quit when the task queue
         is empty.
 
-        :param worker_id int: Id of the worker
-        :param task_queue multiprocesing.JoinableQueue: Queue with tasks for processing.
-        :param db_lock multiprocessing.Lock: Lock to prevent parallel writing to the SQLite DB.
-        :param sync_lock multiprocessing.Lock: Lock for synchronisation.
-        :param num_finished multiprocessing.managers.SyncManager.Value: number of processed transcripts.
-        :param device str: which device to use for computation (e.g. cpu or gpu).
+        Parameters
+        ----------
+        worker_id : int
+            Id of the worker
+        task_queue : multiprocesing.JoinableQueue
+            Queue with tasks for processing.
+        db_lock : multiprocesing.Lock
+            Lock to prevent parallel writing to the SQLite DB.
+        sync_lock : multiprocesing.Lock
+            Lock for synchronisation.
+        num_finished : multiprocesing.managers.SyncManager.Value
+            Number of processed transcripts.
+        device : str
+            Which device to use for computation (e.g. cpu or gpu).
         """
         db_manager = ResultsDB(self._config, init_db=False)
         fasta_fh = Fasta(self._config.get_fasta_ref())
@@ -223,7 +238,9 @@ class RunCmd(object):
                         task_queue.task_done()
 
 
-    def _read_transcript_kmer_data(self, transcript_ref, cursor):
+    def _read_transcript_kmer_data(self,
+                                   transcript_ref: TranscriptRow,
+                                   cursor: sqlite3.Cursor):
         res = cursor.execute("""SELECT *
                                 FROM kmer_data
                                 WHERE transcript_id = ?""",
@@ -248,7 +265,7 @@ class RunCmd(object):
         return kmers
 
 
-    def _filter_reads(self, kmer, valid_read_ids):
+    def _filter_reads(self, kmer: KmerData, valid_read_ids: set):
         valid_mask = [read in valid_read_ids for read in kmer.reads]
         return KmerData(kmer.transcript_id,
                         kmer.pos,
@@ -262,13 +279,13 @@ class RunCmd(object):
                         self._config)
 
 
-    def _enough_reads_in_kmer(self, kmer):
+    def _enough_reads_in_kmer(self, kmer: KmerData):
         condition_counts = Counter(kmer.condition_labels)
         return all(condition_counts.get(cond, 0) >= self._config.get_min_coverage()
                    for cond in self._config.get_condition_labels())
 
 
-    def _db_row_to_kmer(self, row):
+    def _db_row_to_kmer(self, row: tuple):
         read_ids = np.frombuffer(row[4], dtype=READ_ID_TYPE)
         samples = np.array([self._sample_labels[i]
                             for i in np.frombuffer(row[3], dtype=SAMPLE_ID_TYPE)])
@@ -288,7 +305,7 @@ class RunCmd(object):
                         self._config)
 
 
-    def _get_valid_read_ids(self, cursor, read_ids):
+    def _get_valid_read_ids(self, cursor: sqlite3.Cursor, read_ids: set):
         get_ids_query = """
         SELECT id
         FROM reads
@@ -314,9 +331,9 @@ class RunCmd(object):
                     for row in cursor.execute(query).fetchall()}
 
 
-    def _filter_processed_transcripts(self, transcripts):
+    def _filter_processed_transcripts(self, transcripts: set[TranscriptRow]):
         db = ResultsDB(self._config, init_db=False)
-        logger.info(f'Preprocessing db: {db._db_path}')
+        logger.info(f'Preprocessing db: {db.db_path}')
         existing_transcripts = set(db.get_transcripts())
         return [tx for tx in transcripts if tx.ref_id not in existing_transcripts]
 
@@ -338,7 +355,11 @@ class RunCmd(object):
         return result
 
 
-    def _print_progress_bar(self, num_done, total_transcripts, max_len, start_time):
+    def _print_progress_bar(self,
+                            num_done: int,
+                            total_transcripts: int,
+                            max_len: int,
+                            start_time: int):
         progress_bar_len = 30
         perc_done = num_done / total_transcripts
         done_chars = int(perc_done*progress_bar_len)
@@ -366,7 +387,7 @@ class RunCmd(object):
         return max_len
 
 
-    def _format_time(self, seconds):
+    def _format_time(self, seconds: int):
         hours, remainder = divmod(seconds, 3600)
         minutes, seconds = divmod(remainder, 60)
         return int(hours), int(minutes), int(seconds)

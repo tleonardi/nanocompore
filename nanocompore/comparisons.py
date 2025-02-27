@@ -1,4 +1,3 @@
-import warnings
 import gc
 
 from collections import defaultdict

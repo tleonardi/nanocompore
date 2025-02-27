@@ -1,5 +1,7 @@
 import sqlite3
 import json
+from typing import Optional
+from typing import Tuple
 from contextlib import closing
 
 import numpy as np
@@ -13,6 +15,10 @@ from nanocompore.database import DB_METADATA_CONDITION_SAMPLES_KEY
 
 SAMPLE_TO_CONDITION_KEY = 'sample_to_condition'
 
+
+GET_REFERENCES_SQL = """
+SELECT name FROM transcripts
+"""
 
 GET_KMER_SQL = """
 SELECT *
@@ -34,23 +40,61 @@ WHERE transcript_id = ?
 """
 
 GET_TRANSCRIPT_ID = """
-SELECT id FROM transcripts WHERE reference = ?
+SELECT id FROM transcripts WHERE name = ?
 """
 
 
-def get_pos(db, reference_id, pos):
+def get_references(db: str):
     """
+    Returns a list of all references for which there're
+    data in the given database.
+
+    Parameters
+    ----------
+    db : str
+        Path to the SQLite database produced by the preprocessing
+        command of Nanocompore.
+
+    Returns
+    -------
+    list
+        List of transcript reference id strings.
+    """
+    with closing(sqlite3.connect(db)) as conn,\
+         closing(conn.cursor()) as cursor:
+        return [row[0] for row in cursor.execute(GET_REFERENCES_SQL).fetchall()]
+
+
+def get_pos(db: str, reference_id: str, pos: int):
+    """
+    Get data for a position.
+
     Returns the signal data for a specific position
     of the given reference transcript from all reads.
 
-    Returns: (signal_dataframe, kmer)
-             signal_dataframe contains the columns:
-                - condition: the read's condition label
-                - sample:    the read's sample label
-                - read:      id of the read
-                - intensity: current intensity
-                - std:       std of the intensity
-                - dwell:     dwell time for the kmer
+    Parameters
+    ----------
+    db : str
+        Path to the SQLite database produced by the preprocessing
+        command of Nanocompore.
+    reference_id : str
+        ID for a reference sequence (transcript).
+    pos : int
+        Position on the transcript for which to get data.
+
+    Returns
+    -------
+    tuple
+        Type tuple(pandas.DataFrame, str).
+        Where the DataFrame contains the following columns:
+            - condition: the read's condition label
+            - sample:    the read's sample label
+            - read:      id of the read
+            - intensity: current intensity
+            - std:       std of the intensity
+            - dwell:     dwell time for the kmer
+        And the second value contains the kmer sequence at the
+        given position.
     """
     metadata = get_metadata(db)
 
@@ -73,11 +117,11 @@ def get_pos(db, reference_id, pos):
     }), kmer
 
 
-def get_read(db,
-             reference_id,
-             read_id,
-             positions=None,
-             variables=('dwell', 'intensity')):
+def get_read(db: str,
+             reference_id: str,
+             read_id: str,
+             positions: Optional[list[int]]=None,
+             variables: Optional[Tuple[str, ...]]=('dwell', 'intensity')):
     """
     Get a numpy array with the signal data for a specific read from a kmer data DB.
 
@@ -85,15 +129,31 @@ def get_read(db,
     Passing a collection of positions filtering the results.
     Possible variables are ("intensity", "intensity_std", "dwell").
 
-    Returns: (signal_data, sample, condition)
+    Parameters
+    ----------
+    db : str
+        Path to the SQLite database produced by the preprocessing
+        command of Nanocompore.
+    reference_id : str
+        ID for a reference sequence (transcript).
+    read_id : str
+        String with UUID of the read.
+    positions : list[int]
+        Optional iterable with positions for which to return results.
+    variables : Tuple[str, ...]
+        Optional tuple with variables to get.
+        Possible variables are ("intensity", "intensity_std", "dwell").
 
-             signal_data is a 2D array with shape (positions, variables).
-             sample is the sample label for the read
-             conditions is the condition label for the read
-
-    Note: the positions would always span from 0 to the maximum position
-    with data available. If no signal data is available for a position
-    it will contain a np.nan value.
+    Returns
+    -------
+    tuple
+        Tuple with shape (signal_data, sample, condition)
+        signal_data is a 2D array with shape (positions, variables).
+        sample is the sample label for the read
+        conditions is the condition label for the read
+        Note: the positions would always span from 0 to the maximum position
+        with data available. If no signal data is available for a position
+        it will contain a np.nan value.
     """
     signal_data, _, samples =  get_reads(db,
                                          reference_id,
@@ -103,11 +163,11 @@ def get_read(db,
     return signal_data[0], samples[0]
 
 
-def get_reads(db,
-              reference_id,
-              positions=None,
-              reads=None,
-              variables=('dwell', 'intensity')):
+def get_reads(db: str,
+              reference_id: str,
+              positions: Optional[list[int]]=None,
+              reads: Optional[list[str]]=None,
+              variables: Optional[Tuple[str, ...]]=('dwell', 'intensity')):
     """
     Get a numpy array with read data for specific reference_id from
     a kmer_data sqlite DB.
@@ -117,17 +177,39 @@ def get_reads(db,
     the results.
     Possible variables are ("intensity", "intensity_std", "dwell").
 
+    Parameters
+    ----------
+    db : str
+        Path to the SQLite database produced by the preprocessing
+        command of Nanocompore.
+    reference_id : str
+        ID for a reference sequence (transcript).
+    positions : list[int]
+        Optional iterable with positions for which to return results.
+    reads : list[str]
+        Optional list of UUIDs of the reads for which to get data.
+    variables : Tuple[str, ...]
+        Optional tuple with variables to get.
+        Possible variables are ("intensity", "intensity_std", "dwell").
 
-    Returns: (signal_data, reads, samples, conditions)
+    Returns
+    -------
+    tuple
+        (signal_data, reads, samples, conditions)
 
-             signal_data is a 3D array with shape (reads, positions, variables).
-             reads is an array of read uuids
-             samples is an array of sample labels
-             conditions is an array of condition labels
+        signal_data is a 3D array with shape (reads, positions, variables).
+        reads is an array of read uuids
+        samples is an array of sample labels
+        conditions is an array of condition labels
 
-    Note: the positions would always span from 0 to the maximum position
-    with data available. If no signal data is available for a position
-    on a read, the array will contain np.nan at the corresponding indices.
+        Note: the positions would always span from 0 to the maximum position
+        with data available. If no signal data is available for a position
+        on a read, the array will contain np.nan at the corresponding indices.
+
+    Raises
+    ------
+    ValueError:
+        If an invalid variable is requested.
     """
     if positions:
         positions = set(positions)
@@ -204,7 +286,24 @@ def get_reads(db,
     return tensor, res_reads, res_samples, res_conditions
 
 
-def get_metadata(db):
+def get_metadata(db: str):
+    """
+    Returns the metadata from the given database.
+
+    The metadata contains information such as input files,
+    resquiggler used, and data types for the binary encoded fields.
+
+    Parameters
+    ----------
+    db : str
+        Path to the SQLite database produced by the preprocessing
+        command of Nanocompore.
+
+    Returns
+    -------
+    dict
+        Dictionary containing the metadata
+    """
     with closing(sqlite3.connect(db)) as conn,\
          closing(conn.cursor()) as cursor:
         query = "SELECT key, value FROM metadata"
