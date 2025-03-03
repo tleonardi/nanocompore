@@ -1,56 +1,67 @@
-[tool.poetry]
+[project]
+authors = [
+    {name = "Tommaso Leonardi", email = "tom@itm6.xyz"},
+    {name = "Adrien Leger", email = "aleg@ebi.ac.uk"},
+]
+license = {text = "GPL-3.0"}
+requires-python = "<4.0,>=3.10"
+dependencies = [
+    "numpy<2.0",
+    "scipy<2.0,>=1.15",
+    "tqdm<5,>=4",
+    "pyfaidx<1.0,>=0.8",
+    "matplotlib<4.0,>=3.10",
+    "seaborn<1.0,>=0.13",
+    "pandas<3.0,>=2.2",
+    "statsmodels<1.0,>=0.14",
+    "scikit-learn<2.0,>=1.4",
+    "bedparse<1.0,>=0.2",
+    "pyyaml<5.4,>=5",
+    "loguru<1.0,>=0.5",
+    "pod5<1.0.0,>=0.3.6",
+    "pysam<1.0.0,>=0.22.0",
+    "ont-remora==3.3",
+    "schema<1.0.0,>=0.7.5",
+    "pynvml<13.0.0,>=12.0.0",
+    "gmm-gpu<1.0.0,>=0.2.1",
+]
 name = "nanocompore"
 version = "1.0.4"
 description = "Software package that identifies raw signal changes between two conditions from https://github.com/jts/nanopolish resquiggled dRNA-Seq data."
-authors = ["Tommaso Leonardi <tom@itm6.xyz>", "Adrien Leger <aleg@ebi.ac.uk>"]
-license = "GPL-3.0"
 readme = "README.md"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+    "Programming Language :: Python :: 3",
+]
+
+[project.urls]
 repository = "https://github.com/tleonardi/nanocompore"
 documentation = "http://nanocompore.rna.rocks"
-classifiers = [
-        'Development Status :: 4 - Beta',
-        'Intended Audience :: Science/Research',
-        'Topic :: Scientific/Engineering :: Bio-Informatics',
-        'License :: OSI Approved :: GNU General Public License v3 (GPLv3)',
-        'Programming Language :: Python :: 3'
+
+[project.scripts]
+nanocompore = "nanocompore.__main__:main"
+
+[dependency-groups]
+dev = [
+    "pytest<5,>=4",
+    "nbconvert<6,>=5",
+    "mkdocs<2,>=1",
+    "pymdown-extensions<7,>=6",
+    "mknotebooks<1,>=0",
+    "mkdocs-material<5,>=4",
+    "markdown<3.2",
 ]
-include = ["nanocompore/models/rna002_5mer_levels_v1.txt",
-           "nanocompore/models/rna004_9mer_levels_v1.txt"]
 
-[tool.poetry.scripts]
-nanocompore = 'nanocompore.__main__:main'
-
-
-[tool.poetry.dependencies]
-python = "~3.9"
-numpy = "~1.26"
-scipy = "~1.12"
-tqdm = "~4"
-pyfaidx = "~0.8"
-matplotlib = "~3.8"
-seaborn = "~0"
-pandas = "~2.2"
-statsmodels = "~0.14"
-scikit-learn = "~1.4"
-bedparse = "~0.2"
-pyyaml = "~5"
-loguru = "~0.5"
-pod5 = "^0.3.6"
-pysam = "^0.22.0"
-ont-remora = "3.3"
-schema = "^0.7.5"
-pynvml = "^12.0.0"
-gmm-gpu = "^0.2.1"
-
-[tool.poetry.dev-dependencies]
-pytest = "~4"
-nbconvert = "~5"
-mkdocs = "~1"
-pymdown-extensions = "~6"
-mknotebooks = "~0"
-mkdocs-material = "~4"
-markdown = "<3.2"
-
+[tool.pdm.build]
+includes = [
+    "nanocompore/models/rna002_5mer_levels_v1.txt",
+    "nanocompore/models/rna004_9mer_levels_v1.txt",
+]
 [build-system]
-requires = ["poetry>=0.12"]
-build-backend = "poetry.masonry.api"
+requires = ["pdm-backend"]
+build-backend = "pdm.backend"
+
+

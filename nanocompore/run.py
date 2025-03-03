@@ -1,4 +1,4 @@
-import multiprocessing as mp
+import multiprocessing
 import os
 import queue
 import sqlite3
@@ -7,6 +7,7 @@ import time
 import traceback
 
 from contextlib import closing
+from multiprocessing.managers import SyncManager
 
 import numpy as np
 import torch
@@ -40,7 +41,8 @@ class RunCmd(object):
 
     def __init__(self, config: Config, random_state: int=42):
         """
-        Initialise a `RunCmd` object and generates a white list of references with sufficient coverage for subsequent analysis.
+        Initialise a `RunCmd` object and generates a white list of
+        references with sufficient coverage for subsequent analysis.
         The retuned object can then be called to start the analysis.
         * config
             Config object containing all the parameters for the analysis.
@@ -85,7 +87,7 @@ class RunCmd(object):
             ResultsDB(self._config, init_db=True)
             logger.info(f"Found a total of {len(transcripts)} transcripts for processing.")
 
-        task_queue = mp.JoinableQueue()
+        task_queue = multiprocessing.JoinableQueue()
         for transcript_ref in transcripts:
             task_queue.put((transcript_ref, 0))
         logger.info("All transcripts have been sent to the queue")
@@ -93,11 +95,11 @@ class RunCmd(object):
         if self._config.get_progress():
             print("Starting to compare the conditions for all transcripts...")
         logger.info(f"Starting {len(self._workers_with_device)} worker processes.")
-        db_lock = mp.Lock()
-        sync_lock = mp.Lock()
-        manager = mp.Manager()
+        db_lock = multiprocessing.Lock()
+        sync_lock = multiprocessing.Lock()
+        manager = multiprocessing.Manager()
         num_finished = manager.Value('i', 0)
-        workers = [mp.Process(target=self._worker_process,
+        workers = [multiprocessing.Process(target=self._worker_process,
                               args=(worker, task_queue, db_lock, sync_lock, num_finished, device))
                    for worker, device in self._workers_with_device.items()]
 
@@ -126,9 +128,10 @@ class RunCmd(object):
                     if worker.exitcode == 0:
                         workers.pop(i)
                     else:
-                        logger.error(f"ERROR: A worker encountered an error (exitcode: {worker.exitcode}). "
+                        logger.error("ERROR: A worker encountered an error "
+                                     f"(exitcode: {worker.exitcode}). "
                                      "Will terminate all other workers and stop.")
-                        for child in mp.active_children():
+                        for child in multiprocessing.active_children():
                             child.terminate()
                         sys.exit(1)
                 if self._config.get_progress():
@@ -149,10 +152,10 @@ class RunCmd(object):
 
     def _worker_process(self,
                         worker_id: int,
-                        task_queue: mp.JoinableQueue,
-                        db_lock: mp.Lock,
-                        sync_lock: mp.Lock,
-                        num_finished: mp.managers.SyncManager.Value,
+                        task_queue: multiprocessing.JoinableQueue,
+                        db_lock: multiprocessing.Lock,
+                        sync_lock: multiprocessing.Lock,
+                        num_finished: SyncManager,
                         device: str):
         """
         The main worker process function. It will
@@ -171,7 +174,7 @@ class RunCmd(object):
             Lock to prevent parallel writing to the SQLite DB.
         sync_lock : multiprocesing.Lock
             Lock for synchronisation.
-        num_finished : multiprocesing.managers.SyncManager.Value
+        num_finished : multiprocesing.managers.SyncManager
             Number of processed transcripts.
         device : str
             Which device to use for computation (e.g. cpu or gpu).
@@ -193,16 +196,20 @@ class RunCmd(object):
                 # https://github.com/python/cpython/issues/87302
                 with sync_lock:
                     try:
-                        logger.info(f"Worker {worker_id} getting a task from a queue with size {task_queue.qsize()}")
+                        logger.info(f"Worker {worker_id} getting a task from "
+                                    f"a queue with size {task_queue.qsize()}")
                         msg = task_queue.get(block=False)
                     except queue.Empty:
-                        logger.info(f"Worker {worker_id} could not find more tasks in the queue and will terminate.")
+                        logger.info(f"Worker {worker_id} could not find more "
+                                    "tasks in the queue and will terminate.")
                         break
 
                 try:
                     transcript_ref, retries = msg
                     if retries > 2:
-                        logger.error(f"Worker {worker_id}: Transcript {transcript_ref.ref_id} was retried too many times. Won't retry again.")
+                        logger.error(f"Worker {worker_id}: Transcript "
+                                     f"{transcript_ref.ref_id} was retried "
+                                     "too many times. Won't retry again.")
                         continue
                     logger.info(f"Worker {worker_id} starts processing {transcript_ref.ref_id}")
                     transcript = Transcript(id=transcript_ref.id,
@@ -359,7 +366,7 @@ class RunCmd(object):
                             num_done: int,
                             total_transcripts: int,
                             max_len: int,
-                            start_time: int):
+                            start_time: float):
         progress_bar_len = 30
         perc_done = num_done / total_transcripts
         done_chars = int(perc_done*progress_bar_len)
@@ -387,7 +394,7 @@ class RunCmd(object):
         return max_len
 
 
-    def _format_time(self, seconds: int):
+    def _format_time(self, seconds: float):
         hours, remainder = divmod(seconds, 3600)
         minutes, seconds = divmod(remainder, 60)
         return int(hours), int(minutes), int(seconds)
