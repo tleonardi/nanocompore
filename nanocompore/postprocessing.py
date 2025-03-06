@@ -136,7 +136,9 @@ class Postprocessor():
 
     def _sort_headers_list(self, headers):
         return sorted(headers,
-                      key=lambda x: (not ('pvalue' in x or 'qvalue' in x), x))
+                      key=lambda x: (not ('pvalue' in x or 'qvalue' in x),
+                                     ('_mod' in x or '_unmod' in x),
+                                     x))
 
 
     def _sort_shift_stat_headers(self, strings):
@@ -159,7 +161,7 @@ class Postprocessor():
         tests = []
         shift_stats = []
         for header in data.columns:
-            keywords = ['pvalue', 'qvalue', 'LOR', 'GMM', 'logit', 'cluster_counts', 'auto_test']
+            keywords = ['pvalue', 'qvalue', 'LOR', 'GMM', 'logit', 'auto_test', '_mod', '_unmod']
             if any([kw in header for kw in keywords]):
                 tests.append(header)
             elif any([kw in header for kw in ['c1', 'c2']]):

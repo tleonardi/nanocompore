@@ -6,7 +6,7 @@ import pandas as pd
 
 from nanocompore.comparisons import TranscriptComparator
 from nanocompore.comparisons import calculate_lor
-from nanocompore.comparisons import contingency_to_str
+from nanocompore.comparisons import crosstab
 from nanocompore.config import Config
 from nanocompore.kmer import KmerData
 
@@ -242,10 +242,37 @@ def test_calculate_lor():
     assert calculate_lor(contingency) == -0.015
 
 
-def test_contingency_to_str():
-    contingency = np.array([[13, 11],
-                            [12, 10]])
-    assert contingency_to_str(contingency) == '13|12,11|10'
+def test_crosstab():
+    table = crosstab(np.array([0, 1, 0, 1, 0, 1]),
+                     np.array([0, 0, 0, 1, 1, 1]))
+    assert table[0, 0] == 2
+    assert table[0, 1] == 1
+    assert table[1, 0] == 1
+    assert table[1, 1] == 2
+
+
+def test_get_cluster_counts():
+    config = Config(BASIC_CONFIG)
+    # Condition 0 is the knockdown (depleted condition).
+    # Since most of the points for the non-depleted condition (1)
+    # are found in cluster 1, then we can guess that the
+    # modification cluster is 1.
+    conditions = torch.tensor([0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1])
+    samples = torch.tensor([0, 0, 1, 1, 1, 2, 2, 3, 3, 3, 3])
+    predictions = torch.tensor([0, 0, 1, 0, 0, 1, 0, 0, 1, 1, 1])
+
+    contingency = crosstab(conditions, predictions)
+
+    comparator = TranscriptComparator(config)
+
+
+    cluster_counts = comparator._get_cluster_counts(contingency, samples, conditions, predictions)
+
+    print(cluster_counts)
+    assert cluster_counts == {'kd1_mod': 0, 'kd1_unmod': 2,
+                              'kd2_mod': 1, 'kd2_unmod': 2,
+                              'wt1_mod': 1, 'wt1_unmod': 1,
+                              'wt2_mod': 3, 'wt2_unmod': 1}
 
 
 def get_float(value):

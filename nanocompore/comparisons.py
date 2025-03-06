@@ -252,7 +252,7 @@ class TranscriptComparator:
         if test.upper() in ['MW', 'KS', 'TT']:
             return self._nonparametric_test(test, test_data, conditions)
         elif test.upper() == 'GMM':
-            return self._gmm_test(test_data, conditions, device)
+            return self._gmm_test(test_data, samples, conditions, device)
         elif test.upper() == 'GOF':
             return self._gof_test(test_data, samples, conditions)
         else:
@@ -333,7 +333,7 @@ class TranscriptComparator:
         return {'GOF_pvalue': pvals}
 
 
-    def _gmm_test(self, test_data, conditions, device):
+    def _gmm_test(self, test_data, samples, conditions, device):
         # For each position some reads have motor dwell
         # and others don't. We split the positions into
         # two sets: one set of positions where all reads
@@ -344,15 +344,17 @@ class TranscriptComparator:
         dim3_data, dim2_data, split = self._split_by_ndim(test_data)
         if dim3_data.shape[0] > 0:
             dim3_results = self._gmm_test_split(dim3_data,
+                                                samples[split == 0, :],
                                                 conditions[split == 0, :],
                                                 device)
         if dim2_data.shape[0] > 0:
             dim2_results = self._gmm_test_split(dim2_data,
+                                                samples[split == 1, :],
                                                 conditions[split == 1, :],
                                                 device)
 
         results = {}
-        for column in ['GMM_chi2_pvalue', 'GMM_LOR', 'GMM_cluster_counts']:
+        for column in dim2_results.keys() | dim3_results.keys():
             if dim3_data.shape[0] > 0:
                 dim3_values = dim3_results[column]
             if dim2_data.shape[0] > 0:
@@ -372,7 +374,7 @@ class TranscriptComparator:
         return results
 
 
-    def _gmm_test_split(self, data, conditions, device):
+    def _gmm_test_split(self, data, samples, conditions, device):
         test_data = data.to(self._dtype)
         s = time.time()
         def fit_model(components):
@@ -398,12 +400,14 @@ class TranscriptComparator:
             torch.cuda.reset_peak_memory_stats()
         pvals = []
         lors = []
-        cluster_counts = []
+        cluster_counts = defaultdict(list)
         for i in range(test_data.shape[0]):
             if bic1[i] <= bic2[i]:
                 pvals.append(np.nan)
                 lors.append(np.nan)
-                cluster_counts.append(np.nan)
+                for sample in self._config.get_sample_ids():
+                    cluster_counts[f'{sample}_mod'].append(np.nan)
+                    cluster_counts[f'{sample}_unmod'].append(np.nan)
                 continue
             valid = ~conditions[i, :].isnan()
             contingency = crosstab(conditions[i, valid], pred[i, valid]) + 1
@@ -414,11 +418,14 @@ class TranscriptComparator:
             lor = calculate_lor(contingency)
             lors.append(lor)
 
-            clusters = contingency_to_str(contingency)
-            cluster_counts.append(clusters)
+            counts = self._get_cluster_counts(contingency,
+                                              samples[i, valid],
+                                              conditions[i, valid],
+                                              pred[i, valid])
+            for col, value in counts.items():
+                cluster_counts[col].append(value)
         return {'GMM_chi2_pvalue': pvals,
-                'GMM_LOR': lors,
-                'GMM_cluster_counts': cluster_counts}
+                'GMM_LOR': lors} | cluster_counts
 
 
     def _split_by_ndim(self, test_data):
@@ -497,6 +504,41 @@ class TranscriptComparator:
         combined_pvals = np.apply_along_axis(combinator, 1, windows)
 
         return combined_pvals[indices]
+
+
+    def _get_cluster_counts(self, contingency, samples, conditions, predictions):
+        depleted_cond = self._config.get_depleted_condition()
+        depleted_cond_id = self._config.get_condition_ids()[depleted_cond]
+        # non_depleted_cond_id = 0 if depleted_cond_id == 1 else 1
+
+        cond_counts = contingency.sum(1)
+        # contingency will be something like this:
+        # e.g.      cluster
+        # condition   0   1
+        #         0  100  30
+        #         1   90  40
+        freq_contingency = contingency / cond_counts
+
+        # We assume that the unmodified cluster is the one
+        # in which the depleted condition has most of its
+        # points. Hence, the modified is the one, where
+        # the depleted condition has fewer points.
+        # I.e. if the condition 0 is the depleted one,
+        # in the example contingency above the modified
+        # cluster will be cluster 1.
+        mod_cluster = freq_contingency[depleted_cond_id].argmin()
+
+        # Iterate all samples and calculate the
+        # number of modified and non-modified reads.
+        cluster_counts = {}
+        for sample_label, sample in self._config.get_sample_ids().items():
+            sample_predictions = predictions[samples == sample]
+            mod_count = (sample_predictions == mod_cluster).sum().item()
+            unmod_count = (sample_predictions != mod_cluster).sum().item()
+            cluster_counts[f'{sample_label}_mod'] = int(mod_count)
+            cluster_counts[f'{sample_label}_unmod'] = int(unmod_count)
+
+        return cluster_counts
 
 
 def nanstd(X, dim):
