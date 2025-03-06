@@ -62,15 +62,11 @@ resquiggler: 'remora'
 # Which computing device to use for the analysis (e.g. CPU vs GPU).
 # This setting is used by the run subcommand.
 # The accepted values are: "cpu", "cuda", "cuda:N"
-# You can set the parameter using one of three methods:
+# You can set the parameter using one of two methods:
 # - Single value, e.g. "cpu" to use the CPU. In this case,
 #   the number of worker processes will be determined by the
 #   "nthreads" setting and all workers will use the device
 #   specified here.
-# - List of devices, e.g. ["cpu", "cuda:0", "cuda:1"] to use
-#   the CPU and two GPUs. The worker processes (controlled
-#   with the "nthreads" setting) will be evenly split between
-#   all listed devices.
 # - A map of devices and number of worker processes,
 #   e.g. {"cpu": 4, "cuda:0": 8, "cuda:1": 8} to start 4
 #   worker processes on the CPU and 8 worker processes on

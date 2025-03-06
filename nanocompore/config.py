@@ -8,24 +8,60 @@ from nanocompore.common import Kit
 
 
 def valid_device(value):
-    return value in ['cpu', 'cuda'] or re.compile("cuda:\d+").match(value)
+    """
+    Check if a device is valid.
+
+    Parameters
+    ----------
+    value : str
+        Device name
+
+    Returns
+    -------
+        bool
+    """
+    return value in ['cpu', 'cuda'] or re.compile(r"cuda:\d+").match(value)
 
 
 def validate_device(value):
+    """
+    Validate the device configuration.
+
+    Parameters
+    ----------
+    value : str | dict
+        Device configuration.
+
+    Returns
+    -------
+        bool
+    """
     if isinstance(value, str):
         return valid_device(value)
-    elif isinstance(value, list):
-        return all(valid_device(d) for d in value)
-    elif isinstance(value, dict):
+
+    if isinstance(value, dict):
         for k, v in value.items():
             if not valid_device(k) or not isinstance(v, int) or v < 0:
                 return False
         return True
-    else:
-        raise ValueError("The value for 'devices' in the configuration is of unexpected type: {type(value)}")
+    raise ValueError("The value for 'devices' in the configuration "
+                     f"is of unexpected type: {type(value)}")
 
 
 def validate_eventalign_data(config):
+    """
+    Validate if the input data for eventalign contains
+    all necessary fields.
+
+    Parameters
+    ----------
+    config : dict
+        The configuration object.
+
+    Returns
+    -------
+        bool
+    """
     if config['resquiggler'] != 'eventalign':
         return True
     for condition, cond_data in config['data'].items():
@@ -37,6 +73,19 @@ def validate_eventalign_data(config):
 
 
 def validate_uncalled4_data(config):
+    """
+    Validate if the input data for Uncalled4 contains
+    all necessary fields.
+
+    Parameters
+    ----------
+    config : dict
+        The configuration object.
+
+    Returns
+    -------
+        bool
+    """
     if config['resquiggler'] != 'uncalled4':
         return True
     for condition, cond_data in config['data'].items():
@@ -203,6 +252,9 @@ class Config:
 
 
     def get_nthreads(self):
+        """
+        Number of threads to use.
+        """
         return self._config.get('nthreads', DEFAULT_NTHEARDS)
 
 
