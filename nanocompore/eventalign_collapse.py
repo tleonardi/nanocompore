@@ -1,7 +1,17 @@
+"""
+Reads an eventalign tsv file produced by
+Nanopolish or f5c and creates a collapsed
+version of the file that merges together
+events for the same position.
+The output is written to a compact SQLite
+database file.
+"""
+
 import sqlite3
+import statistics
 import sys
-import traceback
 import threading
+import traceback
 import uuid
 
 import multiprocessing as mp
@@ -10,7 +20,6 @@ from contextlib import closing
 from pathlib import Path
 
 import numpy as np
-import statistics
 
 from loguru import logger
 from pyfaidx import Fasta
@@ -46,14 +55,13 @@ class EventalignCollapser:
     transcript position and stores the relevant
     data to an intermediary SQLite database.
     """
-    def __init__(self, file, fasta_ref, output, kit, nthreads):
+    def __init__(self, file, fasta_ref, output, nthreads):
         if nthreads < 2:
             raise ValueError("At least 2 threads required.")
 
         self._file = file
         self._fasta_ref = fasta_ref
         self._ref_lens = {}
-        self._kit = kit
         self._nthreads = nthreads
         self._output = output
 
@@ -216,17 +224,7 @@ class EventalignCollapser:
             # The position in the eventalign is
             # the 0-based index of the initial
             # base in the k-mer.
-            # We want to convert that to 0-based
-            # index of the central (most influential)
-            # base of the kmer, according to the model.
-            # E.g. if we have position 7 in eventalign,
-            # then it indicates that the k-mer's first
-            # base is the 8th base of the transcript.
-            # If RNA002 is used, because the 4th
-            # position of the 5mer is the central one,
-            # we want to report the 11th base, which
-            # in 0-based indexing will have index 10.
-            pos = int(cols[1]) + self._kit.center - 1
+            pos = int(cols[1])
             # reference kmer
             kmer = cols[2]
             read = cols[3]

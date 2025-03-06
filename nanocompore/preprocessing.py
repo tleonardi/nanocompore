@@ -209,7 +209,8 @@ class GenericPreprocessor(Preprocessor):
 
                 lock.acquire()
                 processed_transcripts.value += 1
-                logger.info(f"Data for reference {processed_transcripts.value}/{num_transcripts} {ref_id} has been saved to the tmp database.")
+                logger.info(f"Data for reference {processed_transcripts.value}/{num_transcripts} "
+                            f"{ref_id} has been saved to the tmp database.")
                 lock.release()
 
 
@@ -289,9 +290,6 @@ class EventalignPreprocessor(Preprocessor):
     for later analysis.
     """
 
-    def __init__(self, config):
-        super().__init__(config)
-
 
     def __call__(self):
         self._reuse_collapsed_files()
@@ -304,7 +302,8 @@ class EventalignPreprocessor(Preprocessor):
                for sample_def in condition_def.values()):
             tmp_eventalign_dbs = self._collapse_eventaligns()
 
-        logger.info("Reviewing input collapsed dbs and transferring read id mappings to the new db.")
+        logger.info("Reviewing input collapsed dbs and "
+                    "transferring read id mappings to the new db.")
 
         sample_defs = {sample: sample_def
                        for condition_def in self._config.get_data().values()
@@ -438,7 +437,8 @@ class EventalignPreprocessor(Preprocessor):
                     if transcript:
                         transcript_id = transcript[0]
                     else:
-                        logger.warning(f"Reference {ref_id} not found in the transcripts table for sample {sample}.")
+                        logger.warning(f"Reference {ref_id} not found in the "
+                                       f"transcripts table for sample {sample}.")
                         continue
                     rows = cursor.execute("SELECT * FROM kmer_data WHERE transcript_id = ?",
                                           (transcript_id,)).fetchall()
@@ -464,7 +464,8 @@ class EventalignPreprocessor(Preprocessor):
                 PreprocessingDB.write_kmer_rows(conn, rows)
             lock.acquire()
             processed_transcripts.value += 1
-            logger.info(f"Data for reference {processed_transcripts.value}/{num_transcripts} {ref_id} has been saved to the tmp database.")
+            logger.info(f"Data for reference {processed_transcripts.value}/"
+                        f"{num_transcripts} {ref_id} has been saved to the tmp database.")
             lock.release()
 
 
@@ -472,7 +473,8 @@ class EventalignPreprocessor(Preprocessor):
         kmers = []
         for pos, rows in pos_data.items():
             kmer = rows[0][1][2]
-            samples = np.concatenate([np.repeat(sample, len(row[3]) / np.dtype(READ_ID_TYPE).itemsize)
+            size = np.dtype(READ_ID_TYPE).itemsize
+            samples = np.concatenate([np.repeat(sample, len(row[3])/size)
                                       for sample, row in rows])
             read_ids = [idx + sample_read_offsets[sample]
                         for idx, sample in zip(self._merge_col_from_samples(3, rows, READ_ID_TYPE),
@@ -483,7 +485,16 @@ class EventalignPreprocessor(Preprocessor):
             sd = self._merge_col_from_samples(5, rows, EVENTALIGN_MEASUREMENT_TYPE)
             dwell = self._merge_col_from_samples(6, rows, EVENTALIGN_MEASUREMENT_TYPE)
 
-            kmers.append(KmerData(None, pos, kmer, samples, read_ids, intensity, sd, dwell, None, self._config))
+            kmers.append(KmerData(None,
+                                  pos,
+                                  kmer,
+                                  samples,
+                                  read_ids,
+                                  intensity,
+                                  sd,
+                                  dwell,
+                                  None,
+                                  self._config))
         return kmers
 
 
@@ -510,7 +521,8 @@ class EventalignPreprocessor(Preprocessor):
                         for condition_def in self._config.get_data().values()
                         for sample, sample_def in condition_def.items()
                         if 'eventalign_db' not in sample_def}
-        logger.info(f"{len(noncollapsed)} samples have input eventalign files that need to be collapsed. Collapsing them now.")
+        logger.info(f"{len(noncollapsed)} samples have input eventalign "
+                    "files that need to be collapsed. Collapsing them now.")
 
         dbs = []
         num_processes = min(self._worker_processes, len(noncollapsed))
@@ -519,12 +531,12 @@ class EventalignPreprocessor(Preprocessor):
                                        (sample,
                                         file,
                                         self._config.get_fasta_ref(),
-                                        self._get_intermediary_db_name(sample),
-                                        self._config.get_kit()))
+                                        self._get_intermediary_db_name(sample)))
                        for sample, file in noncollapsed.items()]
             for future in as_completed(futures):
                 sample, db = future.result()
-                logger.info(f"Input eventalign for sample {sample} has been collapsed and saved at {db}")
+                logger.info(f"Input eventalign for sample {sample} has "
+                            f"been collapsed and saved at {db}")
                 condition = self._config.sample_to_condition()[sample]
                 self._config.get_data()[condition][sample]['eventalign_db'] = db
                 dbs.append(db)
@@ -562,7 +574,7 @@ class EventalignPreprocessor(Preprocessor):
 
 
 def collapse_eventalign(params):
-    sample, eventalign, fasta_ref, output, kit = params
-    EventalignCollapser(eventalign, fasta_ref, output, kit, 2)()
+    sample, eventalign, fasta_ref, output = params
+    EventalignCollapser(eventalign, fasta_ref, output, 2)()
     return sample, output
 

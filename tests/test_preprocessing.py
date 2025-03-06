@@ -138,14 +138,14 @@ def test_uncalled4_preprocessing():
         get_actb_id = 'SELECT id FROM transcripts WHERE name LIKE "%ENST00000674681.1%"'
         transcript_id = conn.execute(get_actb_id).fetchone()[0]
 
-        kmer_304 = [row
+        kmer_301 = [row
                     for row in kmer_data
-                    if row[1] == 304 and row[0] == transcript_id][0]
+                    if row[1] == 301 and row[0] == transcript_id][0]
 
         # Validate that the kmer sequence is correct
-        assert kmer_304[2] == 'AGCAC'
+        assert kmer_301[2] == 'AGCAC'
 
-        intensities = np.frombuffer(kmer_304[5], dtype=UNCALLED4_MEASUREMENT_TYPE)
+        intensities = np.frombuffer(kmer_301[5], dtype=UNCALLED4_MEASUREMENT_TYPE)
         assert round(float(np.mean(intensities)), 3) == 8956.333
     finally:
         Path(config.get_preprocessing_db()).unlink()
@@ -206,14 +206,14 @@ def test_eventalign_preprocessing():
 
         get_actb_id = 'SELECT id FROM transcripts WHERE name LIKE "%ENST00000674681.1%"'
         transcript_id = conn.execute(get_actb_id).fetchone()[0]
-        kmer_304 = [row
+        kmer_301 = [row
                     for row in kmer_data
-                    if row[1] == 304 and row[0] == transcript_id][0]
+                    if row[1] == 301 and row[0] == transcript_id][0]
 
         # Validate that the kmer sequence is correct
-        assert kmer_304[2] == 'AGCAC'
+        assert kmer_301[2] == 'AGCAC'
 
-        intensities = np.frombuffer(kmer_304[5], dtype=EVENTALIGN_MEASUREMENT_TYPE)[0]
+        intensities = np.frombuffer(kmer_301[5], dtype=EVENTALIGN_MEASUREMENT_TYPE)[0]
         assert round(float(np.median(intensities)), 3) == 117.218
     finally:
         Path(config.get_preprocessing_db()).unlink()

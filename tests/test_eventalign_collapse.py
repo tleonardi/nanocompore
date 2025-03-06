@@ -11,7 +11,7 @@ from nanocompore.common import READ_ID_TYPE
 from nanocompore.common import EVENTALIGN_MEASUREMENT_TYPE
 from nanocompore.kmer import KmerData
 
-from tests.common import BASIC_CONFIG, cwd
+from tests.common import cwd
 
 
 def test_eventalign_collapse():
@@ -23,7 +23,7 @@ def test_eventalign_collapse():
     ref = os.path.join(cwd, 'tests/fixtures/test_reference.fa')
     db_out = 'collapsed.sqlite'
 
-    collapser = EventalignCollapser(tsv_in, ref, db_out, Kit.RNA002, 2)
+    collapser = EventalignCollapser(tsv_in, ref, db_out, 2)
 
     try:
         collapser()
@@ -38,20 +38,18 @@ def test_eventalign_collapse():
 
         # Validate that we have data for three positions and the
         # center of kmers is correct. The positions in the
-        # eventalign tsv are 301, 302 and 303, but eventalign
-        # uses the position of the first base in the k-mer.
-        # With RNA002, we have 5mers and the center (most-influential)
-        # position for that chemistry kit is the 4rd one.
-        assert {304, 305, 306} == {row[1] for row in kmer_data}
+        # eventalign tsv are 301, 302 and 303, which are the
+        # starting positions of the kmer.
+        assert {301, 302, 303} == {row[1] for row in kmer_data}
 
-        kmer_304 = [row
+        kmer_301 = [row
                     for row in kmer_data
-                    if row[1] == 304 and row[0] == 1][0]
+                    if row[1] == 301 and row[0] == 1][0]
 
         # Validate that the kmer sequence is correct
-        assert kmer_304[2] == 'AGCAC'
+        assert kmer_301[2] == 'AGCAC'
 
-        read_ids = np.frombuffer(kmer_304[3], dtype=READ_ID_TYPE)
+        read_ids = np.frombuffer(kmer_301[3], dtype=READ_ID_TYPE)
         assert len(read_ids) == 3
 
         query = f'''SELECT read
@@ -65,23 +63,23 @@ def test_eventalign_collapse():
                               'b7bc9a36-318e-4be2-a90f-74a5aa6439bf'}
 
         # Validate the median intensity for position
-        # 304 on the first read (which includes two events).
-        intensities = np.frombuffer(kmer_304[4], dtype=EVENTALIGN_MEASUREMENT_TYPE)[0]
+        # 301 on the first read (which includes two events).
+        intensities = np.frombuffer(kmer_301[4], dtype=EVENTALIGN_MEASUREMENT_TYPE)[0]
         assert round(float(np.median(intensities)), 3) == 117.218
 
         # Validate the median intensity for position
-        # 305 on the first read (which includes one event).
-        kmer_305 = [row
+        # 302 on the first read (which includes one event).
+        kmer_302 = [row
                     for row in kmer_data
-                    if row[1] == 305 and row[0] == 1][0]
-        intensities = np.frombuffer(kmer_305[4], dtype=EVENTALIGN_MEASUREMENT_TYPE)[0]
+                    if row[1] == 302 and row[0] == 1][0]
+        intensities = np.frombuffer(kmer_302[4], dtype=EVENTALIGN_MEASUREMENT_TYPE)[0]
         assert round(float(np.median(intensities)), 3) == 71.906
 
         # Validate the MAD calcuation
-        intensity_mads = np.frombuffer(kmer_304[5], dtype=EVENTALIGN_MEASUREMENT_TYPE)
+        intensity_mads = np.frombuffer(kmer_301[5], dtype=EVENTALIGN_MEASUREMENT_TYPE)
         assert round(float(intensity_mads[0]), 3) == 4.723
 
-        dwells = np.frombuffer(kmer_304[6], dtype=EVENTALIGN_MEASUREMENT_TYPE)
+        dwells = np.frombuffer(kmer_301[6], dtype=EVENTALIGN_MEASUREMENT_TYPE)
         assert round(float(dwells[0]), 3) == 0.008
 
     finally:
@@ -93,7 +91,6 @@ def test_get_reads_invalid_kmer_ratio():
     collapser = EventalignCollapser(None,
                                     None,
                                     None,
-                                    Kit.RNA002,
                                     2)
     kmer_1 = KmerData('transcript1',
                       1,

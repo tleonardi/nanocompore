@@ -1,11 +1,16 @@
+"""
+Parser for Uncalled4 resquiggling data.
+
+Uncalled4 adds the resquiggling data as additional tags
+in the BAM files. This parser reads the BAM file produced
+by Uncalled4 and extracts the data from the tags.
+"""
+
 import pysam
-import random
 import numpy as np
 
 from nanocompore.kmer import KmerData
 from nanocompore.common import UNCALLED4_MEASUREMENT_TYPE
-from nanocompore.common import is_valid_position
-from nanocompore.common import get_pos_kmer
 
 
 class Uncalled4:
@@ -31,23 +36,19 @@ class Uncalled4:
         condition_labels = []
 
         read_count = 0
-        for sample, _, bam in self._config.get_sample_pod5_bam_data():
+        for sample, _, bam in self._config.get_sample_condition_bam_data():
             read_count += pysam.AlignmentFile(bam, 'rb').count(reference=self._ref_id)
 
         # shape is: (reads, positions, vars)
         reads_tensor = np.zeros((read_count, ref_len, 3))
 
         read_index = 0
-        for sample, _, bam in self._config.get_sample_pod5_bam_data():
+        for sample, _, bam in self._config.get_sample_condition_bam_data():
             for read in pysam.AlignmentFile(bam, 'rb').fetch(self._ref_id):
                 if read.is_secondary or read.is_supplementary:
                     continue
 
-                dwell, intensity, sd = self._get_signal(read)
-
-                reads_tensor[read_index, :, 0] = dwell
-                reads_tensor[read_index, :, 1] = intensity
-                reads_tensor[read_index, :, 2] = sd
+                self._copy_signal_to_tensor(read, reads_tensor, read_index)
 
                 read_ids.append(read.query_name)
                 sample_labels.append(sample)
@@ -63,121 +64,93 @@ class Uncalled4:
         sample_labels = np.array(sample_labels)
         condition_labels = np.array(condition_labels)
 
-        # iterate the transcript positions using 1-based indexing
-        for pos in range(ref_len):
-            # Ignore positions where part of the k-mer is
-            # out of the range.
-            if not is_valid_position(pos, ref_len, kit):
-                continue
-
-            kmer = get_pos_kmer(pos, self._seq, kit)
+        for pos in range(ref_len - kit.len + 1):
+            kmer = self._seq[pos:pos+kit.len]
             pos_data = reads_tensor[:, pos, :]
 
             # Remove reads that did not have data for the position
             # or represent an unrecoverable skip event (this happens
             # when the skip event is the first one).
-            valid_reads = ~np.isnan(pos_data).any(axis=1) & (pos_data[:, 0] != 0)
+            valid_reads = ~np.isnan(pos_data[:, 0]) & (pos_data[:, 0] != 0)
+
+            if valid_reads.sum() == 0:
+                continue
 
             pos_data = pos_data[valid_reads, :].astype(UNCALLED4_MEASUREMENT_TYPE)
             pos_sample_labels = sample_labels[valid_reads]
             pos_read_ids = read_ids[valid_reads]
 
             yield KmerData(self._ref_id,
-                           pos,
+                           pos, # the position is the start of the kmer
                            kmer,
                            pos_sample_labels,
                            pos_read_ids,
-                           pos_data[:, 1],
-                           pos_data[:, 2],
-                           pos_data[:, 0],
+                           pos_data[:, 1], # intensity
+                           pos_data[:, 2], # standard dev
+                           pos_data[:, 0], # dwell
                            None, # We don't have validity data here
                            self._config)
 
 
-    def _get_signal(self, read):
+    def _copy_signal_to_tensor(self, read, tensor, read_index):
         """
         Extracts the dwell, intensity and intensity std
         for a given read.
         """
-        kit = self._config.get_kit()
 
+        # ur gives the reference positions of the measurements.
         # ur is a list of start, end pairs of aligned segments, e.g:
         # start1, end1, start2, end2
-        # ur uses 0-based indexing and [start,end) intervals
+        # ur uses 0-based indexing and [start, end) intervals,
+        # but it includes the full spans of the evaluated kmers,
+        # hence the number of measurements will be less than the
+        # positions in the range. Specifically, we would have
+        # N-K+1, where N is the reference positions and K is the
+        # kmer size.
         ur = read.get_tag('ur')
+
+        kit = self._config.get_kit()
 
         # The signal measurements are ordered in
         # 3' to 5' direction so we invert them.
         # uc is the signal's current intensity
-        uc = read.get_tag('uc')[::-1]
+        uc = np.array(read.get_tag('uc')[::-1])
         # ud is the standard deviation in the current
-        ud = read.get_tag('ud')[::-1]
+        ud = np.array(read.get_tag('ud')[::-1])
         # ul is a list of dwell times for the kmers
         # The negative length values are paddings used
         # for each alignment segment.
-        ul = [d for d in read.get_tag('ul')[::-1] if d >= 0]
+        ul = np.array([d for d in read.get_tag('ul')[::-1] if d >= 0])
         ul = self._resolve_skips(ul)
 
-        intensity = []
-        sd = []
-        dwell = []
-        signal_pos = 0
-        # We iterate through the segments and get the signal data
-        # for each segment in order to merge them in the end.
-        for seg_start_indx in range(0, len(read.get_tag('ur')), 2):
-            seg_end_indx = seg_start_indx + 1
+        segments = [(ur[start_ind], ur[start_ind+1])
+                    for start_ind in range(0, len(ur), 2)]
 
-            # Get the start and end of the region
-            # on the reference transcript to which
-            # the current signal segment aligns.
-            # This is a 0-based [start, end) interval.
-            ref_start = ur[seg_start_indx]
-            ref_end = ur[seg_end_indx]
+        signal_start = 0
+        for ref_start, ref_end in segments:
+            # ref_end is one position after the last
+            # one that contributed to a measurement.
+            # We subtract kmer-1 to get the position
+            # after the starting position of the last
+            # included kmer.
+            ref_end -= kit.len - 1
 
-            is_first_segment = seg_start_indx == 0
-            is_last_segment = seg_end_indx == len(ur) - 1
+            segment_size = ref_end - ref_start
+            signal_end = signal_start + segment_size
 
-            # The kmer acts as a sliding window of
-            # size > 1. This means that we have fewer
-            # measurements than the number of bases in
-            # the read. We attribute each measurement to
-            # the base that was more influential for the
-            # given kmer. For example in RNA002 the most
-            # influential base (which we call "center") is
-            # the fourth one. This means that the first three
-            # bases of the read and the last one would not
-            # have measurements (because the kmer cannot
-            # "slide out" of the read). Because Uncalled4
-            # includes in the reference regions (of the ur tag)
-            # all bases that have influenced the measurements
-            # of the electrical current we have to trim them.
-            if is_first_segment:
-                ref_start += kit.center - 1
-            if is_last_segment:
-                ref_end -= kit.len - kit.center
+            # Masked values are assigned a "null" value
+            # of -2^16 - 1. We ignore those positions.
+            valid = uc != np.iinfo(np.int16).min
+            ul = ul[valid]
+            uc = uc[valid]
+            ud = ud[valid]
 
-            current_step = ref_end - ref_start
-            next_signal_pos = signal_pos + current_step
+            # Copy signal values to the reads tensor
+            tensor[read_index, ref_start:ref_end, 0] = ul[signal_start:signal_end]
+            tensor[read_index, ref_start:ref_end, 1] = uc[signal_start:signal_end]
+            tensor[read_index, ref_start:ref_end, 2] = ud[signal_start:signal_end]
 
-            left_pad = ref_start if is_first_segment else 0
-            if is_last_segment:
-                right_pad = len(self._seq) - ref_end
-            else:
-                next_start = ur[seg_end_indx + 1]
-                right_pad = next_start - ref_end
-
-            intensity.append(self._pad(uc[signal_pos:next_signal_pos], left_pad, right_pad))
-            sd.append(self._pad(ud[signal_pos:next_signal_pos], left_pad, right_pad))
-            dwell.append(self._pad(ul[signal_pos:next_signal_pos], left_pad, right_pad))
-            signal_pos = next_signal_pos
-
-        return np.concatenate(dwell), np.concatenate(intensity), np.concatenate(sd)
-
-
-    def _pad(self, arr, prefix, suffix):
-        return np.concatenate([np.repeat(np.nan, prefix),
-                               arr,
-                               np.repeat(np.nan, suffix)])
+            signal_start += segment_size
 
 
     def _resolve_skips(self, ul):
@@ -186,19 +159,4 @@ class Uncalled4:
         for i in range(1, len(ul)):
             resolved[i] = ul[i] if ul[i] != 0 else resolved[i - 1]
         return resolved
-
-
-    def _sample(self, labels, limit, seed=42):
-        if seed is not None:
-            random.seed(seed)
-
-        mask = np.zeros(len(labels), dtype=bool)
-        for label in set(labels):
-            label_indices = np.where(labels == label)[0]
-            random.shuffle(label_indices)
-            label_indices = label_indices[:limit]
-            for i in label_indices:
-                mask[i] = True
-
-        return mask
 

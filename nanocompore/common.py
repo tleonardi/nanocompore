@@ -31,7 +31,7 @@ Kit = Enum('Kit', ['RNA002', 'RNA004'])
 Kit.RNA002.len = 5
 Kit.RNA002.center = 4
 Kit.RNA004.len = 9
-Kit.RNA004.center = 6
+Kit.RNA004.center = 5
 
 # When a modification passes through the motor protein
 # it can change the movement speed of the molecule,
