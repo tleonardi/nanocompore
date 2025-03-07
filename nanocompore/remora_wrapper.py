@@ -1,6 +1,7 @@
 import pod5
 import pysam
 import numpy as np
+import pandas as pd
 
 from loguru import logger
 from pkg_resources import resource_filename
@@ -10,8 +11,6 @@ from nanocompore.kmer import KmerData
 from nanocompore.common import Kit
 from nanocompore.common import NanocomporeError
 from nanocompore.common import REMORA_MEASUREMENT_TYPE
-from nanocompore.common import is_valid_position
-from nanocompore.common import get_pos_kmer
 
 
 RNA002_LEVELS_FILE = "models/rna002_5mer_levels_v1.txt"
@@ -155,12 +154,11 @@ class Remora:
     def kmer_data_generator(self):
         kit = self._config.get_kit()
 
-        # Resquiggle the signal and get the summary metrics for
-        # each position of the transcript. The result is list of dicts
-        # with one dict per sample and each dict has the type:
-        # {metric: <numpy appray with shape (reads, positions)>, ...}
-        samples_metrics, bam_reads = self._get_samples_metrics()
         try:
+            # Resquiggle the signal and get the summary metrics for
+            # each position of the transcript. The result is list of dicts
+            # with one dict per sample and each dict has the type:
+            # {metric: <numpy appray with shape (reads, positions)>, ...}
             samples_metrics, bam_reads = self._get_samples_metrics()
         except RemoraError as e:
             if str(e) == "No reads covering region":
@@ -191,12 +189,10 @@ class Remora:
         # Iterate over all positions of the transcript using
         # 0-based indexing.
         for pos in range(self._ref_reg.len):
-            # Ignore positions where part of the k-mer is
-            # out of the range.
-            if not is_valid_position(pos, self._ref_reg.len, kit):
-                continue
-
-            kmer_seq = get_pos_kmer(pos, self._seq, kit)
+            # Remora gives the signal measurements at
+            # a single base resolution, so we only
+            # store a 1-mer.
+            kmer_seq = self._seq[pos]
             pos_data = tensor[:, pos, :]
 
             # Remove reads with nan values for any of the variables at that position
