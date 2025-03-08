@@ -13,7 +13,6 @@ from loguru import logger
 from scipy.stats import mannwhitneyu, ttest_ind, chi2_contingency, chi2
 from scipy.stats.mstats import ks_twosamp
 
-from nanocompore.common import MOTOR_DWELL_EFFECT_OFFSET
 from nanocompore.common import NanocomporeError
 from nanocompore.gof_tests import gof_test_multirep
 from nanocompore.gof_tests import gof_test_singlerep
@@ -32,9 +31,10 @@ class TranscriptComparator:
         self._config = config
         self._random_seed = random_seed
         self._dtype = dtype
+        self._motor_dwell_offset = self._config.get_motor_dwell_offset()
 
 
-    def compare_transcript(self, transcript, kmers, device=None):
+    def compare_transcript(self, transcript, kmers, device):
         if len(kmers) == 0:
             return (transcript, None)
 
@@ -155,9 +155,11 @@ class TranscriptComparator:
 
         initial_positions = max_pos - min_pos + 1
 
-        tensor = np.full((initial_positions, len(reads), 6), np.nan)
+        TENSOR_DEPTH = 4 if self._motor_dwell_offset == 0 else 5
+
+        tensor = np.full((initial_positions, len(reads), TENSOR_DEPTH), np.nan)
         valid_positions = torch.full((initial_positions,), False)
-        tmp_matrix = np.empty((len(reads), 5), dtype=float)
+        tmp_matrix = np.empty((len(reads), 4), dtype=float)
         for kmer in sorted(kmers, key=lambda kmer: kmer.pos, reverse=True):
             indices = get_indices(kmer.reads)
             pos = kmer.pos - min_pos
@@ -167,31 +169,31 @@ class TranscriptComparator:
             # (which is numpy arrays), into one big matrix
             # in consecutive positions and then to reorder
             # the rows appropritately.
-            tmp_matrix[:nreads, 0] = kmer.reads
-            tmp_matrix[:nreads, 1] = kmer.condition_ids
-            tmp_matrix[:nreads, 2] = kmer.sample_ids
-            tmp_matrix[:nreads, 3] = kmer.intensity
-            tmp_matrix[:nreads, 4] = np.log10(kmer.dwell)
-            tensor[pos, indices, :5] = tmp_matrix[:nreads, :]
-        end = initial_positions - MOTOR_DWELL_EFFECT_OFFSET
-        if end > 0:
-            tensor[:end, :, 5] = tensor[MOTOR_DWELL_EFFECT_OFFSET:initial_positions, :, 4]
+            tmp_matrix[:nreads, 0] = kmer.condition_ids
+            tmp_matrix[:nreads, 1] = kmer.sample_ids
+            tmp_matrix[:nreads, 2] = kmer.intensity
+            tmp_matrix[:nreads, 3] = np.log10(kmer.dwell)
+            tensor[pos, indices, :4] = tmp_matrix[:nreads, :]
+        if self._motor_dwell_offset > 0:
+            end = initial_positions - self._motor_dwell_offset
+            if end > 0:
+                tensor[:end, :, 4] = tensor[self._motor_dwell_offset:initial_positions, :, 3]
 
         # valid positions are those that have at least some values
         tensor = torch.tensor(tensor[valid_positions.numpy()],
                               dtype=self._dtype)
 
         positions = torch.arange(min_pos, max_pos + 1)[valid_positions]
-        return (tensor[:, :, 3:6].clone(), # measurements
-                tensor[:, :, 2].clone(), # samples
-                tensor[:, :, 1].clone(), # conditions
+        return (tensor[:, :, 2:TENSOR_DEPTH].clone(), # measurements
+                tensor[:, :, 1].clone(), # samples
+                tensor[:, :, 0].clone(), # conditions
                 positions.clone())
 
 
     def _get_motor_kmer(self, kmer, kmers):
         for other_kmer in kmers:
             if (kmer.transcript_id == other_kmer.transcript_id and
-                other_kmer.pos == kmer.pos + MOTOR_DWELL_EFFECT_OFFSET):
+                other_kmer.pos == kmer.pos + self._motor_dwell_offset):
                 return other_kmer
         return None
 
@@ -334,6 +336,15 @@ class TranscriptComparator:
 
 
     def _gmm_test(self, test_data, samples, conditions, device):
+        # If we don't use the motor dwell time
+        # we would get a tensor that only contains
+        # intensity and dwell and we can directly
+        # run the tests.
+        if self._motor_dwell_offset == 0:
+            return self._gmm_test_split(test_data, samples, conditions, device)
+
+        # If we use the motor dwell time than we have
+        # to consider some additional complications:
         # For each position some reads have motor dwell
         # and others don't. We split the positions into
         # two sets: one set of positions where all reads
@@ -455,8 +466,9 @@ class TranscriptComparator:
         dims = {
                 'intensity': INTENSITY,
                 'dwell': DWELL,
-                'motor_dwell': MOTOR
                }
+        if self._motor_dwell_offset > 0:
+            dims['motor_dwell'] = MOTOR
 
         for cond in [0, 1]:
             for stat in ['mean', 'median', 'std']:

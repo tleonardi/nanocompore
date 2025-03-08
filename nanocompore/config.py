@@ -138,6 +138,7 @@ CONFIG_SCHEMA = Schema(And({
                                          'T_TEST',
                                          'MANN_WHITNEY'],
                                         lambda l: len(l) > 0),
+    Optional('motor_dwell_offset'): And(int, lambda n: n >= 0, error='motor_dwell_offset must be >= 0'),
     Optional('sequence_context'): And(int, lambda n: n >= 0 and n <= 4, error='sequence_context must be >= 0 and <= 4'),
     Optional('sequence_context_weights'): Or('uniform', 'harmonic'),
     Optional('pvalue_threshold'): And(float, lambda n: n >= 0 and n <= 1, error='pvalue_threshold must be >= 0 and <= 1'),
@@ -179,6 +180,7 @@ DEFAULT_DOWNSAMPLE_HIGH_COVERAGE = 5000
 DEFAULT_MIN_REF_LENGTH = 100
 DEFAULT_MAX_INVALID_KMERS_FREQ = 0.1
 DEFAULT_COMPARISON_METHODS = ['GMM', 'KS']
+DEFAULT_MOTOR_DWELL_OFFSET = 0
 DEFAULT_SEQUENCE_CONTEXT = 0
 DEFAULT_SEQUENCE_CONTEXT_WEIGHTS = 'uniform'
 DEFAULT_PVALUE_THRESHOLD = 0.05
@@ -312,6 +314,16 @@ class Config:
         }
         return [remappings.get(m, m)
                 for m in self._config.get('comparison_methods', DEFAULT_COMPARISON_METHODS)]
+
+
+    def get_motor_dwell_offset(self):
+        """
+        Interactions between a modification and the motor protein
+        can affect the translocation speed. If present, this
+        should affect the dwell time of the downstream position.
+        This returns the expected offset for this effect.
+        """
+        return self._config.get('motor_dwell_offset', DEFAULT_MOTOR_DWELL_OFFSET)
 
 
     def get_sequence_context(self):

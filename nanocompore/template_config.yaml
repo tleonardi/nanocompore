@@ -140,6 +140,15 @@ resquiggler: 'remora'
 #   - GAUSSIAN_MIXTURE_MODEL
 #   - KOLMOGOROV_SMIRNOV
 
+# When a modification passes through the motor protein
+# it can change the movement speed of the molecule,
+# affecting the dwell time measured for a downstream
+# position. For m6A in the RNA002/RNA004 kits this offset
+# was measured to be 11 nt. The default value is set to 0,
+# which means that the motor dwell time effect will be
+# ignored by Nanocompore.
+# motor_dwell_offset: 0
+
 # Sequence context for combining p-values.
 # The value can be in the range [0, 4]
 # sequence_context: 0

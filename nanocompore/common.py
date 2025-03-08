@@ -33,12 +33,6 @@ Kit.RNA002.center = 4
 Kit.RNA004.len = 9
 Kit.RNA004.center = 5
 
-# When a modification passes through the motor protein
-# it can change the movement speed of the molecule,
-# affecting the dwell time measured for a downstream
-# position. For the RNA002/RNA004 kits this offset
-# was measured to be 11 nt.
-MOTOR_DWELL_EFFECT_OFFSET = 11
 
 READ_ID_TYPE = np.uint32
 SAMPLE_ID_TYPE = np.uint8
