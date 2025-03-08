@@ -31,20 +31,21 @@ def test_kmer_data_generator():
 
     uncalled4 = Uncalled4(config, ref, ref_seq)
     kmers = list(uncalled4.kmer_data_generator())
-    assert len(kmers) == 1715
+    assert len(kmers) == 1723
     # The read has two signal segments aligned
     # to reference positions [6, 562) and [604, 1779).
     assert kmers[0].pos == 6
     assert kmers[0].kmer == 'TGTGGGTAC'
     # The last kmer of the first segment
-    # should start at 553 (562 - 9).
-    assert kmers[547].pos == 553
-    assert kmers[547].kmer == 'AGTCCCGGC'
+    # should start at 557.
+    assert kmers[551].pos == 557
+    assert kmers[551].kmer == 'CCGGCGTTC'
+    print({i: kmers[i].pos for i in range(540, 555)})
     # The first kmer of the second segment
-    # starts at 604.
-    assert kmers[548].pos == 604
-    assert kmers[548].kmer == 'GGCCATGCA'
-    # The last kmer starts at 1770.
-    assert kmers[1714].pos == 1770
-    assert kmers[1714].kmer == 'CCATGAGAA'
+    # starts at 600.
+    assert kmers[552].pos == 600
+    assert kmers[552].kmer == 'AGCTGGCCA'
+    # The last kmer starts at 1770 (1779 - 9).
+    assert kmers[1722].pos == 1770
+    assert kmers[1722].kmer == 'CCATGAGAA'
 

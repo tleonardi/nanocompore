@@ -128,22 +128,36 @@ class Uncalled4:
 
         signal_start = 0
         for ref_start, ref_end in segments:
-            # ref_end is one position after the last
-            # one that contributed to a measurement.
-            # We subtract kmer-1 to get the position
-            # after the starting position of the last
-            # included kmer.
-            ref_end -= kit.len - 1
+            # Uncalled4 assigns the measurement to the
+            # position of the base that had the highest
+            # contribution (so called central position
+            # of the kmer, which depending on the pore
+            # may not be in the center).
+            # The ranges in the ur tag however include
+            # all positions that contributed to the
+            # measurements. Hence, when we have N
+            # measurements, the interval in ur will
+            # cover N+K-1 positions (where K is the
+            # kmer size for the given pore model).
+            # We cut the K-1 positions from the first
+            # and the last intervals.
+            if ref_start == ur[0]:
+                ref_start += kit.len - kit.center
+            if ref_end == ur[-1]:
+                ref_end -= kit.center - 1
+            # Since we want to report the beginning of the
+            # kmer instead of the central (most influential)
+            # position we shift the signal.
+            # Note that the magnitude of this shift is
+            # the number of positions between the center and
+            # the end of the kmer, because the RNA is read
+            # in 3' to 5' direction, so the kmer is inverted
+            # with respect to the 5'-3' sequence.
+            ref_start -= kit.len - kit.center
+            ref_end -= kit.len - kit.center
 
             segment_size = ref_end - ref_start
             signal_end = signal_start + segment_size
-
-            # Masked values are assigned a "null" value
-            # of -2^16 - 1. We ignore those positions.
-            valid = uc != np.iinfo(np.int16).min
-            ul = ul[valid]
-            uc = uc[valid]
-            ud = ud[valid]
 
             # Copy signal values to the reads tensor
             tensor[read_index, ref_start:ref_end, 0] = ul[signal_start:signal_end]
