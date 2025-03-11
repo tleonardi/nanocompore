@@ -147,8 +147,7 @@ def eventalign_collapse_subcommand(args):
     to an intermediary efficient database for later
     analysis.
     """
-    kit = Kit[args.kit]
-    EventalignCollapser(args.input, args.ref, args.output, kit, args.nthreads)()
+    EventalignCollapser(args.input, args.ref, args.output, args.nthreads)()
 
 
 def init_subcommand(args):

@@ -353,19 +353,22 @@ class TranscriptComparator:
         # where some reads are missing the motor dwell -
         # those would be tested with a 2D GMM.
         dim3_data, dim2_data, split = self._split_by_ndim(test_data)
+        columns = set()
         if dim3_data.shape[0] > 0:
             dim3_results = self._gmm_test_split(dim3_data,
                                                 samples[split == 0, :],
                                                 conditions[split == 0, :],
                                                 device)
+            columns.update(dim3_results.keys())
         if dim2_data.shape[0] > 0:
             dim2_results = self._gmm_test_split(dim2_data,
                                                 samples[split == 1, :],
                                                 conditions[split == 1, :],
                                                 device)
+            columns.update(dim2_results.keys())
 
         results = {}
-        for column in dim2_results.keys() | dim3_results.keys():
+        for column in columns:
             if dim3_data.shape[0] > 0:
                 dim3_values = dim3_results[column]
             if dim2_data.shape[0] > 0:

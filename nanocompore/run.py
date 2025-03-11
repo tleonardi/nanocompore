@@ -31,6 +31,9 @@ from nanocompore.postprocessing import Postprocessor
 from nanocompore.transcript import Transcript
 
 
+MAX_PROC_ITERATIONS = 500
+
+
 class RunCmd(object):
     """
     RunCmd reads the resquiggled and preprocessed data
@@ -99,11 +102,16 @@ class RunCmd(object):
         sync_lock = multiprocessing.Lock()
         manager = multiprocessing.Manager()
         num_finished = manager.Value('i', 0)
-        workers = [multiprocessing.Process(target=self._worker_process,
-                              args=(worker, task_queue, db_lock, sync_lock, num_finished, device))
-                   for worker, device in self._workers_with_device.items()]
+        workers = {worker: multiprocessing.Process(target=self._worker_process,
+                                                   args=(worker,
+                                                         task_queue,
+                                                         db_lock,
+                                                         sync_lock,
+                                                         num_finished,
+                                                         device))
+                   for worker, device in self._workers_with_device.items()}
 
-        for worker in workers:
+        for worker in workers.values():
             worker.start()
 
         # helper variables for the progress bar
@@ -119,14 +127,35 @@ class RunCmd(object):
         # monitoring and that doesn't work well with the
         # multiprocess Manager.
         while len(workers) > 0:
-            for i, worker in enumerate(workers):
+            workers_to_remove = []
+            for worker_id, worker in workers.items():
                 # Try to join the worker with 1s timeout
                 worker.join(1)
                 # If the worker has completed we remove it from
                 # the worker pool.
                 if worker.exitcode is not None:
                     if worker.exitcode == 0:
-                        workers.pop(i)
+                        # If we detect a worker that has terminated without an error
+                        # it may mean that there were no more jobs in the queue an
+                        # the worker closed itself down, or it can be that the worker
+                        # did its maximum allowed iterations. If we're in the second
+                        # case we want to restart the worker if there are more tasks
+                        # to do.
+                        with sync_lock:
+                            if not task_queue.empty():
+                                device = self._workers_with_device[worker_id]
+                                logger.info(f"Restarting worker {worker_id} on device {device}.")
+                                new_worker = multiprocessing.Process(target=self._worker_process,
+                                                                     args=(worker_id,
+                                                                           task_queue,
+                                                                           db_lock,
+                                                                           sync_lock,
+                                                                           num_finished,
+                                                                           device))
+                                new_worker.start()
+                                workers[worker_id] = new_worker
+                            else:
+                                workers_to_remove.append(worker_id)
                     else:
                         logger.error("ERROR: A worker encountered an error "
                                      f"(exitcode: {worker.exitcode}). "
@@ -138,6 +167,8 @@ class RunCmd(object):
                     with sync_lock:
                         num_done = num_finished.value
                     self._print_progress_bar(num_done, len(transcripts), max_len, start_time)
+            for worker_id in workers_to_remove:
+                del workers[worker_id]
 
         if self._config.get_progress():
             print("\nAll transcripts have been processed.")
@@ -188,7 +219,27 @@ class RunCmd(object):
         db = self._config.get_preprocessing_db()
         with closing(sqlite3.connect(db)) as conn,\
              closing(conn.cursor()) as cursor:
-            while True:
+            # When Python grows the heap to find space
+            # for memory allocations, after the objects
+            # are deleted and freed, the memory may not
+            # be returned back to the OS. Hence, the
+            # reserved memory stays at the high-water
+            # mark level that was previously taken.
+            # Since each worker would stumble at an
+            # unusally large transcript (in terms of
+            # the amount of data) from time to time,
+            # the heap of the worker may grow, but it
+            # won't shrink after that, leading to
+            # a lot of unused head size. When this happens
+            # for many workers, the OS or job scheduler
+            # may kill the process because it used too
+            # much memory.
+            # To ameliorate this issue, we can set a
+            # fixed number of iterations for the worker
+            # and let the main orchestrator process
+            # spawn a new worker when it detects the
+            # termination.
+            for i in range(MAX_PROC_ITERATIONS):
                 # It's weird that we have to use a lock here,
                 # but for some reason calling get in parallel from
                 # multiple processes can cause a queue.Empty
