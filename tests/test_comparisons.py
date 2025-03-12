@@ -147,7 +147,7 @@ def test_kmers_to_tensor():
                  config)
     ]
 
-    data, samples, conditions, positions = comparator._kmers_to_tensor(kmers, 'cpu')
+    data, samples, conditions, positions = comparator.kmers_to_tensor(kmers, 'cpu')
 
     assert data.shape == (3, 6, 2)
 
@@ -228,7 +228,7 @@ def test_kmers_to_tensor_with_motor_dwell():
                  config)
     ]
 
-    data, samples, conditions, positions = comparator._kmers_to_tensor(kmers, 'cpu')
+    data, samples, conditions, positions = comparator.kmers_to_tensor(kmers, 'cpu')
 
     assert data.shape == (3, 6, 3)
 

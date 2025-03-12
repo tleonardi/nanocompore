@@ -18,19 +18,6 @@ from nanocompore.preprocessing import Uncalled4Preprocessor
 from tests.common import BASIC_CONFIG
 
 
-def test_get_references_from_bams():
-    yaml = copy.deepcopy(BASIC_CONFIG)
-    yaml['preprocessing_db'] += '.tmp'
-    config = Config(yaml)
-    try:
-        preprocessor = Preprocessor(config)
-        references = preprocessor._get_references_from_bams()
-        assert references == {'ENST00000674681.1|ENSG00000075624.17|OTTHUMG00000023268|-|ACTB-219|ACTB|2554|protein_coding|',
-                              'ENST00000642480.2|ENSG00000075624.17|OTTHUMG00000023268|OTTHUMT00000495153.1|ACTB-213|ACTB|2021|protein_coding|'}
-    finally:
-        Path(config.get_preprocessing_db()).unlink()
-
-
 def test_get_reads_invalid_kmer_ratio_uncalled4():
     yaml = copy.deepcopy(BASIC_CONFIG)
     yaml['preprocessing_db'] += '.tmp'

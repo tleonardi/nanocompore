@@ -12,8 +12,11 @@ from collections import Counter
 from collections import OrderedDict
 from collections import defaultdict
 from collections import namedtuple
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import as_completed
 
 import numpy as np
+import pysam
 
 from loguru import logger
 from pyfaidx import Fasta
@@ -493,4 +496,57 @@ def monitor_workers(workers, delay_sec=5):
                 for child in mp.active_children():
                     child.terminate()
                 sys.exit(1)
+
+
+def get_references_from_bam(bam):
+    references = set()
+    bam = pysam.AlignmentFile(bam, "rb")
+    for line in bam.get_index_statistics():
+        if line.mapped > 0:
+            references.add(line.contig)
+    return references
+
+
+def get_references_from_bams(config, threads=4):
+    logger.info("Getting references from the BAMs.")
+    references = set()
+    with ThreadPoolExecutor(max_workers=threads) as executor:
+        futures = [executor.submit(get_references_from_bam, sample_def['bam'])
+                   for condition_def in config.get_data().values()
+                   for sample, sample_def in condition_def.items()]
+        for future in as_completed(futures):
+            references.update(future.result())
+    logger.info(f"Found {len(references)} references.")
+    return references
+
+
+def get_reads_invalid_kmer_ratio(kmers):
+    """
+    Calculate the ratio of missing kmers
+    in the read. It takes the kmers with
+    min and max position to determine the
+    read length.
+
+    This is the method employed for Uncalled4 and Remora.
+    For eventalign there's a custom method, that takes
+    in consideration the richer information provided
+    by the resquiggler.
+    """
+    read_counts = defaultdict(lambda: 0)
+    read_ends = defaultdict(lambda: (np.inf, -1))
+
+    for kmer in kmers:
+        for read in kmer.reads:
+            read_counts[read] += 1
+            curr_range = read_ends[read]
+            start = min(kmer.pos, curr_range[0])
+            end = max(kmer.pos, curr_range[1])
+            read_ends[read] = (start, end)
+    return {read: calc_invalid_ratio(read_ends[read], count)
+            for read, count in read_counts.items()}
+
+
+def calc_invalid_ratio(ends, valid):
+    length = ends[1] - ends[0] + 1
+    return (length - valid)/length
 

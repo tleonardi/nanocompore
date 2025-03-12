@@ -10,6 +10,7 @@ from contextlib import closing
 from multiprocessing.managers import SyncManager
 
 import numpy as np
+import pysam
 import torch
 
 from loguru import logger
@@ -21,14 +22,17 @@ from nanocompore.common import SAMPLE_ID_TYPE
 from nanocompore.common import TranscriptRow
 from nanocompore.common import encode_kmer
 from nanocompore.common import get_measurement_type
+from nanocompore.common import get_reads_invalid_kmer_ratio
 from nanocompore.common import get_pos_kmer
 from nanocompore.common import log_init_state
 from nanocompore.comparisons import TranscriptComparator
+from nanocompore.comparisons import retry
 from nanocompore.config import Config
 from nanocompore.database import ResultsDB
 from nanocompore.kmer import KmerData
 from nanocompore.postprocessing import Postprocessor
 from nanocompore.transcript import Transcript
+from nanocompore.uncalled4 import Uncalled4
 
 
 MAX_PROC_ITERATIONS = 500
@@ -216,6 +220,9 @@ class RunCmd(object):
         kit = self._config.get_kit()
         logger.info(f"Worker {worker_id} started with pid {os.getpid()}.")
 
+        bams = {sample: pysam.AlignmentFile(bam, 'rb')
+                for sample, _, bam in self._config.get_sample_condition_bam_data()}
+
         db = self._config.get_preprocessing_db()
         with closing(sqlite3.connect(db)) as conn,\
              closing(conn.cursor()) as cursor:
@@ -267,9 +274,18 @@ class RunCmd(object):
                                             ref_id=transcript_ref.ref_id,
                                             ref_seq=str(fasta_fh[transcript_ref.ref_id]))
 
-                    kmer_data_list = self._read_transcript_kmer_data(transcript_ref, cursor)
+                    kmer_data_list = self._read_transcript_kmer_data(transcript, cursor, bams)
+                    if len(kmer_data_list) == 0:
+                        continue
+
+                    data, samples, conditions, positions = retry(lambda: comparator.kmers_to_tensor(kmer_data_list, device),
+                                                                 exception=torch.OutOfMemoryError)
+                    del kmer_data_list
                     transcript, results = comparator.compare_transcript(transcript,
-                                                                        kmer_data_list,
+                                                                        data,
+                                                                        samples,
+                                                                        conditions,
+                                                                        positions,
                                                                         device)
                     if results is None:
                         continue
@@ -286,26 +302,40 @@ class RunCmd(object):
                                  "the queue for later processing because it failed with OutOfMemory.")
                     with sync_lock:
                         task_queue.put((task, retries + 1))
-                except Exception:
-                    msg = traceback.format_exc()
-                    logger.error(f"Error in Worker {worker_id}: {msg}")
+                except Exception as e:
+                    if 'out of memory' in str(e):
+                        task = TranscriptRow(transcript.name, transcript.id)
+                        logger.info(f"Worker {worker_id} returns {transcript_ref.ref_id} to " + \
+                                     "the queue for later processing because it failed with OutOfMemory.")
+                        with sync_lock:
+                            task_queue.put((task, retries + 1))
+                    else:
+                        msg = traceback.format_exc()
+                        logger.error(f"Error in Worker {worker_id}: {msg}")
                 finally:
                     logger.info(f"Worker {worker_id} is finishing a task.")
                     with sync_lock:
                         num_finished.value += 1
                         task_queue.task_done()
+            else:
+                logger.info(f"Worker {worker_id} completed a batch of transcripts. Will restart now.")
 
 
     def _read_transcript_kmer_data(self,
-                                   transcript_ref: TranscriptRow,
-                                   cursor: sqlite3.Cursor):
-        res = cursor.execute("""SELECT *
-                                FROM kmer_data
-                                WHERE transcript_id = ?""",
-                             (transcript_ref.id,))
-
-        kmers = [self._db_row_to_kmer(row)
-                 for row in res.fetchall()]
+                                   transcript: Transcript,
+                                   cursor: sqlite3.Cursor,
+                                   bams):
+        if self._config.get_resquiggler() == 'uncalled4':
+            logger.debug("Getting data from the bams because Uncalled4 was used.")
+            uncalled4 = Uncalled4(self._config, transcript.name, transcript.seq, bams)
+            kmers = list(uncalled4.kmer_data_generator())
+        else:
+            res = cursor.execute("""SELECT *
+                                    FROM kmer_data
+                                    WHERE transcript_id = ?""",
+                                 (transcript.id,))
+            kmers = [self._db_row_to_kmer(row)
+                     for row in res.fetchall()]
 
         # After reading the data for all kmers,
         # we can collect all reads and select
@@ -314,7 +344,13 @@ class RunCmd(object):
         all_read_ids = {read_id
                         for kmer in kmers
                         for read_id in kmer.reads}
-        valid_read_ids = self._get_valid_read_ids(cursor, all_read_ids)
+        if self._config.get_resquiggler() == 'uncalled4':
+            invalid_ratios = get_reads_invalid_kmer_ratio(kmers)
+            valid_read_ids = {read
+                              for read, invalid_ratio in invalid_ratios.items()
+                              if invalid_ratio <= self._config.get_max_invalid_kmers_freq()}
+        else:
+            valid_read_ids = self._get_valid_read_ids(cursor, all_read_ids)
         logger.debug(f"Found {len(valid_read_ids)} valid reads out of {len(all_read_ids)}.")
         # discard invalid reads
         kmers = [self._filter_reads(kmer, valid_read_ids) for kmer in kmers]

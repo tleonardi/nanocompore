@@ -18,8 +18,8 @@ import numpy as np
 parser = argparse.ArgumentParser(description='Add genomic positions to Nanocompore results.')
 parser.add_argument('input_tsv', help='The results tsv file from Nanocompore.')
 parser.add_argument('gtf_db', help='The annotation SQLite DB produced from the GTF.')
-parser.add_argument('-t','--threads', help='Number of threads to use (default: 14).', nargs='?', const=14, default=14)
-parser.add_argument('-b','--batch_size', help='Number of rows in each batch (defalut: 3,000,000).', nargs='?', const=3_000_000, default=3_000_000)
+parser.add_argument('-t','--threads', help='Number of threads to use (default: 14).', nargs='?', const=14, default=14, type=int)
+parser.add_argument('-b','--batch_size', help='Number of rows in each batch (defalut: 3,000,000).', nargs='?', const=3_000_000, default=3_000_000, type=int)
 args = parser.parse_args()
 
 INPUT_FN = args.input_tsv
@@ -27,7 +27,7 @@ GTF_FN = args.gtf_db
 MAX_ROWS = args.batch_size
 THREADS = args.threads
 
-print(MAX_ROWS)
+print(f'Will process batches of {MAX_ROWS} using {THREADS} threads.')
 
 
 class Exon:

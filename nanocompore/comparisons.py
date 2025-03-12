@@ -34,13 +34,7 @@ class TranscriptComparator:
         self._motor_dwell_offset = self._config.get_motor_dwell_offset()
 
 
-    def compare_transcript(self, transcript, kmers, device):
-        if len(kmers) == 0:
-            return (transcript, None)
-
-        data, samples, conditions, positions = retry(lambda: self._kmers_to_tensor(kmers, device),
-                                                     exception=torch.OutOfMemoryError)
-
+    def compare_transcript(self, transcript, data, samples, conditions, positions, device=None):
         max_reads = self._config.get_downsample_high_coverage()
         if data.shape[1] > max_reads:
             read_valid_positions = (~data.isnan().any(2)).sum(0)
@@ -129,7 +123,7 @@ class TranscriptComparator:
         return transcript, results
 
 
-    def _kmers_to_tensor(self, kmers, device):
+    def kmers_to_tensor(self, kmers, device):
         """
         Converts the list of kmers to tensors.
         Returns:

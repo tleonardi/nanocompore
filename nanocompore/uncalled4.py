@@ -9,18 +9,55 @@ by Uncalled4 and extracts the data from the tags.
 import pysam
 import numpy as np
 
+from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import wait
+from typing import Dict
+
 from nanocompore.kmer import KmerData
 from nanocompore.common import UNCALLED4_MEASUREMENT_TYPE
+
+
+def get_reads(args):
+    bam, ref_id, sample, condition = args
+    for read in bam.fetch(ref_id):
+        yield read, sample, condition
 
 
 class Uncalled4:
     def __init__(self,
                  config,
                  ref_id,
-                 seq):
+                 seq,
+                 bams=None):
+        """
+        Initialize an Uncalled4 parser.
+
+        Parameters
+        ----------
+        config : nanocompore.config.Config
+            A configuration object that contains all the
+            parameters for the experiment.
+        ref_id : str
+            Reference id for the transcript that will be parsed.
+        seq : str
+            The sequence of the transcript.
+        bams : Dict[str, pysam.AlignmentFile]
+            Dictionary that maps the sample label to the BAM file for the
+            sample, opened as a pysam.AlignmentFile. Default value is None.
+            If no value is provided, the files would be opened during the
+            initialization of the object. Providing them allows the caller
+            to reuse the same opened file for multiple instances.
+        """
         self._config = config
         self._seq = seq
         self._ref_id = ref_id
+        if bams:
+            self._bams = bams
+        else:
+            self._bams = {sample: pysam.AlignmentFile(sample_def['bam'], 'rb')
+                          for _, cond_def in config.get_data().items()
+                          for sample, sample_def in cond_def.items()}
 
 
     def kmer_data_generator(self):
@@ -35,26 +72,41 @@ class Uncalled4:
         sample_labels = []
         condition_labels = []
 
-        read_count = 0
-        for sample, _, bam in self._config.get_sample_condition_bam_data():
-            read_count += pysam.AlignmentFile(bam, 'rb').count(reference=self._ref_id)
+        read_counts = defaultdict(lambda: 0)
+        for sample, condition, _ in self._config.get_sample_condition_bam_data():
+            count = self._bams[sample].count(reference=self._ref_id)
+            read_counts[condition] += min(count, self._config.get_downsample_high_coverage())
+        read_count = sum(read_counts.values())
 
         # shape is: (reads, positions, vars)
         reads_tensor = np.zeros((read_count, ref_len, 3))
 
+        n_samples = len(self._config.get_sample_condition_bam_data())
+        condition_counts = defaultdict(lambda: 0)
         read_index = 0
-        for sample, _, bam in self._config.get_sample_condition_bam_data():
-            for read in pysam.AlignmentFile(bam, 'rb').fetch(self._ref_id):
-                if read.is_secondary or read.is_supplementary:
-                    continue
+        with ThreadPoolExecutor(max_workers=n_samples) as executor:
+            futures = [executor.submit(get_reads, (self._bams[sample], self._ref_id, sample, condition))
+                       for sample, condition, _ in self._config.get_sample_condition_bam_data()]
+            wait(futures, timeout=10)
 
-                self._copy_signal_to_tensor(read, reads_tensor, read_index)
+            zipped_reads = zip(*[future.result() for future in futures])
+            for read_group in zipped_reads:
+                for read, sample, condition in read_group:
+                    if read.is_secondary or read.is_supplementary:
+                        continue
 
-                read_ids.append(read.query_name)
-                sample_labels.append(sample)
-                condition_labels.append(self._config.sample_to_condition()[sample])
+                    if condition_counts[condition] >= self._config.get_downsample_high_coverage():
+                        continue
 
-                read_index += 1
+                    condition_counts[condition] += 1
+
+                    self._copy_signal_to_tensor(read, reads_tensor, read_index)
+
+                    read_ids.append(read.query_name)
+                    sample_labels.append(sample)
+                    condition_labels.append(condition)
+
+                    read_index += 1
 
         # Since we may have skipped secondary or supplementary reads,
         # we need to trim the tensor that we preallocated.

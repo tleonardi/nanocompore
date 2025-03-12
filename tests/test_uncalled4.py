@@ -1,5 +1,7 @@
 import copy
 
+import pysam
+
 from pyfaidx import Fasta
 
 from nanocompore.config import Config
@@ -29,7 +31,10 @@ def test_kmer_data_generator():
     print(fasta_fh.keys())
     ref_seq = str(fasta_fh[ref])
 
-    uncalled4 = Uncalled4(config, ref, ref_seq)
+    bams = {sample: pysam.AlignmentFile(sample_def['bam'], 'rb')
+            for cond, cond_def in config.get_data().items()
+            for sample, sample_def in cond_def.items()}
+    uncalled4 = Uncalled4(config, ref, ref_seq, bams)
     kmers = list(uncalled4.kmer_data_generator())
     assert len(kmers) == 1723
     # The read has two signal segments aligned

@@ -18,6 +18,8 @@ from pyfaidx import Fasta
 from nanocompore.common import EVENTALIGN_MEASUREMENT_TYPE
 from nanocompore.common import READ_ID_TYPE
 from nanocompore.common import SAMPLE_ID_TYPE
+from nanocompore.common import get_reads_invalid_kmer_ratio
+from nanocompore.common import get_references_from_bams
 from nanocompore.common import monitor_workers
 from nanocompore.database import INSERT_READS_QUERY
 from nanocompore.database import INSERT_TRANSCRIPTS_QUERY
@@ -56,48 +58,8 @@ class Preprocessor:
         self._worker_processes = self._config.get_nthreads() - 1
 
 
-    def _get_references_from_bams(self):
-        logger.info("Getting references from the BAMs.")
-        references = set()
-        for condition_def in self._config.get_data().values():
-            for sample, sample_def in condition_def.items():
-                bam = pysam.AlignmentFile(sample_def['bam'], "rb")
-                for line in bam.get_index_statistics():
-                    if line.mapped > 0:
-                        references.add(line.contig)
-        logger.info(f"Found {len(references)} references.")
-        return references
-
-
     def _get_reads_invalid_kmer_ratio(self, kmers):
-        """
-        Calculate the ratio of missing kmers
-        in the read. It takes the kmers with
-        min and max position to determine the
-        read length.
-
-        This is the method employed for Uncalled4 and Remora.
-        For eventalign there's a custom method, that takes
-        in consideration the richer information provided
-        by the resquiggler.
-        """
-        read_counts = defaultdict(lambda: 0)
-        read_ends = defaultdict(lambda: (np.inf, -1))
-
-        for kmer in kmers:
-            for read in kmer.reads:
-                read_counts[read] += 1
-                curr_range = read_ends[read]
-                start = min(kmer.pos, curr_range[0])
-                end = max(kmer.pos, curr_range[1])
-                read_ends[read] = (start, end)
-        return {read: self._calc_invalid_ratio(read_ends[read], count)
-                for read, count in read_counts.items()}
-
-
-    def _calc_invalid_ratio(self, ends, valid):
-        length = ends[1] - ends[0] + 1
-        return (length - valid)/length
+        return get_reads_invalid_kmer_ratio(kmers)
 
 
 class GenericPreprocessor(Preprocessor):
@@ -247,7 +209,7 @@ class Uncalled4Preprocessor(GenericPreprocessor):
     """
 
     def _get_references(self):
-        return self._get_references_from_bams()
+        return get_references_from_bams(self._config)
 
 
     def _get_kmer_generator(self, ref_id, ref_seq):
@@ -269,7 +231,7 @@ class RemoraPreprocessor(GenericPreprocessor):
     """
 
     def _get_references(self):
-        return self._get_references_from_bams()
+        return get_references_from_bams(self._config)
 
 
     def _get_kmer_generator(self, ref_id, ref_seq):
