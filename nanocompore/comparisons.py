@@ -86,8 +86,8 @@ class TranscriptComparator:
                            f"transcript {transcript.name}, but are required for scaling the data. " + \
                            f"The positions {positions[bad_stds].tolist()} will be skipped.")
             data = data[~bad_stds]
-            samples = samples[~bad_stds]
-            conditions = conditions[~bad_stds]
+            # samples = samples[~bad_stds]
+            # conditions = conditions[~bad_stds]
             positions = positions[~bad_stds]
             n_positions = positions.shape[0]
             results.drop(np.arange(results.shape[0])[bad_stds],
@@ -105,8 +105,8 @@ class TranscriptComparator:
             t = time.time()
             test_results = self._run_test(test,
                                           data[mask, :, :],
-                                          samples[mask, :],
-                                          conditions[mask, :],
+                                          samples,
+                                          conditions,
                                           device=device)
             logger.debug(f"Finished {test} ({time.time() - t})")
             self._merge_results(results, test_results, test, mask, auto_test_mask, n_positions)
@@ -448,7 +448,7 @@ class TranscriptComparator:
         data = data.to(device)
 
         stats = {0: {}, 1: {}}
-        cond0_mask = (conditions == 0).unsqueeze(2).to(device)
+        cond0_mask = (conditions == 0)[None, :, None].to(device)
 
         cond0_data = torch.where(cond0_mask, data, np.nan)
         stats[0]['mean'] = cond0_data.nanmean(1).cpu()

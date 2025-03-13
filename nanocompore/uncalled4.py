@@ -16,6 +16,8 @@ from typing import Dict
 
 from nanocompore.kmer import KmerData
 from nanocompore.common import UNCALLED4_MEASUREMENT_TYPE
+from nanocompore.common import INTENSITY_POS
+from nanocompore.common import DWELL_POS
 
 
 def get_reads(args):
@@ -60,7 +62,7 @@ class Uncalled4:
                           for sample, sample_def in cond_def.items()}
 
 
-    def kmer_data_generator(self):
+    def get_data(self):
         """
         A generator that yields one KmerData object
         per position in the transcript.
@@ -79,7 +81,7 @@ class Uncalled4:
         read_count = sum(read_counts.values())
 
         # shape is: (reads, positions, vars)
-        reads_tensor = np.zeros((read_count, ref_len, 3))
+        reads_tensor = np.zeros((ref_len, read_count, 3))
 
         n_samples = len(self._config.get_sample_condition_bam_data())
         condition_counts = defaultdict(lambda: 0)
@@ -110,38 +112,42 @@ class Uncalled4:
 
         # Since we may have skipped secondary or supplementary reads,
         # we need to trim the tensor that we preallocated.
-        reads_tensor = reads_tensor[:read_index, :, :]
+        reads_tensor = reads_tensor[:, :read_index, :]
 
         read_ids = np.array(read_ids)
-        sample_labels = np.array(sample_labels)
-        condition_labels = np.array(condition_labels)
+        sample_id_mapper = np.vectorize(self._config.get_sample_ids().get)
+        sample_ids = sample_id_mapper(sample_labels)
+        condition_id_mapper = np.vectorize(self._config.get_condition_ids().get)
+        condition_ids = condition_id_mapper(condition_labels)
 
-        for pos in range(ref_len - kit.len + 1):
-            kmer = self._seq[pos:pos+kit.len]
-            pos_data = reads_tensor[:, pos, :]
+        return reads_tensor, sample_ids, condition_ids
 
-            # Remove reads that did not have data for the position
-            # or represent an unrecoverable skip event (this happens
-            # when the skip event is the first one).
-            valid_reads = ~np.isnan(pos_data[:, 0]) & (pos_data[:, 0] != 0)
+        # for pos in range(ref_len - kit.len + 1):
+        #     kmer = self._seq[pos:pos+kit.len]
+        #     pos_data = reads_tensor[:, pos, :]
 
-            if valid_reads.sum() == 0:
-                continue
+        #     # Remove reads that did not have data for the position
+        #     # or represent an unrecoverable skip event (this happens
+        #     # when the skip event is the first one).
+        #     valid_reads = ~np.isnan(pos_data[:, 0]) & (pos_data[:, 0] != 0)
 
-            pos_data = pos_data[valid_reads, :].astype(UNCALLED4_MEASUREMENT_TYPE)
-            pos_sample_labels = sample_labels[valid_reads]
-            pos_read_ids = read_ids[valid_reads]
+        #     if valid_reads.sum() == 0:
+        #         continue
 
-            yield KmerData(self._ref_id,
-                           pos, # the position is the start of the kmer
-                           kmer,
-                           pos_sample_labels,
-                           pos_read_ids,
-                           pos_data[:, 1], # intensity
-                           pos_data[:, 2], # standard dev
-                           pos_data[:, 0], # dwell
-                           None, # We don't have validity data here
-                           self._config)
+        #     pos_data = pos_data[valid_reads, :].astype(UNCALLED4_MEASUREMENT_TYPE)
+        #     pos_sample_labels = sample_labels[valid_reads]
+        #     pos_read_ids = read_ids[valid_reads]
+
+        #     yield KmerData(self._ref_id,
+        #                    pos, # the position is the start of the kmer
+        #                    kmer,
+        #                    pos_sample_labels,
+        #                    pos_read_ids,
+        #                    pos_data[:, 1], # intensity
+        #                    pos_data[:, 2], # standard dev
+        #                    pos_data[:, 0], # dwell
+        #                    None, # We don't have validity data here
+        #                    self._config)
 
 
     def _copy_signal_to_tensor(self, read, tensor, read_index):
@@ -168,7 +174,8 @@ class Uncalled4:
         # uc is the signal's current intensity
         uc = np.array(read.get_tag('uc')[::-1])
         # ud is the standard deviation in the current
-        ud = np.array(read.get_tag('ud')[::-1])
+        # We don't use the std for now
+        # ud = np.array(read.get_tag('ud')[::-1])
         # ul is a list of dwell times for the kmers
         # The negative length values are paddings used
         # for each alignment segment.
@@ -212,9 +219,10 @@ class Uncalled4:
             signal_end = signal_start + segment_size
 
             # Copy signal values to the reads tensor
-            tensor[read_index, ref_start:ref_end, 0] = ul[signal_start:signal_end]
-            tensor[read_index, ref_start:ref_end, 1] = uc[signal_start:signal_end]
-            tensor[read_index, ref_start:ref_end, 2] = ud[signal_start:signal_end]
+            tensor[ref_start:ref_end, read_index, DWELL_POS] = ul[signal_start:signal_end]
+            tensor[ref_start:ref_end, read_index, INTENSITY_POS] = uc[signal_start:signal_end]
+            # We don't use the std for now
+            # tensor[read_index, ref_start:ref_end, 2] = ud[signal_start:signal_end]
 
             signal_start += segment_size
 

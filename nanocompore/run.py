@@ -6,6 +6,8 @@ import sys
 import time
 import traceback
 
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import as_completed
 from contextlib import closing
 from multiprocessing.managers import SyncManager
 
@@ -19,16 +21,21 @@ from pyfaidx import Fasta
 from nanocompore.common import Counter
 from nanocompore.common import READ_ID_TYPE
 from nanocompore.common import SAMPLE_ID_TYPE
+from nanocompore.common import INTENSITY_POS
+from nanocompore.common import DWELL_POS
+from nanocompore.common import MOTOR_DWELL_POS
 from nanocompore.common import TranscriptRow
 from nanocompore.common import encode_kmer
 from nanocompore.common import get_measurement_type
 from nanocompore.common import get_reads_invalid_kmer_ratio
+from nanocompore.common import get_references_from_bams
 from nanocompore.common import get_pos_kmer
 from nanocompore.common import log_init_state
 from nanocompore.comparisons import TranscriptComparator
 from nanocompore.comparisons import retry
 from nanocompore.config import Config
 from nanocompore.database import ResultsDB
+from nanocompore.database import PreprocessingDB
 from nanocompore.kmer import KmerData
 from nanocompore.postprocessing import Postprocessor
 from nanocompore.transcript import Transcript
@@ -106,13 +113,18 @@ class RunCmd(object):
         sync_lock = multiprocessing.Lock()
         manager = multiprocessing.Manager()
         num_finished = manager.Value('i', 0)
-        workers = {worker: multiprocessing.Process(target=self._worker_process,
-                                                   args=(worker,
-                                                         task_queue,
-                                                         db_lock,
-                                                         sync_lock,
-                                                         num_finished,
-                                                         device))
+
+        if self._config.get_resquiggler() == 'uncalled4':
+            worker_class = Uncalled4Worker
+        else:
+            worker_class = GenericWorker
+        workers = {worker: worker_class(worker,
+                                        task_queue,
+                                        db_lock,
+                                        sync_lock,
+                                        num_finished,
+                                        device,
+                                        self._config)
                    for worker, device in self._workers_with_device.items()}
 
         for worker in workers.values():
@@ -149,13 +161,13 @@ class RunCmd(object):
                             if not task_queue.empty():
                                 device = self._workers_with_device[worker_id]
                                 logger.info(f"Restarting worker {worker_id} on device {device}.")
-                                new_worker = multiprocessing.Process(target=self._worker_process,
-                                                                     args=(worker_id,
-                                                                           task_queue,
-                                                                           db_lock,
-                                                                           sync_lock,
-                                                                           num_finished,
-                                                                           device))
+                                new_worker = worker_class(worker_id,
+                                                          task_queue,
+                                                          db_lock,
+                                                          sync_lock,
+                                                          num_finished,
+                                                          device,
+                                                          self._config)
                                 new_worker.start()
                                 workers[worker_id] = new_worker
                             else:
@@ -185,178 +197,42 @@ class RunCmd(object):
             print("Done.")
 
 
-    def _worker_process(self,
-                        worker_id: int,
-                        task_queue: multiprocessing.JoinableQueue,
-                        db_lock: multiprocessing.Lock,
-                        sync_lock: multiprocessing.Lock,
-                        num_finished: SyncManager,
-                        device: str):
-        """
-        The main worker process function. It will
-        continuously take tasks (transcripts) from the
-        task queue, process them and write the results
-        to the database. Will quit when the task queue
-        is empty.
+    # def _read_transcript_kmer_data(self,
+    #                                transcript: Transcript,
+    #                                cursor: sqlite3.Cursor,
+    #                                bams):
+    #     if self._config.get_resquiggler() == 'uncalled4':
+    #         logger.debug("Getting data from the bams because Uncalled4 was used.")
+    #         uncalled4 = Uncalled4(self._config, transcript.name, transcript.seq, bams)
+    #         kmers = list(uncalled4.kmer_data_generator())
+    #     else:
+    #         res = cursor.execute("""SELECT *
+    #                                 FROM kmer_data
+    #                                 WHERE transcript_id = ?""",
+    #                              (transcript.id,))
+    #         kmers = [self._db_row_to_kmer(row)
+    #                  for row in res.fetchall()]
 
-        Parameters
-        ----------
-        worker_id : int
-            Id of the worker
-        task_queue : multiprocesing.JoinableQueue
-            Queue with tasks for processing.
-        db_lock : multiprocesing.Lock
-            Lock to prevent parallel writing to the SQLite DB.
-        sync_lock : multiprocesing.Lock
-            Lock for synchronisation.
-        num_finished : multiprocesing.managers.SyncManager
-            Number of processed transcripts.
-        device : str
-            Which device to use for computation (e.g. cpu or gpu).
-        """
-        db_manager = ResultsDB(self._config, init_db=False)
-        fasta_fh = Fasta(self._config.get_fasta_ref())
-        comparator = TranscriptComparator(config=self._config)
-        kit = self._config.get_kit()
-        logger.info(f"Worker {worker_id} started with pid {os.getpid()}.")
-
-        bams = {sample: pysam.AlignmentFile(bam, 'rb')
-                for sample, _, bam in self._config.get_sample_condition_bam_data()}
-
-        db = self._config.get_preprocessing_db()
-        with closing(sqlite3.connect(db)) as conn,\
-             closing(conn.cursor()) as cursor:
-            # When Python grows the heap to find space
-            # for memory allocations, after the objects
-            # are deleted and freed, the memory may not
-            # be returned back to the OS. Hence, the
-            # reserved memory stays at the high-water
-            # mark level that was previously taken.
-            # Since each worker would stumble at an
-            # unusally large transcript (in terms of
-            # the amount of data) from time to time,
-            # the heap of the worker may grow, but it
-            # won't shrink after that, leading to
-            # a lot of unused head size. When this happens
-            # for many workers, the OS or job scheduler
-            # may kill the process because it used too
-            # much memory.
-            # To ameliorate this issue, we can set a
-            # fixed number of iterations for the worker
-            # and let the main orchestrator process
-            # spawn a new worker when it detects the
-            # termination.
-            for i in range(MAX_PROC_ITERATIONS):
-                # It's weird that we have to use a lock here,
-                # but for some reason calling get in parallel from
-                # multiple processes can cause a queue.Empty
-                # exception to be raised even for non-empty queues...
-                # https://github.com/python/cpython/issues/87302
-                with sync_lock:
-                    try:
-                        logger.info(f"Worker {worker_id} getting a task from "
-                                    f"a queue with size {task_queue.qsize()}")
-                        msg = task_queue.get(block=False)
-                    except queue.Empty:
-                        logger.info(f"Worker {worker_id} could not find more "
-                                    "tasks in the queue and will terminate.")
-                        break
-
-                try:
-                    transcript_ref, retries = msg
-                    if retries > 2:
-                        logger.error(f"Worker {worker_id}: Transcript "
-                                     f"{transcript_ref.ref_id} was retried "
-                                     "too many times. Won't retry again.")
-                        continue
-                    logger.info(f"Worker {worker_id} starts processing {transcript_ref.ref_id}")
-                    transcript = Transcript(id=transcript_ref.id,
-                                            ref_id=transcript_ref.ref_id,
-                                            ref_seq=str(fasta_fh[transcript_ref.ref_id]))
-
-                    kmer_data_list = self._read_transcript_kmer_data(transcript, cursor, bams)
-                    if len(kmer_data_list) == 0:
-                        continue
-
-                    data, samples, conditions, positions = retry(lambda: comparator.kmers_to_tensor(kmer_data_list, device),
-                                                                 exception=torch.OutOfMemoryError)
-                    del kmer_data_list
-                    transcript, results = comparator.compare_transcript(transcript,
-                                                                        data,
-                                                                        samples,
-                                                                        conditions,
-                                                                        positions,
-                                                                        device)
-                    if results is None:
-                        continue
-
-                    seq = transcript.seq
-                    kmers = results.pos.apply(lambda pos: get_pos_kmer(pos, seq, kit))
-                    results['kmer'] = kmers.apply(encode_kmer)
-                    with db_lock:
-                        logger.info(f"Worker {worker_id}: Saving the results for {transcript.name}")
-                        db_manager.save_test_results(transcript, results)
-                except torch.OutOfMemoryError:
-                    task = TranscriptRow(transcript.name, transcript.id)
-                    logger.info(f"Worker {worker_id} returns {transcript_ref.ref_id} to " + \
-                                 "the queue for later processing because it failed with OutOfMemory.")
-                    with sync_lock:
-                        task_queue.put((task, retries + 1))
-                except Exception as e:
-                    if 'out of memory' in str(e):
-                        task = TranscriptRow(transcript.name, transcript.id)
-                        logger.info(f"Worker {worker_id} returns {transcript_ref.ref_id} to " + \
-                                     "the queue for later processing because it failed with OutOfMemory.")
-                        with sync_lock:
-                            task_queue.put((task, retries + 1))
-                    else:
-                        msg = traceback.format_exc()
-                        logger.error(f"Error in Worker {worker_id}: {msg}")
-                finally:
-                    logger.info(f"Worker {worker_id} is finishing a task.")
-                    with sync_lock:
-                        num_finished.value += 1
-                        task_queue.task_done()
-            else:
-                logger.info(f"Worker {worker_id} completed a batch of transcripts. Will restart now.")
-
-
-    def _read_transcript_kmer_data(self,
-                                   transcript: Transcript,
-                                   cursor: sqlite3.Cursor,
-                                   bams):
-        if self._config.get_resquiggler() == 'uncalled4':
-            logger.debug("Getting data from the bams because Uncalled4 was used.")
-            uncalled4 = Uncalled4(self._config, transcript.name, transcript.seq, bams)
-            kmers = list(uncalled4.kmer_data_generator())
-        else:
-            res = cursor.execute("""SELECT *
-                                    FROM kmer_data
-                                    WHERE transcript_id = ?""",
-                                 (transcript.id,))
-            kmers = [self._db_row_to_kmer(row)
-                     for row in res.fetchall()]
-
-        # After reading the data for all kmers,
-        # we can collect all reads and select
-        # only the ones that pass the filtering
-        # criteria.
-        all_read_ids = {read_id
-                        for kmer in kmers
-                        for read_id in kmer.reads}
-        if self._config.get_resquiggler() == 'uncalled4':
-            invalid_ratios = get_reads_invalid_kmer_ratio(kmers)
-            valid_read_ids = {read
-                              for read, invalid_ratio in invalid_ratios.items()
-                              if invalid_ratio <= self._config.get_max_invalid_kmers_freq()}
-        else:
-            valid_read_ids = self._get_valid_read_ids(cursor, all_read_ids)
-        logger.debug(f"Found {len(valid_read_ids)} valid reads out of {len(all_read_ids)}.")
-        # discard invalid reads
-        kmers = [self._filter_reads(kmer, valid_read_ids) for kmer in kmers]
-        # get only kmers that have the minimum number of reads required
-        kmers = [kmer for kmer in kmers if self._enough_reads_in_kmer(kmer)]
-        return kmers
+    #     # After reading the data for all kmers,
+    #     # we can collect all reads and select
+    #     # only the ones that pass the filtering
+    #     # criteria.
+    #     all_read_ids = {read_id
+    #                     for kmer in kmers
+    #                     for read_id in kmer.reads}
+    #     if self._config.get_resquiggler() == 'uncalled4':
+    #         invalid_ratios = get_reads_invalid_kmer_ratio(kmers)
+    #         valid_read_ids = {read
+    #                           for read, invalid_ratio in invalid_ratios.items()
+    #                           if invalid_ratio <= self._config.get_max_invalid_kmers_freq()}
+    #     else:
+    #         valid_read_ids = self._get_valid_read_ids(cursor, all_read_ids)
+    #     logger.debug(f"Found {len(valid_read_ids)} valid reads out of {len(all_read_ids)}.")
+    #     # discard invalid reads
+    #     kmers = [self._filter_reads(kmer, valid_read_ids) for kmer in kmers]
+    #     # get only kmers that have the minimum number of reads required
+    #     kmers = [kmer for kmer in kmers if self._enough_reads_in_kmer(kmer)]
+    #     return kmers
 
 
     def _filter_reads(self, kmer: KmerData, valid_read_ids: set):
@@ -413,16 +289,19 @@ class RunCmd(object):
 
 
     def _get_transcripts_for_processing(self):
-        db = self._config.get_preprocessing_db()
-        with closing(sqlite3.connect(db)) as conn,\
-             closing(conn.cursor()) as cursor:
-            query = """
-            SELECT DISTINCT t.name, t.id
-            FROM kmer_data kd
-            INNER JOIN transcripts t ON kd.transcript_id = t.id
-            """
-            return {TranscriptRow(row[0], row[1])
-                    for row in cursor.execute(query).fetchall()}
+        if self._config.get_resquiggler() == "uncalled4":
+            return get_references_from_bams(self._config)
+        else:
+            logger.info("Getting references from the input databases.")
+            references = set()
+            with ThreadPoolExecutor(max_workers=4) as executor:
+                futures = [executor.submit(PreprocessingDB(sample_def['db']).get_references_with_data)
+                           for condition_def in self._config.get_data().values()
+                           for sample, sample_def in condition_def.items()]
+                for future in as_completed(futures):
+                    references.update(future.result())
+            logger.info(f"Found {len(references)} references.")
+            return references
 
 
     def _filter_processed_transcripts(self, transcripts: set[TranscriptRow]):
@@ -485,4 +364,326 @@ class RunCmd(object):
         hours, remainder = divmod(seconds, 3600)
         minutes, seconds = divmod(remainder, 60)
         return int(hours), int(minutes), int(seconds)
+
+
+class Worker(multiprocessing.Process):
+    def __init__(self,
+                 worker_id,
+                 task_queue,
+                 db_lock,
+                 sync_lock,
+                 num_finished,
+                 device,
+                 config):
+        """
+        Abstract parent for different type of worker processes.
+        Different workers may read data from different source,
+        but then should process it in the same way.
+
+        The worker will continuously take tasks (transcripts)
+        from the task queue, process them and write the results
+        to the database. Will quit when the task queue is empty.
+
+        Parameters
+        ----------
+        worker_id : int
+            Id of the worker
+        task_queue : multiprocesing.JoinableQueue
+            Queue with tasks for processing.
+        db_lock : multiprocesing.Lock
+            Lock to prevent parallel writing to the SQLite DB.
+        sync_lock : multiprocesing.Lock
+            Lock for synchronisation.
+        num_finished : multiprocesing.managers.SyncManager
+            Number of processed transcripts.
+        device : str
+            Which device to use for computation (e.g. cpu or gpu).
+        config : nanocompore.Config
+            The configuration object.
+        """
+        super().__init__()
+        self._id = worker_id
+        self._task_queue = task_queue
+        self._db_lock = db_lock
+        self._sync_lock = sync_lock
+        self._num_finished = num_finished
+        self._device = device
+        # Note: we're deviating from our convention
+        # to use self._config everywhere for the
+        # Config object, because _config is used
+        # by Process.
+        self._conf = config
+        self._db_manager = ResultsDB(self._conf, init_db=False)
+        self._fasta_fh = Fasta(self._conf.get_fasta_ref())
+        self._comparator = TranscriptComparator(config=self._conf)
+        self._kit = self._conf.get_kit()
+        logger.info(f"Worker {worker_id} started with pid {os.getpid()}.")
+
+
+    def run(self):
+        # When Python grows the heap to find space
+        # for memory allocations, after the objects
+        # are deleted and freed, the memory may not
+        # be returned back to the OS. Hence, the
+        # reserved memory stays at the high-water
+        # mark level that was previously taken.
+        # Since each worker would stumble at an
+        # unusally large transcript (in terms of
+        # the amount of data) from time to time,
+        # the heap of the worker may grow, but it
+        # won't shrink after that, leading to
+        # a lot of unused head size. When this happens
+        # for many workers, the OS or job scheduler
+        # may kill the process because it used too
+        # much memory.
+        # To ameliorate this issue, we can set a
+        # fixed number of iterations for the worker
+        # and let the main orchestrator process
+        # spawn a new worker when it detects the
+        # termination.
+        for i in range(MAX_PROC_ITERATIONS):
+            # It's weird that we have to use a lock here,
+            # but for some reason calling get in parallel from
+            # multiple processes can cause a queue.Empty
+            # exception to be raised even for non-empty queues...
+            # https://github.com/python/cpython/issues/87302
+            with self._sync_lock:
+                try:
+                    logger.info(f"Worker {self._id} getting a task from "
+                                f"a queue with size {self._task_queue.qsize()}")
+                    msg = self._task_queue.get(block=False)
+                except queue.Empty:
+                    logger.info(f"Worker {self._id} could not find more "
+                                "tasks in the queue and will terminate.")
+                    break
+
+            try:
+                transcript_ref, retries = msg
+                if retries > 2:
+                    logger.error(f"Worker {self._id}: Transcript "
+                                 f"{transcript_ref.ref_id} was retried "
+                                 "too many times. Won't retry again.")
+                    continue
+                logger.info(f"Worker {self._id} starts processing {transcript_ref.ref_id}")
+                transcript = Transcript(id=transcript_ref.id,
+                                        ref_id=transcript_ref.ref_id,
+                                        ref_seq=str(self._fasta_fh[transcript_ref.ref_id]))
+
+                data, samples, conditions = self._read_data(transcript)
+                prepared_data = self._prepare_data(data, samples, conditions)
+                data, samples, conditions, positions = prepared_data
+                data, positions = self._filter_low_cov_positions(data, positions)
+
+                transcript, results = self._comparator.compare_transcript(
+                        transcript,
+                        data,
+                        samples,
+                        conditions,
+                        positions,
+                        self._device)
+
+                if results is None:
+                    continue
+
+                seq = transcript.seq
+                kmers = results.pos.apply(lambda pos: get_pos_kmer(pos, seq, self._kit))
+                results['kmer'] = kmers.apply(encode_kmer)
+                with self._db_lock:
+                    logger.info(f"Worker {self._id}: Saving the results for {transcript.name}")
+                    self._db_manager.save_test_results(transcript, results)
+            except torch.OutOfMemoryError:
+                task = TranscriptRow(transcript.name, transcript.id)
+                logger.info(f"Worker {self._id} returns {transcript_ref.ref_id} to " + \
+                             "the queue for later processing because it failed with OutOfMemory.")
+                with self._sync_lock:
+                    self._task_queue.put((task, retries + 1))
+            except Exception as e:
+                if 'out of memory' in str(e):
+                    task = TranscriptRow(transcript.name, transcript.id)
+                    logger.info(f"Worker {self._id} returns {transcript_ref.ref_id} to " + \
+                                 "the queue for later processing because it failed with OutOfMemory.")
+                    with self._sync_lock:
+                        self._task_queue.put((task, retries + 1))
+                else:
+                    msg = traceback.format_exc()
+                    logger.error(f"Error in Worker {self._id}: {msg}")
+            finally:
+                logger.info(f"Worker {self._id} is finishing a task.")
+                with self._sync_lock:
+                    self._num_finished.value += 1
+                    self._task_queue.task_done()
+        else:
+            logger.info(f"Worker {self._id} completed a batch of transcripts. Will restart now.")
+
+
+    def _filter_low_cov_positions(self, data, positions):
+        coverage_per_pos = torch.sum(~data[:, :, INTENSITY_POS].isnan(), dim=1)
+        valid_positions = coverage_per_pos >= self._conf.get_min_coverage()
+        return data[valid_positions], positions[valid_positions]
+
+
+    def _prepare_data(self,
+                      data,
+                      samples,
+                      conditions):
+        motor_offset = self._conf.get_motor_dwell_offset()
+        num_positions = data.shape[0]
+        if self._conf.get_motor_dwell_offset() > 0:
+            data = np.pad(data,
+                          ((0, 0), (0, 0), (0, 1)),
+                          mode='constant',
+                          constant_values=np.nan)
+            end = num_positions - motor_offset
+            if end > 0:
+                data[:end, :, MOTOR_DWELL_POS] = data[motor_offset:, :, DWELL_POS]
+
+        # Mark positions for which we don't have any reads as invalid.
+        valid_positions = (~np.isnan(data).any(2)).all(1)
+        tensor = torch.tensor(data[valid_positions, :, :],
+                              dtype=torch.float32,
+                              device=self._device)
+        samples = torch.tensor(samples,
+                               dtype=torch.int16,
+                               device=self._device)
+        conditions = torch.tensor(conditions,
+                                  dtype=torch.int16,
+                                  device=self._device)
+        positions = torch.arange(data.shape[0],
+                                 dtype=torch.int16,
+                                 device=self._device)[valid_positions]
+        return (tensor, samples, conditions, positions)
+
+
+    def _read_data(self, transcript: Transcript):
+        raise NotImplementedError("This method should be overriden by specific " + \
+                                  "worker process implementations.")
+
+
+class Uncalled4Worker(Worker):
+    def __init__(self,
+                 worker_id,
+                 task_queue,
+                 db_lock,
+                 sync_lock,
+                 num_finished,
+                 device,
+                 config):
+        """
+        Initialize an Uncalled4 worker. It will use
+        BAM files produced with Uncalled4's align
+        subcommand for its input data.
+
+        The worker will continuously take tasks (transcripts)
+        from the task queue, process them and write the results
+        to the database. Will quit when the task queue is empty.
+
+        Parameters
+        ----------
+        worker_id : int
+            Id of the worker
+        task_queue : multiprocesing.JoinableQueue
+            Queue with tasks for processing.
+        db_lock : multiprocesing.Lock
+            Lock to prevent parallel writing to the SQLite DB.
+        sync_lock : multiprocesing.Lock
+            Lock for synchronisation.
+        num_finished : multiprocesing.managers.SyncManager
+            Number of processed transcripts.
+        device : str
+            Which device to use for computation (e.g. cpu or gpu).
+        config : nanocompore.Config
+            The configuration object.
+        """
+        super().__init__(worker_id,
+                         task_queue,
+                         db_lock,
+                         sync_lock,
+                         num_finished,
+                         device,
+                         config)
+        data_def = self._conf.get_sample_condition_bam_data()
+        self._bams = {sample: pysam.AlignmentFile(bam, 'rb')
+                      for sample, _, bam in data_def}
+
+
+    def _read_data(self, transcript: Transcript):
+        uncalled4 = Uncalled4(self._conf,
+                              transcript.name,
+                              transcript.seq,
+                              self._bams)
+        data, samples, conditions = uncalled4.get_data()
+
+        valid_reads = np.full(data.shape[1], False)
+
+        for n in range(data.shape[1]):
+            valid_positions = np.where(~np.isnan(data[:, n, INTENSITY_POS]))[0]
+            length = valid_positions.max() - valid_positions.min() + 1
+            invalid_ratio = (length - len(valid_positions))/length
+
+            if invalid_ratio < self._conf.get_max_invalid_kmers_freq():
+                valid_reads[n] = True
+            
+        return data[:, valid_reads], samples[valid_reads], conditions[valid_reads]
+
+
+    def close(self):
+        for _, bam in self._bams:
+            bam.close()
+        super().close()
+
+
+class GenericWorker(Worker):
+    def __init__(self,
+                 worker_id,
+                 task_queue,
+                 db_lock,
+                 sync_lock,
+                 num_finished,
+                 device,
+                 config):
+        """
+        Initialize a generic worker. It will use SQLite databases
+        for its input data.
+
+        The worker will continuously take tasks (transcripts)
+        from the task queue, process them and write the results
+        to the database. Will quit when the task queue is empty.
+
+        Parameters
+        ----------
+        worker_id : int
+            Id of the worker
+        task_queue : multiprocesing.JoinableQueue
+            Queue with tasks for processing.
+        db_lock : multiprocesing.Lock
+            Lock to prevent parallel writing to the SQLite DB.
+        sync_lock : multiprocesing.Lock
+            Lock for synchronisation.
+        num_finished : multiprocesing.managers.SyncManager
+            Number of processed transcripts.
+        device : str
+            Which device to use for computation (e.g. cpu or gpu).
+        config : nanocompore.Config
+            The configuration object.
+        """
+        super().__init__(worker_id,
+                         task_queue,
+                         db_lock,
+                         sync_lock,
+                         num_finished,
+                         device,
+                         config)
+        data_def = self._conf.get_sample_condition_db_data()
+        self._dbs = {sample: sqlite3.connect(db)
+                     for sample, _, db in data_def}
+
+
+    def _read_data(self, transcript: Transcript):
+        pass
+
+
+    def close(self):
+        for _, db in self._dbs:
+            db.close()
+        super().close()
 

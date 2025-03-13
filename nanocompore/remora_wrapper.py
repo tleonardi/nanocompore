@@ -2,6 +2,7 @@ import pod5
 import pysam
 import numpy as np
 import pandas as pd
+from typing import Optional
 
 from loguru import logger
 from pkg_resources import resource_filename
@@ -17,76 +18,124 @@ RNA002_LEVELS_FILE = "models/rna002_5mer_levels_v1.txt"
 RNA004_LEVELS_FILE = "models/rna004_9mer_levels_v1.txt"
 VAR_ORDER = ['dwell', 'trimmean', 'trimsd']
 
+DEFAULT_MAX_READS = 5000
+
 
 class Remora:
+    """
+    Resquiggles reads using ONT's Remora.
+    """
+
     def __init__(self,
-                 config,
-                 ref_id='',
-                 start=0,
-                 end=1,
-                 seq='',
-                 strand='+'):
-        self._config = config
-        self._seq = seq
-        self._min_coverage = config.get_min_coverage()
-        self._ref_id = ref_id
-        self._pod5_bam_tuples = []
-        self._condition_labels = []
-        self._sample_labels = []
+                 pod5_path: str,
+                 bam_path: str,
+                 kit: Optional[Kit]=Kit.RNA004,
+                 max_reads: Optional[int]=DEFAULT_MAX_READS):
+        """
 
-        logger.trace(f"Creating Remora object for {ref_id}")
-        self._build_pod5_bam_tuple()
-        logger.trace(f"All pod5 and bam files were properly opened for {ref_id}")
-
-        #Remora requires a kmer model file to resquiggle the data (Signal to sequence alignment)
-        #This is defined as a singal refiner object in the Remora API
-        #Without the signal refiner, it will not resquiggle, but instead merely return the ionic current stream
+        Parameters
+        ----------
+        kit : Optional[Kit]
+            The sequencing kit used. By default will use RNA004.
+            
+        max_reads : Optional[int]
+            Maximum number of reads to resquiggle.
+            By default will use no more than 5000.
+            
+        pod5_path : str
+            The path to the pod5 file with the signal data.
+            
+        bam_path : str
+            The path to the aligned bam file.
+        """
+        self._kit = kit
+        self._max_reads = max_reads
         try:
-            self._sig_map_refiner = self._check_signal_refiner(kit=config.get_kit())
+            self._pod5 = pod5.Reader(pod5_path)
         except Exception:
-            raise NanocomporeError("failed to create the signal map refiner. Check that the kmer model table is up-to-date")
+            raise NanocomporeError(f"Failed to open pod5 file {pod5}")
 
-        #Remora requires a specific region in the reference to focus the resquiggling algorithm
-        #This is part of the Remora API for creating the reference region
         try:
-            self._ref_reg = io.RefRegion(ctg=ref_id, strand=strand, start=start, end=end)
+            self._bam = pysam.AlignmentFile(bam_path)
         except Exception:
-            raise NanocomporeError(f"failed to create the remora reference region for {ref_id}")
+            raise NanocomporeError(f"Failed to open bam file {bam_path}")
 
-        #TODO test Nanocompore accuracy using seconds per kmer or samples per kmer
-        #Remora returns the number of datapoints per kmer, not the number of seconds the kmer persisted in the
-        #sensitive region of the nanopore. This function uses the pod5 api to convert the sampling rate of the
-        #sequencing (hz) to time per sample (seconds)
+        # Remora requires a kmer model file to resquiggle
+        # the data (signal to sequence alignment). This is
+        # defined as a singal refiner object in the Remora API.
+        # Without the signal refiner, it will not resquiggle,
+        # but instead merely return the ionic current stream
+        try:
+            self._sig_map_refiner = self._check_signal_refiner(kit=kit)
+        except Exception:
+            raise NanocomporeError("Failed to create the signal map refiner. "
+                                   "Check that the kmer model table is up-to-date")
+
+        # TODO test Nanocompore accuracy using seconds per kmer
+        # or samples per kmer. Remora returns the number of
+        # datapoints per kmer, not the number of seconds the
+        # kmer persisted in the sensitive region of the nanopore.
+        # This function uses the pod5 api to convert the sampling
+        # rate of the sequencing (hz) to time per sample (seconds).
         try:
             self._time_per_sample = self._get_time_per_sample()
         except Exception:
-            raise NanocomporeError("failed to check for sampling rate. Likely something wrong with the pod5 file")
+            raise NanocomporeError("Failed to check for sampling rate. "
+                                   "Likely something wrong with the pod5 file")
 
 
-    def _get_samples_metrics(self):
-        samples_metrics, bam_reads = self._remora_resquiggle(
-                self._config.get_downsample_high_coverage(),
-                self._config.get_kit())
+    def kmer_data_generator(self, ref_id:str, ref_seq:str):
+        """
+        Returns a generator that yields KmerData objects.
 
-        bam_reads = [[r.qname for r in reads] for reads in bam_reads]
+        Parameters
+        ----------
+        ref_id : str
+            Reference ID of the transcript.
+        ref_seq : 
+            Reference sequence of the transcript.
+        """
+        ref_region = io.RefRegion(ctg=ref_id,
+                                  strand='+',
+                                  start=0,
+                                  end=len(ref_seq))
 
-        return samples_metrics, bam_reads
+        try:
+            # Resquiggle the signal and get the summary metrics for
+            # each position of the transcript. The result is a dict
+            # with metrics:
+            # {metric: <numpy appray with shape (reads, positions)>, ...}
+            samples_metrics, bam_reads = self._remora_resquiggle(ref_region)
+        except RemoraError as e:
+            if str(e) == "No reads covering region":
+                return 
+            raise NanocomporeError("failed to resquiggle with Remora") from e
+        except Exception as e:
+            raise NanocomporeError("failed to resquiggle with Remora") from e
+
+        # Iterate over all positions of the transcript using
+        # 0-based indexing.
+        for pos in range(ref_region.len):
+            # Remora gives the signal measurements at
+            # a single base resolution, so we only
+            # store a 1-mer.
+            kmer_seq = ref_seq[pos]
+
+            yield KmerData(None,
+                           pos,
+                           kmer_seq,
+                           None, # We don't need a sample label here
+                           bam_reads,
+                           samples_metrics['trimmean'],
+                           samples_metrics['trimsd'],
+                           samples_metrics['dwell'],
+                           None, # We don't have validity data here
+                           None) # We don't have a config here
 
 
-    def _build_pod5_bam_tuple(self):
-        for sample, pod5_fn, bam in self._config.get_sample_pod5_bam_data():
-            try:
-                pod5_fh = pod5.Reader(pod5_fn)
-            except Exception:
-                raise NanocomporeError(f"failed to open pod5 file {pod5}")
-
-            try:
-                bam_fh = pysam.AlignmentFile(bam)
-            except Exception:
-                raise NanocomporeError(f"failed to open bam file {bam}")
-
-            self._pod5_bam_tuples.append((pod5_fh, bam_fh))
-            self._sample_labels.append(sample)
+    @property
+    def kmer_size(self):
+        return self._kmer_size
 
 
     def _check_signal_refiner(self, kit):
@@ -106,8 +155,7 @@ class Remora:
 
     def _get_time_per_sample(self):
         logger.trace("Attempting to calculate time per sample")
-        first_pod5 = self._pod5_bam_tuples[0][0]
-        read = next(first_pod5.reads())
+        read = next(self._pod5.reads())
         sample_rate = read.run_info.sample_rate
         logger.trace(f"Sampling rate is {sample_rate} Hz")
         time_per_sample = 1.0/sample_rate
@@ -115,21 +163,20 @@ class Remora:
         return time_per_sample
 
 
-    def _remora_resquiggle(self, max_reads, kit):
-        RNA = 'RNA' in kit.name.upper()
-
-        logger.info(f"Starting to resquiggle data with Remora API for {self._ref_reg.ctg}")
+    def _remora_resquiggle(self, ref_region):
+        logger.debug(f"Starting to resquiggle data with Remora API for {ref_region.ctg}")
         samples_metrics, all_bam_reads = io.get_ref_reg_samples_metrics(
-            self._ref_reg,
-            self._pod5_bam_tuples,
+            ref_region,
+            [(self._pod5, self._bam)],
             metric="dwell_trimmean_trimsd",
             sig_map_refiner=self._sig_map_refiner,
-            max_reads=max_reads,
-            reverse_signal=RNA,
+            max_reads=self._max_reads,
+            # we only support directRNA for now which is sequenced in 3'->5' direction
+            reverse_signal=True,
             signal_type='norm',
         )
-        logger.info(f"Data for {self._ref_reg.ctg} resquiggled")
-        return samples_metrics, all_bam_reads
+        logger.debug(f"Data for {ref_region.ctg} resquiggled")
+        return samples_metrics[0], [read.qname for read in all_bam_reads[0]]
 
 
     def _kmer_model_selector(self, kit):
@@ -149,71 +196,4 @@ class Remora:
             kmer_size = len(line[0])
         logger.debug(f'The kmer size is {kmer_size}')
         return kmer_size
-
-
-    def kmer_data_generator(self):
-        kit = self._config.get_kit()
-
-        try:
-            # Resquiggle the signal and get the summary metrics for
-            # each position of the transcript. The result is list of dicts
-            # with one dict per sample and each dict has the type:
-            # {metric: <numpy appray with shape (reads, positions)>, ...}
-            samples_metrics, bam_reads = self._get_samples_metrics()
-        except RemoraError as e:
-            if str(e) == "No reads covering region":
-                return 
-            raise NanocomporeError("failed to resquiggle with Remora") from e
-        except Exception as e:
-            raise NanocomporeError("failed to resquiggle with Remora") from e
-
-        # Get [(reads, positions, vars), ...] with one 3d tensor per sample
-        per_sample_tensors = [np.stack([d[v] for v in VAR_ORDER], axis=2, dtype=REMORA_MEASUREMENT_TYPE)
-                              for d in samples_metrics]
-        # Delete the variables to allow GC to swipe unused
-        # data while the generator is still used.
-        del samples_metrics
-
-        # Get [sample1_reads_count, sample2_reads_count, ...]
-        sample_reads_count = [t.shape[0] for t in per_sample_tensors]
-
-        # Get the label for each sample repeated by the number of reads
-        sample_labels = np.array(self._sample_labels).repeat(sample_reads_count)
-
-        # Get (samples*reads, pos, vars)
-        tensor = np.concatenate(per_sample_tensors, axis=0, dtype=REMORA_MEASUREMENT_TYPE)
-        del per_sample_tensors
-
-        reads = np.concatenate(bam_reads)
-
-        # Iterate over all positions of the transcript using
-        # 0-based indexing.
-        for pos in range(self._ref_reg.len):
-            # Remora gives the signal measurements at
-            # a single base resolution, so we only
-            # store a 1-mer.
-            kmer_seq = self._seq[pos]
-            pos_data = tensor[:, pos, :]
-
-            # Remove reads with nan values for any of the variables at that position
-            non_nan_rows = ~np.isnan(pos_data).any(axis=1)
-            pos_data = pos_data[non_nan_rows, :]
-            pos_sample_labels = sample_labels[non_nan_rows]
-            pos_reads = reads[non_nan_rows]
-
-            yield KmerData(None,
-                           pos,
-                           kmer_seq,
-                           pos_sample_labels,
-                           pos_reads,
-                           pos_data[:, VAR_ORDER.index('trimmean')],
-                           pos_data[:, VAR_ORDER.index('trimsd')],
-                           pos_data[:, VAR_ORDER.index('dwell')],
-                           None, # We don't have validity data here
-                           self._config)
-
-
-    @property
-    def kmer_size(self):
-        return self._kmer_size
 

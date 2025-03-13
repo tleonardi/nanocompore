@@ -44,6 +44,10 @@ UNCALLED4_MEASUREMENT_TYPE = np.int16
 EVENTALIGN_MEASUREMENT_TYPE = np.float32
 
 
+INTENSITY_POS = 0
+DWELL_POS = 1
+MOTOR_DWELL_POS = 2
+
 def is_valid_position(pos, seq_len, kit):
     """
     Takes a position (in 0-based transcriptomic coords),
@@ -517,7 +521,8 @@ def get_references_from_bams(config, threads=4):
         for future in as_completed(futures):
             references.update(future.result())
     logger.info(f"Found {len(references)} references.")
-    return references
+    return {TranscriptRow(ref_id, i)
+            for ref_id, i in zip(references, range(len(references)))}
 
 
 def get_reads_invalid_kmer_ratio(kmers):

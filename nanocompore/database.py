@@ -14,6 +14,7 @@ from nanocompore.common import NanocomporeError
 from nanocompore.common import READ_ID_TYPE
 from nanocompore.common import SAMPLE_ID_TYPE
 from nanocompore.common import get_measurement_type
+from nanocompore.common import TranscriptRow
 
 
 DB_METADATA_RESQUIGGLER_KEY = 'resquiggler'
@@ -244,9 +245,8 @@ class ResultsDB():
 
 
 class PreprocessingDB:
-    def __init__(self, db, config):
+    def __init__(self, db):
         self._db = db
-        self._config = config
 
 
     def connect(self):
@@ -260,11 +260,11 @@ class PreprocessingDB:
         return conn
 
 
-    def setup(self):
+    def setup(self, metadata):
         with closing(self.connect()) as conn,\
              closing(conn.cursor()) as cursor:
             cursor.execute(DROP_KMER_DATA_TABLE_QUERY)
-            cursor.execute(CREATE_KMER_DATA_TABLE_QUERY)
+            cursor.execute(CREATE_INTERMEDIARY_KMER_DATA_TABLE_QUERY)
             cursor.execute(DROP_READS_TABLE_QUERY)
             cursor.execute(CREATE_READS_TABLE_QUERY)
             cursor.execute(DROP_TRANSCRIPTS_TABLE_QUERY)
@@ -274,7 +274,7 @@ class PreprocessingDB:
             cursor.execute(DROP_TRANSCRIPTS_ID_INDEX_QUERY)
             cursor.execute(DROP_READS_ID_INDEX_QUERY)
             cursor.execute(DROP_KMERS_INDEX_QUERY)
-        self._write_metadata()
+        self.write_metadata(metadata)
     
 
     def create_indices(self):
@@ -285,17 +285,17 @@ class PreprocessingDB:
             cursor.execute(CREATE_TRANSCRIPTS_ID_INDEX_QUERY)
 
 
-    def _write_metadata(self):
-        resquiggler = self._config.get_resquiggler()
-        condition_samples = self._config.get_data()
-        metadata = {
-            DB_METADATA_RESQUIGGLER_KEY: resquiggler,
-            DB_METADATA_READ_ID_TYPE_KEY: READ_ID_TYPE.__name__,
-            DB_METADATA_SAMPLE_ID_TYPE_KEY: SAMPLE_ID_TYPE.__name__,
-            DB_METADATA_MEASUREMENT_TYPE_KEY: get_measurement_type(resquiggler).__name__,
-            DB_METADATA_SAMPLE_LABELS_KEY: ','.join(self._config.get_sample_labels()),
-            DB_METADATA_CONDITION_SAMPLES_KEY: json.dumps(condition_samples),
-        }
+    def write_metadata(self, metadata):
+        # resquiggler = self._config.get_resquiggler()
+        # condition_samples = self._config.get_data()
+        # metadata = {
+        #     DB_METADATA_RESQUIGGLER_KEY: resquiggler,
+        #     DB_METADATA_READ_ID_TYPE_KEY: READ_ID_TYPE.__name__,
+        #     DB_METADATA_SAMPLE_ID_TYPE_KEY: SAMPLE_ID_TYPE.__name__,
+        #     DB_METADATA_MEASUREMENT_TYPE_KEY: get_measurement_type(resquiggler).__name__,
+        #     DB_METADATA_SAMPLE_LABELS_KEY: ','.join(self._config.get_sample_labels()),
+        #     DB_METADATA_CONDITION_SAMPLES_KEY: json.dumps(condition_samples),
+        # }
         with closing(self.connect()) as conn,\
              closing(conn.cursor()) as cursor:
             for key, value in metadata.items():
@@ -318,10 +318,22 @@ class PreprocessingDB:
                 Path(other_db).unlink()
 
 
+    def get_references_with_data(self):
+        with closing(self.connect()) as conn,\
+             closing(conn.cursor()) as cursor:
+            query = """
+            SELECT DISTINCT t.name, t.id
+            FROM kmer_data kd
+            INNER JOIN transcripts t ON kd.transcript_id = t.id
+            """
+            return {TranscriptRow(row[0], row[1])
+                    for row in cursor.execute(query).fetchall()}
+
+
     @staticmethod
     def write_kmer_rows(connection, rows):
         with closing(connection.cursor()) as cursor:
             cursor.execute("begin")
-            cursor.executemany(INSERT_KMER_DATA_QUERY, rows)
+            cursor.executemany(INSERT_INTERMEDIARY_KMER_DATA_QUERY, rows)
             cursor.execute("commit")
 

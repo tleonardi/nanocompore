@@ -48,10 +48,10 @@ def validate_device(value):
                      f"is of unexpected type: {type(value)}")
 
 
-def validate_eventalign_data(config):
+def validate_db_data(config):
     """
-    Validate if the input data for eventalign contains
-    all necessary fields.
+    Validate if the input data contains input
+    databases for all samples.
 
     Parameters
     ----------
@@ -62,12 +62,11 @@ def validate_eventalign_data(config):
     -------
         bool
     """
-    if config['resquiggler'] != 'eventalign':
+    if config['resquiggler'] not in ('eventalign', 'remora'):
         return True
     for condition, cond_data in config['data'].items():
         for sample, sample_data in cond_data.items():
-            if ('eventalign_tsv' not in sample_data and
-                'eventalign_db' not in sample_data):
+            if 'db' not in sample_data:
                 return False
     return True
 
@@ -105,9 +104,7 @@ CONFIG_SCHEMA = Schema(And({
             str: { # condition
                 str: { # sample (replicate)
                     Optional('bam'): lambda f: open(f, 'r'),
-                    Optional('pod5'): str,
-                    Optional('eventalign_tsv'): lambda f: open(f, 'r'),
-                    Optional('eventalign_db'): lambda f: open(f, 'r')
+                    Optional('db'): str,
                 }
             }
         },
@@ -118,7 +115,6 @@ CONFIG_SCHEMA = Schema(And({
     'resquiggler': Or('uncalled4', 'eventalign', 'remora'),
     'kit': Or(*[v.name for v in Kit]),
     Optional('devices'): validate_device,
-    Optional('preprocessing_db'): str,
     Optional('bed'): And(lambda f: open(f, 'r'), error='Invalid bed file'),
     Optional('nthreads'): And(lambda n: n >= 2, error='nthreads must be >= 2'),
     Optional('min_coverage'): And(int, lambda n: n >= 0, error='min_coverage must be >= 0'),
@@ -153,18 +149,22 @@ CONFIG_SCHEMA = Schema(And({
     Optional('progress'): bool,
     Optional('correction_method'): 'fdr_bh'},
     # Additional validation of the full configuration
-    And(validate_eventalign_data,
+    And(validate_db_data,
         error='When using the "eventalign" resquiggler ' +
               'each sample in the configuration must contain ' +
-              'either the field "eventalign_tsv" with a path ' +
-              'to the eventalign tsv file or "eventalign_db" ' +
-              'with the alreday collapsed eventalign data.'),
+              'a "db" entry with the path to an SQLite DB ' +
+              'produced by the eventalign_collapse subcommand.'),
     And(validate_uncalled4_data,
         error='When using the "uncalled4" resquiggler ' +
               'each sample in the configuration must contain ' +
               'the field "bam" with a path to the aligned bam file ' +
               'that contains the resquiggling tags produced ' +
               'by Uncalled4.'),
+    And(validate_db_data,
+        error='When using the "remora" resquiggler ' +
+              'each sample in the configuration must contain ' +
+              'a "db" entry with the path to an SQLite DB ' +
+              'produced by the remora_resquiggle subcommand.'),
     And(depleted_condition_exists,
         error="The condition set in 'depleted_condition' is not " + \
               "defined in 'data'.")))
@@ -172,7 +172,6 @@ CONFIG_SCHEMA = Schema(And({
 
 DEFAULT_KIT = 'RNA002'
 DEFAULT_DEVICES = 'cpu'
-DEFAULT_PREPROCESSING_DB = 'preprocessing_db.sqlite'
 DEFAULT_NTHEARDS = 2
 DEFAULT_MIN_COVERAGE = 30
 DEFAULT_MAX_READS = 5000
@@ -214,18 +213,6 @@ class Config:
 
     def get_data(self):
         return self._config['data']
-
-
-    def get_preprocessing_db(self):
-        """
-        Returns the path where the kmer data should
-        be stored after resquiggling/preprocessing.
-        """
-        path = self._config.get('preprocessing_db', DEFAULT_PREPROCESSING_DB)
-        if os.path.isabs(path):
-            return path
-        else:
-            return os.path.join(self.get_outpath(), path)
 
 
     def get_resquiggler(self):
@@ -484,6 +471,12 @@ class Config:
 
     def get_sample_condition_bam_data(self):
         return [(sample, condition, samp_def['bam'])
+                for condition, samples in self.get_data().items()
+                for sample, samp_def in samples.items()]
+
+
+    def get_sample_condition_db_data(self):
+        return [(sample, condition, samp_def['db'])
                 for condition, samples in self.get_data().items()
                 for sample, samp_def in samples.items()]
 
