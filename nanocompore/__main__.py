@@ -49,6 +49,7 @@ def main(args=None):
     parser_sc.add_argument('--input', '-i', help="Path to input eventalign file. If not provided, the input is read from stdin (useful for piping nanopolish/f5c eventalign directly).")
     parser_sc.add_argument('--output', '-o', help="Path to output SQLite database.")
     parser_sc.add_argument('--nthreads', '-n', help="Number of parallel processes to use for processing.", nargs='?', type=int, const=2, default=2)
+    parser_sc.add_argument('--tmp', '-t', help="Directory where tmp files would be created (default: current directory).", nargs='?', type=str, const='.', default='.')
     parser_sc.set_defaults(func=eventalign_collapse_subcommand)
 
     # preprocess remora_resquiggle
@@ -122,7 +123,7 @@ def eventalign_collapse_subcommand(args):
     to an intermediary efficient database for later
     analysis.
     """
-    EventalignCollapser(args.input, args.ref, args.output, args.nthreads)()
+    EventalignCollapser(args.input, args.ref, args.output, args.nthreads, args.tmp)()
 
 
 def remora_resquiggle_subcommand(args):

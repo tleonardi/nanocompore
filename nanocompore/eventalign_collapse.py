@@ -6,15 +6,14 @@ events for the same position.
 The output is written to a compact SQLite
 database file.
 """
-
+import multiprocessing as mp
+import os
 import sqlite3
 import statistics
 import sys
 import threading
 import traceback
 import uuid
-
-import multiprocessing as mp
 
 from contextlib import closing
 from pathlib import Path
@@ -55,7 +54,7 @@ class EventalignCollapser:
     transcript position and stores the relevant
     data to an intermediary SQLite database.
     """
-    def __init__(self, file, fasta_ref, output, nthreads):
+    def __init__(self, file, fasta_ref, output, nthreads, tmp_dir):
         if nthreads < 2:
             raise ValueError("At least 2 threads required.")
 
@@ -64,6 +63,7 @@ class EventalignCollapser:
         self._ref_lens = {}
         self._nthreads = nthreads
         self._output = output
+        self._tmp_dir = tmp_dir
 
 
     def __call__(self):
@@ -172,7 +172,8 @@ class EventalignCollapser:
         # ignore the header
         sys.stdin.readline()
 
-        tmp_file_name = 'tmp_' + str(uuid.uuid4())
+        tmp_file_name = os.path.join(self._tmp_dir,
+                                     f'tmp_{str(uuid.uuid4())}')
         tmp_file = open(tmp_file_name, 'w')
         prev_ref_id = None
         while True:
@@ -189,7 +190,8 @@ class EventalignCollapser:
                 task_queue.put((prev_ref_id, tmp_file_name))
 
                 tmp_file.close()
-                tmp_file_name = 'tmp_' + str(uuid.uuid4())
+                tmp_file_name = os.path.join(self._tmp_dir,
+                                             f'tmp_{str(uuid.uuid4())}')
                 tmp_file = open(tmp_file_name, 'w')
 
                 prev_ref_id = ref_id
