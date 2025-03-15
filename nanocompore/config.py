@@ -150,7 +150,7 @@ CONFIG_SCHEMA = Schema(And({
     Optional('correction_method'): 'fdr_bh'},
     # Additional validation of the full configuration
     And(validate_db_data,
-        error='When using the "eventalign" resquiggler ' +
+        error='When using the "eventalign" or "remora" resquigglers ' +
               'each sample in the configuration must contain ' +
               'a "db" entry with the path to an SQLite DB ' +
               'produced by the eventalign_collapse subcommand.'),
@@ -160,11 +160,6 @@ CONFIG_SCHEMA = Schema(And({
               'the field "bam" with a path to the aligned bam file ' +
               'that contains the resquiggling tags produced ' +
               'by Uncalled4.'),
-    And(validate_db_data,
-        error='When using the "remora" resquiggler ' +
-              'each sample in the configuration must contain ' +
-              'a "db" entry with the path to an SQLite DB ' +
-              'produced by the remora_resquiggle subcommand.'),
     And(depleted_condition_exists,
         error="The condition set in 'depleted_condition' is not " + \
               "defined in 'data'.")))

@@ -13,16 +13,8 @@ from loguru import logger
 from nanocompore.common import NanocomporeError
 from nanocompore.common import READ_ID_TYPE
 from nanocompore.common import SAMPLE_ID_TYPE
-from nanocompore.common import get_measurement_type
 from nanocompore.common import TranscriptRow
 
-
-DB_METADATA_RESQUIGGLER_KEY = 'resquiggler'
-DB_METADATA_READ_ID_TYPE_KEY = 'read_id_type'
-DB_METADATA_SAMPLE_ID_TYPE_KEY = 'sample_id_type'
-DB_METADATA_MEASUREMENT_TYPE_KEY = 'measurement_type'
-DB_METADATA_SAMPLE_LABELS_KEY = 'sample_labels'
-DB_METADATA_CONDITION_SAMPLES_KEY = 'condition_samples'
 
 # ======= RESULT DATABASE QUERIES =======
 
@@ -62,6 +54,7 @@ CREATE INDEX IF NOT EXISTS transcripts_name_index
 DROP_METADATA_TABLE_QUERY = """
 DROP TABLE IF EXISTS metadata;
 """
+
 CREATE_METADATA_TABLE_QUERY = """
 CREATE TABLE metadata (
     key TEXT NOT NULL,
@@ -69,27 +62,28 @@ CREATE TABLE metadata (
     PRIMARY KEY(key)
 );
 """
-DROP_KMER_DATA_TABLE_QUERY = """
-DROP TABLE IF EXISTS kmer_data;
+
+DROP_SIGNAL_DATA_TABLE_QUERY = """
+DROP TABLE IF EXISTS signal_data;
 """
-CREATE_KMER_DATA_TABLE_QUERY = """
-CREATE TABLE kmer_data (
+
+CREATE_SIGNAL_DATA_TABLE_QUERY = """
+CREATE TABLE signal_data (
     transcript_id INTEGER NOT NULL,
-    pos INTEGER NOT NULL,
-    kmer TEXT NOT NULL,
-    samples BLOB NOT NULL,
-    reads BLOB NOT NULL,
+    read_id INTEGER NOT NULL,
     intensity BLOB,
-    intensity_std BLOB,
     dwell BLOB
 );
 """
-INSERT_KMER_DATA_QUERY = """
-INSERT INTO kmer_data VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+
+INSERT_SIGNAL_DATA_QUERY = """
+INSERT INTO signal_data VALUES (?, ?, ?, ?);
 """
+
 DROP_READS_TABLE_QUERY = """
 DROP TABLE IF EXISTS reads;
 """
+
 CREATE_READS_TABLE_QUERY = """
 CREATE TABLE reads (
     read TEXT NOT NULL,
@@ -97,22 +91,27 @@ CREATE TABLE reads (
     invalid_kmers REAL
 );
 """
+
 DROP_READS_ID_INDEX_QUERY = """
 DROP INDEX IF EXISTS reads_id_index;
 """
+
 CREATE_READS_ID_INDEX_QUERY = """
 CREATE INDEX IF NOT EXISTS reads_id_index ON reads (id);
 """
-DROP_KMERS_INDEX_QUERY = """
-DROP INDEX IF EXISTS kmer_index;
+
+DROP_SIGNAL_DATA_INDEX_QUERY = """
+DROP INDEX IF EXISTS signal_data_index;
 """
-CREATE_KMERS_INDEX_QUERY = """
-CREATE INDEX IF NOT EXISTS kmer_index ON kmer_data (transcript_id, pos);
+
+CREATE_SIGNAL_DATA_INDEX_QUERY = """
+CREATE INDEX IF NOT EXISTS signal_data_index ON signal_data (transcript_id, read_id);
 """
 
 DROP_TRANSCRIPTS_TABLE_QUERY = """
 DROP TABLE IF EXISTS transcripts;
 """
+
 CREATE_TRANSCRIPTS_TABLE_QUERY = """
 CREATE TABLE transcripts (
     name TEXT NOT NULL,
@@ -120,28 +119,27 @@ CREATE TABLE transcripts (
     PRIMARY KEY(name)
 );
 """
+
 DROP_TRANSCRIPTS_ID_INDEX_QUERY = """
 DROP INDEX IF EXISTS transcripts_id_index;
 """
+
 CREATE_TRANSCRIPTS_ID_INDEX_QUERY = """
 CREATE INDEX IF NOT EXISTS transcripts_id_index ON transcripts (id);
 """
-CREATE_INTERMEDIARY_KMER_DATA_TABLE_QUERY = """
-CREATE TABLE kmer_data (
-    transcript_id INTEGER NOT NULL,
-    pos INTEGER NOT NULL,
-    kmer TEXT NOT NULL,
-    reads BLOB NOT NULL,
-    intensity BLOB,
-    intensity_std BLOB,
-    dwell BLOB
-);
-"""
-INSERT_INTERMEDIARY_KMER_DATA_QUERY = """
-INSERT INTO kmer_data VALUES (?, ?, ?, ?, ?, ?, ?);
-"""
+
 INSERT_READS_QUERY = """
 INSERT INTO reads (read, id, invalid_kmers) VALUES(?, ?, ?);
+"""
+
+GET_SIGNAL_DATA_FOR_TRANSCRIPT_QUERY = """
+SELECT intensity, dwell
+FROM signal_data sd
+JON reads r ON sd.read_id = r.id
+WHERE transcript_id = ?
+  AND r.invalid_kmers <= ?
+ORDER BY r.invalid_kmers ASC
+LIMIT ?
 """
 
 BASE_KMER_RESULT_COLUMNS = ['id', 'transcript_id', 'pos', 'kmer']
@@ -263,8 +261,10 @@ class PreprocessingDB:
     def setup(self, metadata):
         with closing(self.connect()) as conn,\
              closing(conn.cursor()) as cursor:
-            cursor.execute(DROP_KMER_DATA_TABLE_QUERY)
-            cursor.execute(CREATE_INTERMEDIARY_KMER_DATA_TABLE_QUERY)
+            cursor.execute(DROP_READS_ID_INDEX_QUERY)
+            cursor.execute(DROP_SIGNAL_DATA_INDEX_QUERY)
+            cursor.execute(DROP_SIGNAL_DATA_TABLE_QUERY)
+            cursor.execute(CREATE_SIGNAL_DATA_TABLE_QUERY)
             cursor.execute(DROP_READS_TABLE_QUERY)
             cursor.execute(CREATE_READS_TABLE_QUERY)
             cursor.execute(DROP_TRANSCRIPTS_TABLE_QUERY)
@@ -272,8 +272,6 @@ class PreprocessingDB:
             cursor.execute(DROP_METADATA_TABLE_QUERY)
             cursor.execute(CREATE_METADATA_TABLE_QUERY)
             cursor.execute(DROP_TRANSCRIPTS_ID_INDEX_QUERY)
-            cursor.execute(DROP_READS_ID_INDEX_QUERY)
-            cursor.execute(DROP_KMERS_INDEX_QUERY)
         self.write_metadata(metadata)
     
 
@@ -281,25 +279,16 @@ class PreprocessingDB:
         with closing(self.connect()) as conn,\
              closing(conn.cursor()) as cursor:
             cursor.execute(CREATE_READS_ID_INDEX_QUERY)
-            cursor.execute(CREATE_KMERS_INDEX_QUERY)
+            cursor.execute(CREATE_SIGNAL_DATA_INDEX_QUERY)
             cursor.execute(CREATE_TRANSCRIPTS_ID_INDEX_QUERY)
 
 
     def write_metadata(self, metadata):
-        # resquiggler = self._config.get_resquiggler()
-        # condition_samples = self._config.get_data()
-        # metadata = {
-        #     DB_METADATA_RESQUIGGLER_KEY: resquiggler,
-        #     DB_METADATA_READ_ID_TYPE_KEY: READ_ID_TYPE.__name__,
-        #     DB_METADATA_SAMPLE_ID_TYPE_KEY: SAMPLE_ID_TYPE.__name__,
-        #     DB_METADATA_MEASUREMENT_TYPE_KEY: get_measurement_type(resquiggler).__name__,
-        #     DB_METADATA_SAMPLE_LABELS_KEY: ','.join(self._config.get_sample_labels()),
-        #     DB_METADATA_CONDITION_SAMPLES_KEY: json.dumps(condition_samples),
-        # }
         with closing(self.connect()) as conn,\
              closing(conn.cursor()) as cursor:
             for key, value in metadata.items():
-                cursor.execute("INSERT INTO metadata (key, value) VALUES (?, ?)", (key, str(value)))
+                cursor.execute("INSERT INTO metadata (key, value) VALUES (?, ?)",
+                               (key, str(value)))
 
 
     def merge_in_databases(self, databases, merge_reads=True):
@@ -311,7 +300,7 @@ class PreprocessingDB:
                 cursor.execute("INSERT INTO transcripts SELECT * FROM tmp.transcripts")
                 if merge_reads:
                     cursor.execute("INSERT INTO reads SELECT * FROM tmp.reads")
-                cursor.execute("INSERT INTO kmer_data SELECT * FROM tmp.kmer_data")
+                cursor.execute("INSERT INTO signal_data SELECT * FROM tmp.signal_data")
                 conn.commit()
                 cursor.execute("DETACH DATABASE tmp")
                 # Delete the other db
@@ -323,17 +312,52 @@ class PreprocessingDB:
              closing(conn.cursor()) as cursor:
             query = """
             SELECT DISTINCT t.name, t.id
-            FROM kmer_data kd
-            INNER JOIN transcripts t ON kd.transcript_id = t.id
+            FROM signal_data sd
+            INNER JOIN transcripts t ON sd.transcript_id = t.id
             """
             return {TranscriptRow(row[0], row[1])
                     for row in cursor.execute(query).fetchall()}
 
 
     @staticmethod
-    def write_kmer_rows(connection, rows):
+    def write_signal_data_rows(connection, rows):
         with closing(connection.cursor()) as cursor:
             cursor.execute("begin")
-            cursor.executemany(INSERT_INTERMEDIARY_KMER_DATA_QUERY, rows)
+            cursor.executemany(INSERT_SIGNAL_DATA_QUERY, rows)
             cursor.execute("commit")
+
+
+    @staticmethod
+    def get_signal_data(connection,
+                        transcript_id: int,
+                        max_invalid_ratio: float,
+                        max_rows: int):
+        """
+        Get signal data for a transcript.
+        Will return reads with lower invalid ratio first.
+
+        Parameters
+        ----------
+        connection : sqlite3.connection
+            Connection to the database.
+        transcript_id : int
+            Internal database id of the transcript.
+        max_invalid_ratio : float
+            Will return only reads with invalid ratio smaller
+            than the given number.
+        max_rows : int
+            Maximum rows to return.
+
+        Returns
+        -------
+        list[tuple[bytearray, bytearray]]
+            List of tuples (intensity, dwell), where
+            intensity and dwell are binary arrays
+            than need to be decoded to numpy arrays.
+        """
+        with closing(connection.cursor()) as cursor:
+            return cursor.execute(GET_SIGNAL_DATA_FOR_TRANSCRIPT_QUERY,
+                                  (transcript_id,
+                                   max_invalid_ratio,
+                                   max_rows)).fetchall()
 

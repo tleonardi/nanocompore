@@ -8,16 +8,18 @@ from concurrent.futures import ProcessPoolExecutor
 from concurrent.futures import as_completed
 from contextlib import closing
 from pathlib import Path
+from typing import Any
 
 import pysam
 import numpy as np
 
+from jaxtyping import Float, Int
 from loguru import logger
 from pyfaidx import Fasta
 
 from nanocompore.common import Kit
 from nanocompore.common import READ_ID_TYPE
-from nanocompore.common import get_reads_invalid_kmer_ratio
+from nanocompore.common import get_reads_invalid_ratio
 from nanocompore.common import get_references_from_bam
 from nanocompore.common import monitor_workers
 from nanocompore.database import INSERT_READS_QUERY
@@ -36,7 +38,7 @@ class Preprocessor:
     format in a SQLite DB to be used in the
     subsequest analysis step.
     """
-    def __init__(self, fasta_ref, output, threads):
+    def __init__(self, fasta_ref: str, output: str, threads: int):
         self._fasta_ref = fasta_ref
         self._output = output
         self._db = PreprocessingDB(output)
@@ -101,17 +103,23 @@ class Preprocessor:
         self._db.create_indices()
 
 
-    def _get_references(self):
+    def _get_references(self) -> set[str]:
         raise NotImplementedError("This method should be overriden by specific " + \
                                   "resquiggler preprocessor implementations.")
 
 
-    def _get_kmer_generator(self, ref_id, ref_seq):
+    def _get_resquiggled_data(
+            self,
+            ref_id: str,
+            ref_seq: str
+    ) -> tuple[Float[np.ndarray, "reads positions"],
+               Float[np.ndarray, "reads positions"],
+               list[str]]:
         raise NotImplementedError("This method should be overriden by specific " + \
                                   "resquiggler preprocessor implementations.")
 
 
-    def _get_metadata(self):
+    def _get_metadata(self) -> dict[str, Any]:
         raise NotImplementedError("This method should be overriden by specific " + \
                                   "resquiggler preprocessor implementations.")
 
@@ -136,8 +144,8 @@ class Preprocessor:
                     break
 
                 ref_seq = str(fasta_fh[ref_id])
-                kmers = list(self._get_kmer_generator(ref_id, ref_seq))
-                read_invalid_ratios = get_reads_invalid_kmer_ratio(kmers)
+                intensity, dwell, reads = self._get_resquiggled_data(ref_id, ref_seq)
+                read_invalid_ratios = get_reads_invalid_ratio(intensity.T)
 
                 lock.acquire()
                 transcript_id = current_transcript_id.value
@@ -146,16 +154,21 @@ class Preprocessor:
                 current_read_offset.value += len(read_invalid_ratios)
                 lock.release()
 
+                reads_with_ratios = zip(reads, read_invalid_ratios)
                 offsetted_reads = [(read_id, i + read_offset, invalid_ratio)
-                                   for i, (read_id, invalid_ratio) in enumerate(read_invalid_ratios.items())]
-                kmer_rows = self._process_rows_for_writing(transcript_id, kmers, offsetted_reads)
+                                   for i, (read_id, invalid_ratio) in enumerate(reads_with_ratios)]
+                signal_data_rows = self._process_rows_for_writing(
+                        transcript_id,
+                        [r[1] for r in offsetted_reads], # read internal ids
+                        intensity.astype(np.float32),
+                        dwell.astype(np.float32))
 
                 with closing(conn.cursor()) as cursor:
                     cursor.execute("begin")
                     cursor.execute(INSERT_TRANSCRIPTS_QUERY, (transcript_id, ref_id))
                     cursor.executemany(INSERT_READS_QUERY, offsetted_reads)
                     cursor.execute("commit")
-                PreprocessingDB.write_kmer_rows(conn, kmer_rows)
+                PreprocessingDB.write_signal_data_rows(conn, signal_data_rows)
 
                 lock.acquire()
                 processed_transcripts.value += 1
@@ -164,23 +177,16 @@ class Preprocessor:
                 lock.release()
 
 
-    def _process_rows_for_writing(self, transcript_id, kmers_data, offsetted_reads):
-        read_to_id = {r[0]: r[1] for r in offsetted_reads}
-
-        processed_kmers = []
-        for kmer_data in kmers_data:
-            read_ids = np.array([read_to_id[read] for read in kmer_data.reads],
-                                dtype=READ_ID_TYPE)
-
-            proc_kmer = (transcript_id,
-                         kmer_data.pos,
-                         kmer_data.kmer,
-                         read_ids.tobytes(),
-                         kmer_data.intensity.tobytes(),
-                         kmer_data.sd.tobytes(),
-                         kmer_data.dwell.tobytes())
-            processed_kmers.append(proc_kmer)
-        return processed_kmers
+    def _process_rows_for_writing(self,
+                                  transcript_id: int,
+                                  read_ids: list[int],
+                                  intensity: Float[np.ndarray, "positions"],
+                                  dwell: Float[np.ndarray, "positions"]):
+        for i in range(intensity.shape[0]):
+            yield (transcript_id,
+                   read_ids[i],
+                   intensity[i].tobytes(),
+                   dwell[i].tobytes())
 
 
 class RemoraPreprocessor(Preprocessor):
@@ -233,14 +239,21 @@ class RemoraPreprocessor(Preprocessor):
         self._remora = Remora(pod5, bam, kit, max_reads)
 
 
-    def _get_references(self):
+    def _get_references(self) -> set[str]:
         return get_references_from_bam(self._bam)
 
 
-    def _get_kmer_generator(self, ref_id, ref_seq):
-        return self._remora.kmer_data_generator(ref_id, ref_seq)
+    def _get_resquiggled_data(
+            self,
+            ref_id,
+            ref_seq
+    ) -> tuple[Float[np.ndarray, "reads positions"],
+               Float[np.ndarray, "reads positions"],
+               list[str]]:
+        return self._remora.get_resquiggled_data(ref_id, ref_seq)
 
-    def _get_metadata(self):
+
+    def _get_metadata(self) -> dict[str, Any]:
         return {'fasta_ref': self._fasta_ref,
                 'pod5': self._pod5,
                 'bam': self._bam,

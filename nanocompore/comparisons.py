@@ -7,6 +7,8 @@ import numpy as np
 import pandas as pd
 import torch
 
+from typing import Union
+from jaxtyping import Float, Int
 from numpy.lib.stride_tricks import sliding_window_view
 from gmm_gpu.gmm import GMM
 from loguru import logger
@@ -14,6 +16,7 @@ from scipy.stats import mannwhitneyu, ttest_ind, chi2_contingency, chi2
 from scipy.stats.mstats import ks_twosamp
 
 from nanocompore.common import NanocomporeError
+from nanocompore.transcript import Transcript
 from nanocompore.gof_tests import gof_test_multirep
 from nanocompore.gof_tests import gof_test_singlerep
 
@@ -34,7 +37,44 @@ class TranscriptComparator:
         self._motor_dwell_offset = self._config.get_motor_dwell_offset()
 
 
-    def compare_transcript(self, transcript, data, samples, conditions, positions, device=None):
+    def compare_transcript(
+        self,
+        transcript: Transcript,
+        data: Float[torch.Tensor, "positions reads vars"],
+        samples: Int[torch.Tensor, "reads"],
+        conditions: Int[torch.Tensor, "reads"],
+        positions: Int[torch.Tensor, "positions"],
+        device: str
+    ) -> tuple[Transcript, Union[pd.DataFrame, None]]:
+        """
+        Compare the two conditions for the given transcript.
+
+        Parameters
+        ----------
+        transcript : Transcript
+            The transcript for which the two conditions
+            will be compared.
+        data : Float[torch.Tensor, "positions reads vars"]
+            Torch tensor with shape (positions, reads, vars)
+            containing the data for the comparison.
+        samples : Int[torch.Tensor, "reads"]
+            Array of sample ids with size *reads*.
+        conditions : Int[torch.Tensor, "reads"]
+            Array of condition ids with size *reads*.
+        positions : Int[torch.Tensor, "positions"]
+            Array of reference positions on the transcript
+            with size *positions*.
+        device : str
+            String indicating the device that will be used
+            for the comparison. Indicates if CPU or GPU
+            should be used.
+
+        Returns
+        -------
+        tuple[Transcript, pd.DataFrame]
+            Tuple with the Transcript and the comparison
+            results stored in a pandas DataFrame.
+        """
         max_reads = self._config.get_downsample_high_coverage()
         if data.shape[1] > max_reads:
             read_valid_positions = (~data.isnan().any(2)).sum(0)

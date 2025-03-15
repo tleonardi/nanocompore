@@ -8,13 +8,16 @@ import traceback
 
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import as_completed
+from concurrent.futures import wait
 from contextlib import closing
 from multiprocessing.managers import SyncManager
 
 import numpy as np
+import numpy.typing as npt
 import pysam
 import torch
 
+from jaxtyping import Float, Int
 from loguru import logger
 from pyfaidx import Fasta
 
@@ -24,10 +27,10 @@ from nanocompore.common import SAMPLE_ID_TYPE
 from nanocompore.common import INTENSITY_POS
 from nanocompore.common import DWELL_POS
 from nanocompore.common import MOTOR_DWELL_POS
+from nanocompore.common import MEASUREMENTS_TYPE
 from nanocompore.common import TranscriptRow
 from nanocompore.common import encode_kmer
-from nanocompore.common import get_measurement_type
-from nanocompore.common import get_reads_invalid_kmer_ratio
+from nanocompore.common import get_reads_invalid_ratio
 from nanocompore.common import get_references_from_bams
 from nanocompore.common import get_pos_kmer
 from nanocompore.common import log_init_state
@@ -68,7 +71,6 @@ class RunCmd(object):
 
         self._config = config
         self._workers_with_device = self._get_workers_with_device()
-        self._value_type = get_measurement_type(self._config.get_resquiggler())
         self._sample_labels = self._config.get_sample_labels()
         self._random_state = random_state
 
@@ -197,97 +199,6 @@ class RunCmd(object):
             print("Done.")
 
 
-    # def _read_transcript_kmer_data(self,
-    #                                transcript: Transcript,
-    #                                cursor: sqlite3.Cursor,
-    #                                bams):
-    #     if self._config.get_resquiggler() == 'uncalled4':
-    #         logger.debug("Getting data from the bams because Uncalled4 was used.")
-    #         uncalled4 = Uncalled4(self._config, transcript.name, transcript.seq, bams)
-    #         kmers = list(uncalled4.kmer_data_generator())
-    #     else:
-    #         res = cursor.execute("""SELECT *
-    #                                 FROM kmer_data
-    #                                 WHERE transcript_id = ?""",
-    #                              (transcript.id,))
-    #         kmers = [self._db_row_to_kmer(row)
-    #                  for row in res.fetchall()]
-
-    #     # After reading the data for all kmers,
-    #     # we can collect all reads and select
-    #     # only the ones that pass the filtering
-    #     # criteria.
-    #     all_read_ids = {read_id
-    #                     for kmer in kmers
-    #                     for read_id in kmer.reads}
-    #     if self._config.get_resquiggler() == 'uncalled4':
-    #         invalid_ratios = get_reads_invalid_kmer_ratio(kmers)
-    #         valid_read_ids = {read
-    #                           for read, invalid_ratio in invalid_ratios.items()
-    #                           if invalid_ratio <= self._config.get_max_invalid_kmers_freq()}
-    #     else:
-    #         valid_read_ids = self._get_valid_read_ids(cursor, all_read_ids)
-    #     logger.debug(f"Found {len(valid_read_ids)} valid reads out of {len(all_read_ids)}.")
-    #     # discard invalid reads
-    #     kmers = [self._filter_reads(kmer, valid_read_ids) for kmer in kmers]
-    #     # get only kmers that have the minimum number of reads required
-    #     kmers = [kmer for kmer in kmers if self._enough_reads_in_kmer(kmer)]
-    #     return kmers
-
-
-    def _filter_reads(self, kmer: KmerData, valid_read_ids: set):
-        valid_mask = [read in valid_read_ids for read in kmer.reads]
-        return KmerData(kmer.transcript_id,
-                        kmer.pos,
-                        kmer.kmer,
-                        kmer.sample_labels[valid_mask],
-                        kmer.reads[valid_mask],
-                        kmer.intensity[valid_mask],
-                        kmer.sd[valid_mask],
-                        kmer.dwell[valid_mask],
-                        None, # We don't have validity data here
-                        self._config)
-
-
-    def _enough_reads_in_kmer(self, kmer: KmerData):
-        condition_counts = Counter(kmer.condition_labels)
-        return all(condition_counts.get(cond, 0) >= self._config.get_min_coverage()
-                   for cond in self._config.get_condition_labels())
-
-
-    def _db_row_to_kmer(self, row: tuple):
-        read_ids = np.frombuffer(row[4], dtype=READ_ID_TYPE)
-        samples = np.array([self._sample_labels[i]
-                            for i in np.frombuffer(row[3], dtype=SAMPLE_ID_TYPE)])
-        intensity = np.frombuffer(row[5], dtype=self._value_type)
-        sd = np.frombuffer(row[6], dtype=self._value_type)
-        dwell = np.frombuffer(row[7], dtype=self._value_type)
-
-        return KmerData(row[0], # transcript id
-                        row[1], # pos
-                        row[2], # kmer
-                        samples,
-                        read_ids,
-                        intensity,
-                        sd,
-                        dwell,
-                        None, # we don't need validity data here
-                        self._config)
-
-
-    def _get_valid_read_ids(self, cursor: sqlite3.Cursor, read_ids: set):
-        get_ids_query = """
-        SELECT id
-        FROM reads
-        WHERE id IN ({})
-          AND invalid_kmers <= ?
-        """.format(','.join(map(str, read_ids)))
-        res = cursor.execute(get_ids_query,
-                             (self._config.get_max_invalid_kmers_freq(),))
-
-        return {row[0] for row in res.fetchall()}
-
-
     def _get_transcripts_for_processing(self):
         if self._config.get_resquiggler() == "uncalled4":
             return get_references_from_bams(self._config)
@@ -388,13 +299,13 @@ class Worker(multiprocessing.Process):
         ----------
         worker_id : int
             Id of the worker
-        task_queue : multiprocesing.JoinableQueue
+        task_queue : multiprocessing.JoinableQueue
             Queue with tasks for processing.
-        db_lock : multiprocesing.Lock
+        db_lock : multiprocessing.Lock
             Lock to prevent parallel writing to the SQLite DB.
-        sync_lock : multiprocesing.Lock
+        sync_lock : multiprocessing.Lock
             Lock for synchronisation.
-        num_finished : multiprocesing.managers.SyncManager
+        num_finished : multiprocessing.managers.SyncManager
             Number of processed transcripts.
         device : str
             Which device to use for computation (e.g. cpu or gpu).
@@ -457,18 +368,18 @@ class Worker(multiprocessing.Process):
                                 "tasks in the queue and will terminate.")
                     break
 
-            try:
-                transcript_ref, retries = msg
-                if retries > 2:
-                    logger.error(f"Worker {self._id}: Transcript "
-                                 f"{transcript_ref.ref_id} was retried "
-                                 "too many times. Won't retry again.")
-                    continue
-                logger.info(f"Worker {self._id} starts processing {transcript_ref.ref_id}")
-                transcript = Transcript(id=transcript_ref.id,
-                                        ref_id=transcript_ref.ref_id,
-                                        ref_seq=str(self._fasta_fh[transcript_ref.ref_id]))
+            transcript_ref, retries = msg
+            if retries > 2:
+                logger.error(f"Worker {self._id}: Transcript "
+                             f"{transcript_ref.ref_id} was retried "
+                             "too many times. Won't retry again.")
+                continue
+            logger.info(f"Worker {self._id} starts processing {transcript_ref.ref_id}")
+            transcript = Transcript(id=transcript_ref.id,
+                                    ref_id=transcript_ref.ref_id,
+                                    ref_seq=str(self._fasta_fh[transcript_ref.ref_id]))
 
+            try:
                 data, samples, conditions = self._read_data(transcript)
                 prepared_data = self._prepare_data(data, samples, conditions)
                 data, samples, conditions, positions = prepared_data
@@ -523,9 +434,40 @@ class Worker(multiprocessing.Process):
 
 
     def _prepare_data(self,
-                      data,
-                      samples,
-                      conditions):
+                      data: Float[np.ndarray, "positions reads vars"],
+                      sample_ids: Int[np.ndarray, "reads"],
+                      condition_ids: Int[np.ndarray, "reads"],
+    ) -> tuple[Float[torch.Tensor, "positions reads vars"],
+               Float[torch.Tensor, "reads"],
+               Float[torch.Tensor, "reads"],
+               Int[torch.Tensor, "positions"]]:
+        """
+        Prepare data for comparisons.
+        This will convert the data to pytorch tensor
+        and add the motor dwell time if necessary.
+
+        Parameters
+        ----------
+        data : Float[np.ndarray, "positions reads vars"]
+            Measurements tensor with shape (Positions, Reads, Vars)
+        sample_ids : Int[np.ndarray, "reads"]
+            1D array of sample ids with size R
+        condition_ids : Int[np.ndarray, "reads"]
+            1D array of condition ids with size R
+
+        Returns
+        -------
+        tuple[Float[torch.Tensor, "positions reads vars"],
+              Float[torch.Tensor, "reads"],
+              Float[torch.Tensor, "reads"],
+              Int[torch.Tensor, "positions"]]
+            Tuple with:
+            - Tensor with shape (Positions, Reads, Vars) containing the
+              measurement data.
+            - 1D tensor of sample ids with size R
+            - 1D tensor of condition ids with size R
+            - 1D tensor of reference positions with size P
+        """
         motor_offset = self._conf.get_motor_dwell_offset()
         num_positions = data.shape[0]
         if self._conf.get_motor_dwell_offset() > 0:
@@ -542,10 +484,10 @@ class Worker(multiprocessing.Process):
         tensor = torch.tensor(data[valid_positions, :, :],
                               dtype=torch.float32,
                               device=self._device)
-        samples = torch.tensor(samples,
+        samples = torch.tensor(sample_ids,
                                dtype=torch.int16,
                                device=self._device)
-        conditions = torch.tensor(conditions,
+        conditions = torch.tensor(condition_ids,
                                   dtype=torch.int16,
                                   device=self._device)
         positions = torch.arange(data.shape[0],
@@ -554,7 +496,30 @@ class Worker(multiprocessing.Process):
         return (tensor, samples, conditions, positions)
 
 
-    def _read_data(self, transcript: Transcript):
+    def _read_data(
+        self,
+        transcript: Transcript
+    ) -> tuple[Float[np.ndarray, "positions reads vars"],
+               Float[np.ndarray, "reads"],
+               Float[np.ndarray, "reads"]]:
+        """
+        Get read data for the given transcript.
+
+        Parameters
+        ----------
+        transcript : Transcript
+            Transcript for which to acqire data.
+
+        Returns
+        -------
+        tuple[Float[np.ndarray, "positions reads vars"],
+              Float[np.ndarray, "reads"],
+              Float[np.ndarray, "reads"]]
+            Tuple with (measurements tensor, sample ids, condition ids).
+            - measurements tensor: shape (Positions, Reads, Vars)
+            - sample ids: 1D array with int ids of the samples
+            - condition ids: 1D array with int ids of the conditinos (0 or 1).
+        """
         raise NotImplementedError("This method should be overriden by specific " + \
                                   "worker process implementations.")
 
@@ -606,22 +571,38 @@ class Uncalled4Worker(Worker):
                       for sample, _, bam in data_def}
 
 
-    def _read_data(self, transcript: Transcript):
+    def _read_data(
+        self,
+        transcript: Transcript
+    ) -> tuple[Float[np.ndarray, "positions reads vars"],
+               Float[np.ndarray, "reads"],
+               Float[np.ndarray, "reads"]]:
+        """
+        Get read data for the given transcript.
+
+        Parameters
+        ----------
+        transcript : Transcript
+            Transcript for which to acqire data.
+
+        Returns
+        -------
+        tuple[Float[np.ndarray, "positions reads vars"],
+              Float[np.ndarray, "reads"],
+              Float[np.ndarray, "reads"]]
+            Tuple with (measurements tensor, sample ids, condition ids).
+            - measurements tensor: shape (Positions, Reads, Vars)
+            - sample ids: 1D array with int ids of the samples
+            - condition ids: 1D array with int ids of the conditinos (0 or 1).
+        """
         uncalled4 = Uncalled4(self._conf,
                               transcript.name,
                               transcript.seq,
                               self._bams)
         data, samples, conditions = uncalled4.get_data()
 
-        valid_reads = np.full(data.shape[1], False)
-
-        for n in range(data.shape[1]):
-            valid_positions = np.where(~np.isnan(data[:, n, INTENSITY_POS]))[0]
-            length = valid_positions.max() - valid_positions.min() + 1
-            invalid_ratio = (length - len(valid_positions))/length
-
-            if invalid_ratio < self._conf.get_max_invalid_kmers_freq():
-                valid_reads[n] = True
+        invalid_ratios = get_reads_invalid_ratio(data[:, :, INTENSITY_POS])
+        valid_reads = invalid_ratios < self._conf.get_max_invalid_kmers_freq()
             
         return data[:, valid_reads], samples[valid_reads], conditions[valid_reads]
 
@@ -678,12 +659,101 @@ class GenericWorker(Worker):
                      for sample, _, db in data_def}
 
 
-    def _read_data(self, transcript: Transcript):
-        pass
+    def _read_data(
+        self,
+        transcript: Transcript
+    ) -> tuple[Float[np.ndarray, "positions reads vars"],
+               Float[np.ndarray, "reads"],
+               Float[np.ndarray, "reads"]]:
+        """
+        Get read data for the given transcript.
+
+        Parameters
+        ----------
+        transcript : Transcript
+            Transcript for which to acqire data.
+
+        Returns
+        -------
+        tuple[Float[np.ndarray, "positions reads vars"],
+              Float[np.ndarray, "reads"],
+              Float[np.ndarray, "reads"]]
+            Tuple with (measurements tensor, sample ids, condition ids).
+            - measurements tensor: shape (Positions, Reads, Vars)
+            - sample ids: 1D array with int ids of the samples
+            - condition ids: 1D array with int ids of the conditinos (0 or 1).
+        """
+        intensities = []
+        dwells = []
+        sample_labels = []
+        condition_labels = []
+        n_samples = len(self._dbs)
+        # Here we will use multi-threaded reading from
+        # the input databases (one thread per sample)
+        # and then we'll combine the reads into one
+        # large tensor.
+        with ThreadPoolExecutor(max_workers=n_samples) as executor:
+            futures = [executor.submit(get_transcript_signals_from_db,
+                                       (self._dbs[sample],
+                                        transcript.id,
+                                        self._conf.get_max_invalid_kmers_freq(),
+                                        self._conf.get_downsample_high_coverage(),
+                                        sample,
+                                        condition))
+                       for sample, condition, _ in self._conf.get_sample_condition_db_data()]
+            for future in as_completed(futures):
+                signal_data, sample, condition = future.result()
+                # intensity will have shape (Reads, Positions)
+                intensity = np.array(np.frombuffer(intensity, dtype=MEASUREMENTS_TYPE)
+                                     for intensity, _ in signal_data)
+                intensities.append(intensity)
+                # dwell will have shape (Reads, Positions)
+                dwell = np.array(np.frombuffer(dwell, dtype=MEASUREMENTS_TYPE)
+                                 for _, dwell in signal_data)
+                dwells.append(dwell)
+                sample_labels.extend([sample for _ in range(len(signal_data))])
+                condition_labels.extend([condition for _ in range(len(signal_data))])
+
+        # The tensor has shape: (Positions, Reads, Vars)
+        # Note, intensity and dwell have shape (Reads, Positions)
+        # so we transpose them before stacking them.
+        tensor = np.stack([np.concatenate(intensities).T,
+                           np.concatenate(dwells).T],
+                          axis=2)
+
+        sample_id_mapper = np.vectorize(self._conf.get_sample_ids().get)
+        sample_ids = sample_id_mapper(sample_labels)
+        condition_id_mapper = np.vectorize(self._conf.get_condition_ids().get)
+        condition_ids = condition_id_mapper(condition_labels)
+
+        return tensor, sample_ids, condition_ids
 
 
     def close(self):
         for _, db in self._dbs:
             db.close()
         super().close()
+
+
+def get_transcript_signals_from_db(args):
+    (connection,
+     transcript_id,
+     max_invalid_ratio,
+     max_reads,
+     sample,
+     condition) = args
+    # Note: we use config.get_downsample_high_coverage to
+    # set a limit on the number of reads per condition.
+    # However, it will be pointless to take more reads
+    # for a given sample than we wull use for the condition.
+    # For this reason, we limit the per-sample reads to
+    # the same number, to avoid reading and processing
+    # large amount of data unnecessarily. When combining
+    # the data from different samples of the same conditions
+    # some of those reads would be discarded potentially.
+    signal_data = PreprocessingDB.get_signal_data(connection,
+                                                  transcript_id,
+                                                  max_invalid_ratio,
+                                                  max_reads)
+    return signal_data, sample, condition
 

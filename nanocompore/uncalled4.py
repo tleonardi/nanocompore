@@ -8,6 +8,8 @@ by Uncalled4 and extracts the data from the tags.
 
 import pysam
 import numpy as np
+import numpy.typing as npt
+from jaxtyping import Float, Int
 
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
@@ -15,7 +17,6 @@ from concurrent.futures import wait
 from typing import Dict
 
 from nanocompore.kmer import KmerData
-from nanocompore.common import UNCALLED4_MEASUREMENT_TYPE
 from nanocompore.common import INTENSITY_POS
 from nanocompore.common import DWELL_POS
 
@@ -62,10 +63,22 @@ class Uncalled4:
                           for sample, sample_def in cond_def.items()}
 
 
-    def get_data(self):
+    def get_data(self) -> tuple[Float[np.ndarray, "positions reads"],
+                                Int[np.ndarray, "reads"],
+                                Int[np.ndarray, "reads"]]:
         """
-        A generator that yields one KmerData object
-        per position in the transcript.
+        Returns the signal data for the transcript's reads.
+
+        Returns
+        -------
+        tuple[Float[np.ndarray, "positions reads"],
+              Int[np.ndarray, "reads"],
+              Int[np.ndarray, "reads"]]
+            Tuple with:
+            - Tensor with shape (Positions, Reads, Vars)
+              containing the signal measurements.
+            - 1D array of sample ids with size R.
+            - 1D array of condition ids with size R.
         """
         kit = self._config.get_kit()
         ref_len = len(self._seq)
@@ -80,8 +93,8 @@ class Uncalled4:
             read_counts[condition] += min(count, self._config.get_downsample_high_coverage())
         read_count = sum(read_counts.values())
 
-        # shape is: (reads, positions, vars)
-        reads_tensor = np.zeros((ref_len, read_count, 3))
+        # shape is: (positions, reads, vars)
+        reads_tensor = np.full((ref_len, read_count, 2), np.nan, dtype=np.float32)
 
         n_samples = len(self._config.get_sample_condition_bam_data())
         condition_counts = defaultdict(lambda: 0)
@@ -114,6 +127,12 @@ class Uncalled4:
         # we need to trim the tensor that we preallocated.
         reads_tensor = reads_tensor[:, :read_index, :]
 
+        # Uncalled4 will use the minimum value in int16 (i.e. -32768)
+        # to encode NaN values for the measurements. We don't want to
+        # keep those as valid measurements, because they can lead to
+        # false positives.
+        reads_tensor = np.where(reads_tensor == -32768, np.nan, reads_tensor)
+
         read_ids = np.array(read_ids)
         sample_id_mapper = np.vectorize(self._config.get_sample_ids().get)
         sample_ids = sample_id_mapper(sample_labels)
@@ -121,33 +140,6 @@ class Uncalled4:
         condition_ids = condition_id_mapper(condition_labels)
 
         return reads_tensor, sample_ids, condition_ids
-
-        # for pos in range(ref_len - kit.len + 1):
-        #     kmer = self._seq[pos:pos+kit.len]
-        #     pos_data = reads_tensor[:, pos, :]
-
-        #     # Remove reads that did not have data for the position
-        #     # or represent an unrecoverable skip event (this happens
-        #     # when the skip event is the first one).
-        #     valid_reads = ~np.isnan(pos_data[:, 0]) & (pos_data[:, 0] != 0)
-
-        #     if valid_reads.sum() == 0:
-        #         continue
-
-        #     pos_data = pos_data[valid_reads, :].astype(UNCALLED4_MEASUREMENT_TYPE)
-        #     pos_sample_labels = sample_labels[valid_reads]
-        #     pos_read_ids = read_ids[valid_reads]
-
-        #     yield KmerData(self._ref_id,
-        #                    pos, # the position is the start of the kmer
-        #                    kmer,
-        #                    pos_sample_labels,
-        #                    pos_read_ids,
-        #                    pos_data[:, 1], # intensity
-        #                    pos_data[:, 2], # standard dev
-        #                    pos_data[:, 0], # dwell
-        #                    None, # We don't have validity data here
-        #                    self._config)
 
 
     def _copy_signal_to_tensor(self, read, tensor, read_index):

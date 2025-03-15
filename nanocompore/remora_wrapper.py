@@ -1,17 +1,18 @@
+import numpy as np
+import numpy.typing as npt
+import pandas as pd
 import pod5
 import pysam
-import numpy as np
-import pandas as pd
 from typing import Optional
 
+from jaxtyping import Float, Int
 from loguru import logger
 from pkg_resources import resource_filename
 from remora import io, refine_signal_map, RemoraError
 
-from nanocompore.kmer import KmerData
 from nanocompore.common import Kit
 from nanocompore.common import NanocomporeError
-from nanocompore.common import REMORA_MEASUREMENT_TYPE
+from nanocompore.kmer import KmerData
 
 
 RNA002_LEVELS_FILE = "models/rna002_5mer_levels_v1.txt"
@@ -84,7 +85,13 @@ class Remora:
                                    "Likely something wrong with the pod5 file")
 
 
-    def kmer_data_generator(self, ref_id:str, ref_seq:str):
+    def get_resquiggled_data(
+            self,
+            ref_id:str,
+            ref_seq:str
+    ) -> tuple[Float[np.ndarray, "reads positions"],
+               Float[np.ndarray, "reads positions"],
+               list[str]]:
         """
         Returns a generator that yields KmerData objects.
 
@@ -94,6 +101,18 @@ class Remora:
             Reference ID of the transcript.
         ref_seq : 
             Reference sequence of the transcript.
+        
+        Returns
+        -------
+        tuple[Float[np.ndarray, "reads positions"],
+              Float[np.ndarray, "reads positions"],
+              list[str]]
+            Tuple with:
+              - 2D array with shape (reads, positions)
+                containing the intensity values.
+              - 2D array with shape (reads, positions)
+                containing the dwell time values.
+              - list with the qname ids of the reads
         """
         ref_region = io.RefRegion(ctg=ref_id,
                                   strand='+',
@@ -106,31 +125,15 @@ class Remora:
             # with metrics:
             # {metric: <numpy appray with shape (reads, positions)>, ...}
             samples_metrics, bam_reads = self._remora_resquiggle(ref_region)
+            return (samples_metrics['trimmean'],
+                    samples_metrics['dwell'],
+                    bam_reads)
         except RemoraError as e:
             if str(e) == "No reads covering region":
-                return 
+                return None
             raise NanocomporeError("failed to resquiggle with Remora") from e
         except Exception as e:
             raise NanocomporeError("failed to resquiggle with Remora") from e
-
-        # Iterate over all positions of the transcript using
-        # 0-based indexing.
-        for pos in range(ref_region.len):
-            # Remora gives the signal measurements at
-            # a single base resolution, so we only
-            # store a 1-mer.
-            kmer_seq = ref_seq[pos]
-
-            yield KmerData(None,
-                           pos,
-                           kmer_seq,
-                           None, # We don't need a sample label here
-                           bam_reads,
-                           samples_metrics['trimmean'],
-                           samples_metrics['trimsd'],
-                           samples_metrics['dwell'],
-                           None, # We don't have validity data here
-                           None) # We don't have a config here
 
 
     @property

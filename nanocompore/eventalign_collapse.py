@@ -25,16 +25,16 @@ from loguru import logger
 from pyfaidx import Fasta
 
 from nanocompore.kmer import KmerData
-from nanocompore.database import CREATE_INTERMEDIARY_KMER_DATA_TABLE_QUERY
+from nanocompore.database import CREATE_SIGNAL_DATA_TABLE_QUERY
 from nanocompore.database import CREATE_READS_TABLE_QUERY
 from nanocompore.database import CREATE_TRANSCRIPTS_TABLE_QUERY
-from nanocompore.database import INSERT_INTERMEDIARY_KMER_DATA_QUERY
 from nanocompore.database import INSERT_READS_QUERY
+from nanocompore.database import INSERT_SIGNAL_DATA_QUERY
 from nanocompore.database import INSERT_TRANSCRIPTS_QUERY
 from nanocompore.database import CREATE_READS_ID_INDEX_QUERY
-from nanocompore.database import CREATE_KMERS_INDEX_QUERY
+from nanocompore.database import CREATE_SIGNAL_DATA_INDEX_QUERY
 from nanocompore.common import READ_ID_TYPE
-from nanocompore.common import EVENTALIGN_MEASUREMENT_TYPE
+from nanocompore.common import MEASUREMENTS_TYPE
 from nanocompore.common import monitor_workers
 
 
@@ -129,7 +129,7 @@ class EventalignCollapser:
                 cursor.execute("BEGIN")
                 cursor.execute("INSERT INTO transcripts SELECT * FROM tmp.transcripts")
                 cursor.execute("INSERT INTO reads SELECT * FROM tmp.reads")
-                cursor.execute("INSERT INTO kmer_data SELECT * FROM tmp.kmer_data")
+                cursor.execute("INSERT INTO signal_data SELECT * FROM tmp.signal_data")
                 conn.commit()
                 cursor.execute("DETACH DATABASE tmp")
                 # Delete the tmp db
@@ -211,7 +211,7 @@ class EventalignCollapser:
 
         file.seek(fstart)
 
-        logger.info(f"Starting to read lines in range ({fstart}, {fend})")
+        logger.info(f"Starting to read lines in range [{fstart}, {fend})")
 
         prev_read = None
         prev_pos = None
@@ -238,7 +238,6 @@ class EventalignCollapser:
                                  event_dwell,
                                  kmer == model_kmer,
                                  kmer)
-                # kmer_data = [pos, event_measurements, event_dwell, kmer == model_kmer, kmer]
                 data.append((read, [kmer_data]))
                 prev_read = read
                 prev_pos = pos
@@ -248,7 +247,6 @@ class EventalignCollapser:
                                  event_dwell,
                                  kmer == model_kmer,
                                  kmer)
-                # kmer_data = [pos, event_measurements, event_dwell, kmer == model_kmer, kmer]
                 data[-1][1].append(kmer_data)
                 prev_pos = pos
             else:
@@ -303,12 +301,9 @@ class EventalignCollapser:
                     data = self._read_data(file, fstart, fend)
 
                     ref_len = len(str(fasta[ref_id]))
-                    kmers = self._process_ref(ref_id, data, ref_len)
-                    read_invalid_kmer_ratios = self._get_reads_invalid_kmer_ratio(kmers, ref_len)
+                    intensity, dwell, reads_invalid_ratio = self._process_ref(ref_id, data, ref_len)
 
-                    all_reads = {read
-                                 for kmer in kmers
-                                 for read in kmer.reads}
+                    all_reads = list(reads_invalid_ratio.keys())
 
                     lock.acquire()
                     transcript_id = current_transcript_id.value
@@ -320,16 +315,20 @@ class EventalignCollapser:
                     read_ids = {read: i + reads_offset
                                 for i, read in enumerate(all_reads)}
 
-                    rows = self._process_rows_for_writing(transcript_id, kmers, read_ids)
+                    rows = self._process_rows_for_writing(transcript_id,
+                                                          list(read_ids.values()),
+                                                          intensity,
+                                                          dwell)
 
-                    reads_data = [(read, idx, read_invalid_kmer_ratios[read])
+
+                    reads_data = [(read, idx, reads_invalid_ratio[read])
                                   for read, idx in read_ids.items()]
 
                     cursor.execute('BEGIN')
                     cursor.execute(INSERT_TRANSCRIPTS_QUERY,
                                    (transcript_id, ref_id))
                     cursor.executemany(INSERT_READS_QUERY, reads_data)
-                    cursor.executemany(INSERT_INTERMEDIARY_KMER_DATA_QUERY, rows)
+                    cursor.executemany(INSERT_SIGNAL_DATA_QUERY, list(rows))
                     cursor.execute('COMMIT')
                     logger.info(f"Wrote transcript {transcript_id} {ref_id} to tmp database.")
                 except Exception:
@@ -344,15 +343,15 @@ class EventalignCollapser:
     def _process_ref(self, ref_id, data, ref_len):
         nreads = len(data)
 
-        intensity = np.empty((nreads, ref_len), dtype=EVENTALIGN_MEASUREMENT_TYPE)
+        intensity = np.empty((nreads, ref_len), dtype=MEASUREMENTS_TYPE)
         intensity.fill(np.nan)
-        sd = np.empty((nreads, ref_len), dtype=EVENTALIGN_MEASUREMENT_TYPE)
-        sd.fill(np.nan)
-        dwell = np.empty((nreads, ref_len), dtype=EVENTALIGN_MEASUREMENT_TYPE)
+        # We don't use sd for now
+        # sd = np.empty((nreads, ref_len), dtype=MEASUREMENTS_TYPE)
+        # sd.fill(np.nan)
+        dwell = np.empty((nreads, ref_len), dtype=MEASUREMENTS_TYPE)
         dwell.fill(np.nan)
         valid = np.full((nreads, ref_len), False)
         read_ids = []
-        kmers = np.repeat('NNNNN', ref_len)
 
         for row, (read_id, read_data) in enumerate(data):
             read_ids.append(read_id)
@@ -363,81 +362,29 @@ class EventalignCollapser:
                 # that statistics.median is faster for small
                 # arrays, which is the expected case here.
                 median = statistics.median(kmer_data.measurements)
-                mad = statistics.median(np.abs(np.array(kmer_data.measurements) - median))
                 intensity[row, pos] = median
-                sd[row, pos] = mad
+                # We don't use sd for now
+                # mad = statistics.median(np.abs(np.array(kmer_data.measurements) - median))
+                # sd[row, pos] = mad
                 dwell[row, pos] = kmer_data.dwell
                 valid[row, pos] = kmer_data.valid
-                kmers[pos] = kmer_data.kmer
 
-        kmer_data_list = self._get_kmer_data_list(ref_id,
-                                                  ref_len,
-                                                  kmers,
-                                                  np.array(read_ids),
-                                                  intensity,
-                                                  sd,
-                                                  dwell,
-                                                  valid)
-        return kmer_data_list
+        reads_invalid_ratio = self._get_reads_invalid_kmer_ratio(read_ids, valid)
+
+        return intensity, dwell, reads_invalid_ratio
 
 
-    def _get_kmer_data_list(self,
-                            ref_id,
-                            ref_len,
-                            kmers,
-                            read_ids,
-                            intensity,
-                            sd,
-                            dwell,
-                            valid):
-        kmer_data_list = []
-        for pos in range(ref_len):
-            valid_reads = ~np.isnan(intensity[:, pos])
-
-            if np.any(valid_reads):
-                kmer_data = KmerData(ref_id,
-                                     pos,
-                                     kmers[pos],
-                                     None,
-                                     read_ids[valid_reads],
-                                     intensity[valid_reads, pos],
-                                     sd[valid_reads, pos],
-                                     dwell[valid_reads, pos],
-                                     valid[valid_reads, pos],
-                                     None)
-                kmer_data_list.append(kmer_data)
-
-        return kmer_data_list
+    def _process_rows_for_writing(self, transcript_id, read_ids, intensity, dwell):
+        for i in range(intensity.shape[0]):
+            yield (transcript_id, read_ids[i], intensity[i], dwell[i])
 
 
-    def _process_rows_for_writing(self, transcript_id, kmers, read_ids):
-        rows = []
-        for kmer in kmers:
-            kmer_read_ids = np.array([read_ids[read] for read in kmer.reads],
-                                     dtype=READ_ID_TYPE)
-
-            rows.append((transcript_id,
-                         kmer.pos,
-                         kmer.kmer,
-                         kmer_read_ids.tobytes(),
-                         kmer.intensity.tobytes(),
-                         kmer.sd.tobytes(),
-                         kmer.dwell.tobytes()))
-        return rows
-
-
-    def _get_reads_invalid_kmer_ratio(self, kmers_data, ref_len):
-        read_valid = {}
-        for kmer in kmers_data:
-            for read, valid in zip(kmer.reads, kmer.valid):
-                if read not in read_valid:
-                    read_valid[read] = 0
-                if valid:
-                    read_valid[read] += 1
-
-        return {read: (ref_len - valid)/ref_len
-                for read, valid in read_valid.items()}
-
+    def _get_reads_invalid_kmer_ratio(self, read_ids, valid):
+        ref_len = valid.shape[1]
+        valid_positions = valid.sum(1)
+        return {read: (ref_len - n_valid)/ref_len
+                for read, n_valid in zip(read_ids, valid_positions)}
+        
 
     def _get_db(self, path):
         conn = sqlite3.connect(path, isolation_level=None)
@@ -453,14 +400,14 @@ class EventalignCollapser:
     def _create_tables(self, path):
         with closing(self._get_db(path)) as conn,\
              closing(conn.cursor()) as cursor:
-            cursor.execute(CREATE_INTERMEDIARY_KMER_DATA_TABLE_QUERY)
-            cursor.execute(CREATE_READS_TABLE_QUERY)
             cursor.execute(CREATE_TRANSCRIPTS_TABLE_QUERY)
+            cursor.execute(CREATE_READS_TABLE_QUERY)
+            cursor.execute(CREATE_SIGNAL_DATA_TABLE_QUERY)
 
 
     def _create_db_indices(self):
         with closing(self._get_db(self._output)) as conn,\
              closing(conn.cursor()) as cursor:
             cursor.execute(CREATE_READS_ID_INDEX_QUERY)
-            cursor.execute(CREATE_KMERS_INDEX_QUERY)
+            cursor.execute(CREATE_SIGNAL_DATA_INDEX_QUERY)
 

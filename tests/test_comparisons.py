@@ -33,8 +33,8 @@ def test_add_shift_stats():
             [0.6, 0.4], # read 6
         ],
     ])
-    conditions = torch.tensor([[0, 1, 0, 1],
-                               [1, 0, 1, 0]])
+    conditions = torch.tensor([0, 1, 0, 1])
+                               
 
     comparator = TranscriptComparator(config)
 
@@ -45,16 +45,16 @@ def test_add_shift_stats():
                                 'cpu')
 
     assert get_float(results['c1_mean_intensity'][0]) == 1.3
-    assert get_float(results['c1_mean_intensity'][1]) == 0.9
+    assert get_float(results['c1_mean_intensity'][1]) == 1.2
     assert get_float(results['c1_mean_dwell'][0]) == 0.7
-    assert get_float(results['c1_mean_dwell'][1]) == 0.25
+    assert get_float(results['c1_mean_dwell'][1]) == 0.65
 
     assert get_float(results['c2_mean_intensity'][0]) == 1.1
-    assert get_float(results['c2_mean_intensity'][1]) == 1.2
+    assert get_float(results['c2_mean_intensity'][1]) == 0.9
     assert get_float(results['c2_mean_dwell'][0]) == 0.15
-    assert get_float(results['c2_mean_dwell'][1]) == 0.65
+    assert get_float(results['c2_mean_dwell'][1]) == 0.25
 
-    assert get_float(results['c1_std_intensity'][1]) == 0.3
+    assert get_float(results['c1_std_intensity'][1]) == 0.1
 
 
 def test_add_shift_stats_with_motor_dwell():
@@ -79,8 +79,7 @@ def test_add_shift_stats_with_motor_dwell():
             [0.6, 0.4, 0.2], # read 6
         ],
     ])
-    conditions = torch.tensor([[0, 1, 0, 1],
-                               [1, 0, 1, 0]])
+    conditions = torch.tensor([0, 1, 0, 1])
 
     comparator = TranscriptComparator(config)
 
@@ -91,20 +90,20 @@ def test_add_shift_stats_with_motor_dwell():
                                 'cpu')
 
     assert get_float(results['c1_mean_intensity'][0]) == 1.3
-    assert get_float(results['c1_mean_intensity'][1]) == 0.9
+    assert get_float(results['c1_mean_intensity'][1]) == 1.2
     assert get_float(results['c1_mean_dwell'][0]) == 0.7
-    assert get_float(results['c1_mean_dwell'][1]) == 0.25
+    assert get_float(results['c1_mean_dwell'][1]) == 0.65
     assert get_float(results['c1_mean_motor_dwell'][0]) == 0.5
-    assert get_float(results['c1_mean_motor_dwell'][1]) == 0.6
+    assert get_float(results['c1_mean_motor_dwell'][1]) == 0.5
 
     assert get_float(results['c2_mean_intensity'][0]) == 1.1
-    assert get_float(results['c2_mean_intensity'][1]) == 1.2
+    assert get_float(results['c2_mean_intensity'][1]) == 0.9
     assert get_float(results['c2_mean_dwell'][0]) == 0.15
-    assert get_float(results['c2_mean_dwell'][1]) == 0.65
+    assert get_float(results['c2_mean_dwell'][1]) == 0.25
     assert get_float(results['c2_mean_motor_dwell'][0]) == 0.65
-    assert get_float(results['c2_mean_motor_dwell'][1]) == 0.5
+    assert get_float(results['c2_mean_motor_dwell'][1]) == 0.6
 
-    assert get_float(results['c1_std_intensity'][1]) == 0.3
+    assert get_float(results['c1_std_intensity'][1]) == 0.1
 
 
 def test_kmers_to_tensor():

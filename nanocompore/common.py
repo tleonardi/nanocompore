@@ -7,17 +7,19 @@ import sys
 import time
 import multiprocessing as mp
 
-from enum import Enum
 from collections import Counter
 from collections import OrderedDict
 from collections import defaultdict
 from collections import namedtuple
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import as_completed
+from enum import Enum
+from typing import NewType
 
 import numpy as np
 import pysam
 
+from jaxtyping import Float
 from loguru import logger
 from pyfaidx import Fasta
 
@@ -39,14 +41,13 @@ Kit.RNA004.center = 5
 
 READ_ID_TYPE = np.uint32
 SAMPLE_ID_TYPE = np.uint8
-REMORA_MEASUREMENT_TYPE = np.float32
-UNCALLED4_MEASUREMENT_TYPE = np.int16
-EVENTALIGN_MEASUREMENT_TYPE = np.float32
+MEASUREMENTS_TYPE = np.float32
 
 
 INTENSITY_POS = 0
 DWELL_POS = 1
 MOTOR_DWELL_POS = 2
+
 
 def is_valid_position(pos, seq_len, kit):
     """
@@ -347,17 +348,6 @@ def is_valid_fasta(file):
         return False
 
 
-def get_measurement_type(resquiggler):
-    if resquiggler == 'remora':
-        return REMORA_MEASUREMENT_TYPE
-    elif resquiggler == 'uncalled4':
-        return UNCALLED4_MEASUREMENT_TYPE
-    elif resquiggler == 'eventalign':
-        return EVENTALIGN_MEASUREMENT_TYPE
-    else:
-        raise NotImplementedError(f"Unsupported resquiggler '{resquiggler}'")
-
-
 class Indexer:
     def __init__(self, initial_index=1):
         self._ids = {}
@@ -502,9 +492,9 @@ def monitor_workers(workers, delay_sec=5):
                 sys.exit(1)
 
 
-def get_references_from_bam(bam):
+def get_references_from_bam(bam_path: str) -> set[str]:
     references = set()
-    bam = pysam.AlignmentFile(bam, "rb")
+    bam = pysam.AlignmentFile(bam_path, "rb")
     for line in bam.get_index_statistics():
         if line.mapped > 0:
             references.add(line.contig)
@@ -525,7 +515,7 @@ def get_references_from_bams(config, threads=4):
             for ref_id, i in zip(references, range(len(references)))}
 
 
-def get_reads_invalid_kmer_ratio(kmers):
+def get_reads_invalid_ratio(intensity: Float[np.ndarray, "positions reads"]): 
     """
     Calculate the ratio of missing kmers
     in the read. It takes the kmers with
@@ -536,22 +526,25 @@ def get_reads_invalid_kmer_ratio(kmers):
     For eventalign there's a custom method, that takes
     in consideration the richer information provided
     by the resquiggler.
+
+    Parameters
+    ----------
+    intensity : npt.NDArray[np.float32]
+        2D array with shape (positions, reads).
+        The missing values should be np.nan. 
+    Returns
+    -------
+    np.array
+        Array with shape (reads,) containing
+        the ratio of invalid positions for
+        each read.
     """
-    read_counts = defaultdict(lambda: 0)
-    read_ends = defaultdict(lambda: (np.inf, -1))
-
-    for kmer in kmers:
-        for read in kmer.reads:
-            read_counts[read] += 1
-            curr_range = read_ends[read]
-            start = min(kmer.pos, curr_range[0])
-            end = max(kmer.pos, curr_range[1])
-            read_ends[read] = (start, end)
-    return {read: calc_invalid_ratio(read_ends[read], count)
-            for read, count in read_counts.items()}
-
-
-def calc_invalid_ratio(ends, valid):
-    length = ends[1] - ends[0] + 1
-    return (length - valid)/length
+    nreads = intensity.shape[1]
+    ratios = np.empty(nreads)
+    for n in range(nreads):
+        valid_positions = np.where(~np.isnan(intensity[:, n]))[0]
+        length = valid_positions.max() - valid_positions.min() + 1
+        invalid_ratio = (length - len(valid_positions))/length
+        ratios[n] = invalid_ratio
+    return ratios
 

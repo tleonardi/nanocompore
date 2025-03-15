@@ -6,10 +6,7 @@ from pathlib import Path
 import numpy as np
 
 from nanocompore.eventalign_collapse import EventalignCollapser
-from nanocompore.common import Kit
-from nanocompore.common import READ_ID_TYPE
-from nanocompore.common import EVENTALIGN_MEASUREMENT_TYPE
-from nanocompore.kmer import KmerData
+from nanocompore.common import MEASUREMENTS_TYPE
 
 from tests.common import cwd
 
@@ -32,89 +29,51 @@ def test_eventalign_collapse():
         num_transcripts = conn.execute('SELECT COUNT(*) FROM transcripts').fetchone()[0]
         assert num_transcripts == 2
 
-        kmer_data = conn.execute('SELECT * FROM kmer_data').fetchall()
+        signal_data = conn.execute('SELECT * FROM signal_data').fetchall()
+
         # Validate that we have data for two transcripts
-        assert {1, 2} == {row[0] for row in kmer_data}
+        assert {1, 2} == {row[0] for row in signal_data}
 
-        # Validate that we have data for three positions and the
-        # center of kmers is correct. The positions in the
-        # eventalign tsv are 301, 302 and 303, which are the
-        # starting positions of the kmer.
-        assert {301, 302, 303} == {row[1] for row in kmer_data}
-
-        kmer_301 = [row
-                    for row in kmer_data
-                    if row[1] == 301 and row[0] == 1][0]
-
-        # Validate that the kmer sequence is correct
-        assert kmer_301[2] == 'AGCAC'
-
-        read_ids = np.frombuffer(kmer_301[3], dtype=READ_ID_TYPE)
-        assert len(read_ids) == 3
+        # Validate that we have four reads
+        read_ids = [row[1] for row in signal_data]
+        assert len(read_ids) == 4
 
         query = f'''SELECT read
                     FROM reads
-                    WHERE id IN ({",".join(["?" for _ in range(3)])})'''
-        read_uuids = conn.execute(query, read_ids.tolist()).fetchall()
+                    WHERE id IN ({",".join(["?" for _ in range(len(read_ids))])})'''
+        read_uuids = conn.execute(query, read_ids).fetchall()
         read_uuids = {row[0] for row in read_uuids}
 
         assert read_uuids == {'3f46f499-8ce4-4817-8177-8ad61b784f27',
                               '73d62df4-f04a-4207-a4bc-7b9739b3c3b2',
-                              'b7bc9a36-318e-4be2-a90f-74a5aa6439bf'}
+                              'b7bc9a36-318e-4be2-a90f-74a5aa6439bf',
+                              '65db1ced-cbf5-40e4-880b-9f202c715804'}
 
-        # Validate the median intensity for position
-        # 301 on the first read (which includes two events).
-        intensities = np.frombuffer(kmer_301[4], dtype=EVENTALIGN_MEASUREMENT_TYPE)[0]
-        assert round(float(np.median(intensities)), 3) == 117.218
+        # Validate the measurements for the first two
+        # positions of the first read.
+        intensities = np.frombuffer(signal_data[0][2], dtype=MEASUREMENTS_TYPE)
+        assert round(float(intensities[301]), 3) == 117.218
+        assert round(float(intensities[302]), 3) == 71.906
 
-        # Validate the median intensity for position
-        # 302 on the first read (which includes one event).
-        kmer_302 = [row
-                    for row in kmer_data
-                    if row[1] == 302 and row[0] == 1][0]
-        intensities = np.frombuffer(kmer_302[4], dtype=EVENTALIGN_MEASUREMENT_TYPE)[0]
-        assert round(float(np.median(intensities)), 3) == 71.906
+        dwells = np.frombuffer(signal_data[0][3], dtype=MEASUREMENTS_TYPE)
+        assert round(float(dwells[301]), 3) == 0.008
+        assert round(float(dwells[302]), 3) == 0.003
 
-        # Validate the MAD calcuation
-        intensity_mads = np.frombuffer(kmer_301[5], dtype=EVENTALIGN_MEASUREMENT_TYPE)
-        assert round(float(intensity_mads[0]), 3) == 4.723
-
-        dwells = np.frombuffer(kmer_301[6], dtype=EVENTALIGN_MEASUREMENT_TYPE)
-        assert round(float(dwells[0]), 3) == 0.008
-
+        # Validate the calculation of read invalid
+        # kmer ratio.
+        reads_ratios = {read: invalid_ratio
+                        for read, _, invalid_ratio in conn.execute('SELECT * FROM reads').fetchall()}
+        # Read 3f46f499-8ce4-4817-8177-8ad61b784f27
+        # is for transcript:
+        # ENST00000674681.1|ENSG00000075624.17|OTTHUMG00000023268|-|ACTB-219|ACTB|2554|protein_coding|
+        # We have three positions in the eventalign tsv
+        # with positions 302 and 303 being valid.
+        # Position 301 has two events, one of which is
+        # NNNNN, so the position is invalid.
+        # The expected invalid ratio should be
+        # the (length - num_valid)/length
+        assert reads_ratios['3f46f499-8ce4-4817-8177-8ad61b784f27'] == (2554 - 2)/2554
     finally:
         # Make sure to delete the sqlite database
         Path(db_out).unlink()
-
-
-def test_get_reads_invalid_kmer_ratio():
-    collapser = EventalignCollapser(None,
-                                    None,
-                                    None,
-                                    2)
-    kmer_1 = KmerData('transcript1',
-                      1,
-                      'AGCAC',
-                      np.array(['WT', 'KD', 'WT', 'KD']),
-                      np.array([1, 2, 3, 4]),
-                      np.array([97.5, 98.8, 84.3, 113.2]),
-                      np.array([3.1, 4.2, 2.1, 1.9]),
-                      np.array([0.08, 0.012, 0.4, 0.06]),
-                      np.array([True, False, True, False]),
-                      None)
-    kmer_10 = KmerData('transcript1',
-                       10,
-                       'AGCAC',
-                       np.array(['WT', 'KD', 'WT', 'KD']),
-                       np.array([1, 2, 3, 4]),
-                       np.array([97.5, 98.8, 84.3, 113.2]),
-                       np.array([3.1, 4.2, 2.1, 1.9]),
-                       np.array([0.08, 0.012, 0.4, 0.06]),
-                       np.array([True, False, False, True]),
-                       None)
-    invalid_ratios = collapser._get_reads_invalid_kmer_ratio([kmer_1, kmer_10], 10)
-    assert invalid_ratios == {1: (10 - 2)/10,
-                              2: 1,
-                              3: (10 - 1)/10,
-                              4: (10 - 1)/10}
 

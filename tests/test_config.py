@@ -50,7 +50,7 @@ class TestConfig:
 
     def test_invalid_fasta(self):
         yaml = copy.deepcopy(BASIC_CONFIG)
-        yaml['fasta'] = yaml['data']['kd']['kd1']['pod5']
+        yaml['fasta'] = yaml['data']['kd']['kd1']['bam']
 
         with pytest.raises(schema.SchemaError) as exception_info:
             config = Config(yaml)
@@ -174,21 +174,32 @@ class TestConfig:
             config = Config(yaml)
 
 
-    def test_eventalign_tsv_or_db_required_for_eventalign(self):
+    def test_db_required_for_eventalign(self):
         yaml = copy.deepcopy(BASIC_CONFIG)
         yaml['resquiggler'] = 'eventalign'
 
-        # should be okay if eventalign_tsv is set
-        config = Config(yaml)
-
-        file = yaml['data']['kd']['kd1']['eventalign_tsv']
-
         # error when missing both
-        del yaml['data']['kd']['kd1']['eventalign_tsv']
         with pytest.raises(schema.SchemaError) as exception_info:
             config = Config(yaml)
 
         # should be okay if eventalign_db is set
-        yaml['data']['kd']['kd1']['eventalign_db'] = file
+        for cond in yaml['data']:
+            for sample in yaml['data'][cond]:
+                yaml['data'][cond][sample]['db'] = 'some/path'
+        config = Config(yaml)
+
+
+    def test_db_required_for_remora(self):
+        yaml = copy.deepcopy(BASIC_CONFIG)
+        yaml['resquiggler'] = 'remora'
+
+        # error when missing both
+        with pytest.raises(schema.SchemaError) as exception_info:
+            config = Config(yaml)
+
+        # should be okay if eventalign_db is set
+        for cond in yaml['data']:
+            for sample in yaml['data'][cond]:
+                yaml['data'][cond][sample]['db'] = 'some/path'
         config = Config(yaml)
 
