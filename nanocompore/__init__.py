@@ -7,4 +7,4 @@ except ModuleNotFoundError:
 
 __version__ = importlib_metadata.version(__name__)
 
-__description__ = 'Software package that identifies raw signal changes between two conditions from https://github.com/nanoporetech/remora resquiggled dRNA-Seq data.'
+__description__ = 'Software package that identifies raw signal changes between two conditions of dRNA-Seq data.'

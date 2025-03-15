@@ -6,40 +6,27 @@
 # - Uncalled4:
 #   - Each sample should have the "bam" field set with a path
 #     to a bam file containing the Uncalled4 resquiggling data.
-# - Eventalign:
-#   - If you haven't ran nanocompore's eventalign_collapse
-#     subcommand on your eventalign files yet, you can set
-#     the "eventalign_tsv" field to a path to the TSV output
-#     produced by Nanopolish or f5c. The preprocess command
-#     will then collapse the files for you.
-#   - If you already have ran eventalign_collapse, you can
-#     provide the path to the collapsed database with the
-#     "eventalign_db" parameter.
-#   Note: the second option may be more efficient as you
-#   can directly pipe Nanopolish/f5c to Nanocompore's
-#   eventalign_collapse and avoid having to store the
-#   raw eventalign TSV files, which are usually quite big.
+# - Eventalign or Remora:
+#   - Each sample should have the "db" field set with a path
+#     to an SQLite database file produced by the subcommands
+#     "eventalign_collapse" or "remora_resquiggle".
 data:
   # Only two conditions are supported
   condition1:
     sample1:
       bam: "/path/to/file.bam"
-      pod5: "/path/to/file.pod5"
-      eventalign_db: "/path/to/collapsed_eventalign.sqlite"
+      db: "/path/to/collapsed_eventalign.sqlite"
     sample2:
       bam: "/path/to/file.bam"
-      pod5: "/path/to/file.pod5"
-      eventalign_db: "/path/to/collapsed_eventalign.sqlite"
+      db: "/path/to/collapsed_eventalign.sqlite"
     # you can list as many samples as you want
   condition2:
     sample3:
       bam: "/path/to/file.bam"
-      pod5: "/path/to/file.pod5"
-      eventalign_db: "/path/to/collapsed_eventalign.sqlite"
+      db: "/path/to/collapsed_eventalign.sqlite"
     sample4:
       bam: "/path/to/file.bam"
-      pod5: "/path/to/file.pod5"
-      eventalign_db: "/path/to/collapsed_eventalign.sqlite"
+      db: "/path/to/collapsed_eventalign.sqlite"
 
 # Which of the two conditions is the one that's
 # depleted of modifications.
@@ -52,8 +39,8 @@ fasta: "/path/to/reference.fa"
 kit: "RNA004"
 
 # Specify which resquiggler you have used for your data.
-# Possible options are "remora" and "uncalled4".
-resquiggler: 'remora'
+# Possible options are "eventalign", "uncalled4", and "remora".
+resquiggler: 'eventalign'
 
 
 # === OPTIONAL FIELDS ===

@@ -81,37 +81,6 @@ def main(args=None):
 
 #~~~~~~~~~~~~~~SUBCOMMAND FUNCTIONS~~~~~~~~~~~~~~#
 
-def preprocess_subcommand(args):
-    """
-    Runs the preprocessing step that will
-    take the data from the chosen resquiggler
-    and prepare it for the actual analysis.
-    """
-    logger.warning("Running the preprocessing step")
-
-    # Read the input config file
-    with open(args.config, 'r') as f:
-        config_file = yaml.safe_load(f)
-
-    try:
-        config = Config(config_file)
-    except Exception as e:
-        msg = f"ERROR: {e}"
-        sys.stderr.write(msg)
-        exit(1)
-
-    setup_logger(config, "preprocess.log")
-
-    # Init the preprocessor
-    if config.get_resquiggler() == "remora":
-        RemoraPreprocessor(config)()
-    elif config.get_resquiggler() == "uncalled4":
-        preprocessor = Uncalled4Preprocessor(config)()
-    elif config.get_resquiggler() == "eventalign":
-        preprocessor = EventalignPreprocessor(config)()
-    else:
-        raise ArgumentError(f"Unsupported resquiggler {config.resquiggler}")
-
 
 def sampcomp_subcommand(args):
     """
