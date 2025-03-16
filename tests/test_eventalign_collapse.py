@@ -20,7 +20,7 @@ def test_eventalign_collapse():
     ref = os.path.join(cwd, 'tests/fixtures/test_reference.fa')
     db_out = 'collapsed.sqlite'
 
-    collapser = EventalignCollapser(tsv_in, ref, db_out, 2)
+    collapser = EventalignCollapser(tsv_in, ref, db_out, 2, '.')
 
     try:
         collapser()
@@ -71,8 +71,8 @@ def test_eventalign_collapse():
         # Position 301 has two events, one of which is
         # NNNNN, so the position is invalid.
         # The expected invalid ratio should be
-        # the (length - num_valid)/length
-        assert reads_ratios['3f46f499-8ce4-4817-8177-8ad61b784f27'] == (2554 - 2)/2554
+        # the (alignment_length - num_valid)/alignment_length
+        assert reads_ratios['3f46f499-8ce4-4817-8177-8ad61b784f27'] == (3 - 2)/3
     finally:
         # Make sure to delete the sqlite database
         Path(db_out).unlink()

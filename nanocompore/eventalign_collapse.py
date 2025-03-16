@@ -15,6 +15,7 @@ import threading
 import traceback
 import uuid
 
+from jaxtyping import Float, Bool
 from contextlib import closing
 from pathlib import Path
 
@@ -203,7 +204,7 @@ class EventalignCollapser:
             tmp_file.close()
 
 
-    def _read_data(self, file, fstart, fend):
+    def _read_data(self, file, fstart, fend) -> list[tuple[str, list[Kmer]]]:
         # The format is:
         # [
         #  ('read_id', [Kmer_pos1, Kmer_pos2, Kmer_pos3...], # read 1
@@ -342,7 +343,15 @@ class EventalignCollapser:
                         Path(filepath).unlink()
 
 
-    def _process_ref(self, ref_id, data, ref_len):
+    def _process_ref(
+        self,
+        ref_id: str,
+        data: list[tuple[str, list[Kmer]]],
+        ref_len: int
+    ) -> tuple[
+            Float[np.ndarray, "reads positions"],
+            Float[np.ndarray, "reads positions"],
+            dict[str, float]]:
         nreads = len(data)
 
         intensity = np.empty((nreads, ref_len), dtype=MEASUREMENTS_TYPE)
@@ -354,6 +363,8 @@ class EventalignCollapser:
         dwell.fill(np.nan)
         valid = np.full((nreads, ref_len), False)
         read_ids = []
+        starts = np.full((nreads,), np.iinfo(np.uint32).max, dtype=np.uint32)
+        ends = np.full((nreads,), 0, dtype=np.uint32)
 
         for row, (read_id, read_data) in enumerate(data):
             read_ids.append(read_id)
@@ -370,8 +381,13 @@ class EventalignCollapser:
                 # sd[row, pos] = mad
                 dwell[row, pos] = kmer_data.dwell
                 valid[row, pos] = kmer_data.valid
+                starts[row] = min(starts[row], pos)
+                ends[row] = max(ends[row], pos)
 
-        reads_invalid_ratio = self._get_reads_invalid_kmer_ratio(read_ids, valid)
+        # Calculate the ratio of invalid positions for all reads
+        alignment_lengths = ends - starts + 1
+        invalid_ratios = (alignment_lengths - valid.sum(axis=1))/alignment_lengths
+        reads_invalid_ratio = dict(zip(read_ids, invalid_ratios))
 
         return intensity, dwell, reads_invalid_ratio
 
@@ -380,13 +396,6 @@ class EventalignCollapser:
         for i in range(intensity.shape[0]):
             yield (transcript_id, read_ids[i], intensity[i], dwell[i])
 
-
-    def _get_reads_invalid_kmer_ratio(self, read_ids, valid):
-        ref_len = valid.shape[1]
-        valid_positions = valid.sum(1)
-        return {read: (ref_len - n_valid)/ref_len
-                for read, n_valid in zip(read_ids, valid_positions)}
-        
 
     def _get_db(self, path):
         conn = sqlite3.connect(path, isolation_level=None)
