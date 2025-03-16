@@ -1,71 +1,128 @@
 import sqlite3
-import json
 from typing import Optional
-from typing import Tuple
 from contextlib import closing
 
 import numpy as np
 import pandas as pd
+from jaxtyping import Float
 
-from nanocompore.database import DB_METADATA_READ_ID_TYPE_KEY
-from nanocompore.database import DB_METADATA_SAMPLE_ID_TYPE_KEY
-from nanocompore.database import DB_METADATA_MEASUREMENT_TYPE_KEY
-from nanocompore.database import DB_METADATA_SAMPLE_LABELS_KEY
-from nanocompore.database import DB_METADATA_CONDITION_SAMPLES_KEY
-
-SAMPLE_TO_CONDITION_KEY = 'sample_to_condition'
+from nanocompore.common import MEASUREMENTS_TYPE
+from nanocompore.database import PreprocessingDB
 
 
-GET_REFERENCES_SQL = """
-SELECT name FROM transcripts
-"""
-
-GET_KMER_SQL = """
-SELECT *
-FROM kmer_data
-WHERE transcript_id = ?
-  AND pos = ?
-"""
-
-GET_READS_SQL = """
-SELECT pos, samples, reads, {}
-FROM kmer_data
-WHERE transcript_id = ?
-"""
-
-GET_MINMAX_POS = """
-SELECT MIN(pos), MAX(pos)
-FROM kmer_data
-WHERE transcript_id = ?
-"""
-
-GET_TRANSCRIPT_ID = """
-SELECT id FROM transcripts WHERE name = ?
-"""
-
-
-def get_references(db: str):
+def get_references(db: str, has_data=True) -> list[str]:
     """
-    Returns a list of all references for which there're
-    data in the given database.
+    Returns a list of all references in the given
+    database.
 
     Parameters
     ----------
     db : str
         Path to the SQLite database produced by the preprocessing
         command of Nanocompore.
+    has_data : bool
+        If True (default) will return only
+        references for which there are data.
 
     Returns
     -------
     list
         List of transcript reference id strings.
     """
+    if has_data:
+        transcripts = PreprocessingDB(db).get_references_with_data()
+    else:
+        transcripts = PreprocessingDB(db).get_references()
+    return [t.ref_id for t in transcripts]
+
+
+def get_reads(db: str,
+              reference_id: str,
+              selected_reads: Optional[list[str]]=None,
+              variables: Optional[tuple[str, ...]]=('dwell', 'intensity')
+    ) -> tuple[
+            Float[np.ndarray, "reads positions variables"],
+            list[str]]:
+    """
+    Get a numpy array with read data for specific reference_id from
+    a preprocessing database produced by eventalign_collapse or
+    remora_resquiggle.
+
+    Parameters
+    ----------
+    db : str
+        Path to the SQLite database file.
+    reference_id : str
+        ID for a reference sequence (transcript).
+    selected_reads : Optional[list[str]]
+        Optional list of UUIDs of the reads for which to get data.
+
+    Returns
+    -------
+    tuple[Float[np.ndarray, ["reads positions variables"]],
+          list[str]]
+
+        A tuple with (signal_data, read_ids)
+        - signal_data is a 3D array with shape (reads, positions, variables).
+          In the variables dimension 0=intensity, 1=dwell time.
+        - reads is a list of read ids (qname).
+    """
     with closing(sqlite3.connect(db)) as conn,\
          closing(conn.cursor()) as cursor:
-        return [row[0] for row in cursor.execute(GET_REFERENCES_SQL).fetchall()]
+        rows = cursor.execute("""
+            SELECT intensity, dwell, read
+            FROM signal_data sd
+            JOIN transcripts t ON t.id = sd.transcript_id
+            JOIN reads r ON r.id = sd.read_id
+            WHERE t.name = ?""", (reference_id,)).fetchall()
+        intensity = np.array([np.frombuffer(row[0], dtype=MEASUREMENTS_TYPE)
+                              for row in rows])
+        dwell = np.array([np.frombuffer(row[1], dtype=MEASUREMENTS_TYPE)
+                          for row in rows])
+        reads = [row[2] for row in rows]
+        signal_data = np.stack([intensity, dwell], axis=2)
+        if selected_reads:
+            read_set = set(selected_reads)
+            mask = np.array([read in selected_reads for read in reads])
+            filtered_reads = [read for read in reads if read in selected_reads]
+            return signal_data[mask], filtered_reads
+        return signal_data, reads
 
 
-def get_pos(db: str, reference_id: str, pos: int):
+def get_read(db: str, read_id: str) -> Float[np.ndarray, "reads positions variables"]:
+    """
+    Get a numpy array with the signal data for a specific read from
+    a preprocessing database produced by eventalign_collapse or
+    remora_resquiggle.
+
+    Parameters
+    ----------
+    db : str
+        Path to the SQLite database file.
+    read_id : str
+        ID of the read for which to get data.
+
+    Returns
+    -------
+    Float[np.ndarray, "positions variables"]
+        Sinal data is a 2D numpy array with shape
+        (positions, variables). Variables
+        will be 0=intensity and 1=dwell time.
+    """
+    with closing(sqlite3.connect(db)) as conn,\
+         closing(conn.cursor()) as cursor:
+        row = cursor.execute("""
+            SELECT intensity, dwell
+            FROM signal_data sd
+            JOIN reads r ON r.id = sd.read_id
+            WHERE r.read = ?
+            LIMIT 1""", (read_id,)).fetchone()
+        intensity = np.frombuffer(row[0], dtype=MEASUREMENTS_TYPE)
+        dwell = np.frombuffer(row[1], dtype=MEASUREMENTS_TYPE)
+        return np.stack([intensity, dwell], axis=1)
+
+
+def get_pos(db: str, reference_id: str, pos: int) -> pd.DataFrame:
     """
     Get data for a position.
 
@@ -84,209 +141,21 @@ def get_pos(db: str, reference_id: str, pos: int):
 
     Returns
     -------
-    tuple
-        Type tuple(pandas.DataFrame, str).
+    pandas.DataFrame
         Where the DataFrame contains the following columns:
-            - condition: the read's condition label
-            - sample:    the read's sample label
             - read:      id of the read
             - intensity: current intensity
-            - std:       std of the intensity
             - dwell:     dwell time for the kmer
-        And the second value contains the kmer sequence at the
-        given position.
     """
-    metadata = get_metadata(db)
-
-    with closing(sqlite3.connect(db)) as conn,\
-         closing(conn.cursor()) as cursor:
-        transcript_id = cursor.execute(GET_TRANSCRIPT_ID,
-                                       (reference_id,)).fetchone()[0]
-        res = cursor.execute(GET_KMER_SQL, (transcript_id, pos))
-        row = res.fetchone()
-
-    kmer = row[2]
-    sample = _parse_samples(row[3], metadata)
-    return pd.DataFrame({
-        'condition': [metadata[SAMPLE_TO_CONDITION_KEY][samp] for samp in sample],
-        'sample': sample,
-        'read': _parse_reads(row[4], metadata),
-        'intensity': _parse_measurements(row[5], metadata),
-        'std': _parse_measurements(row[6], metadata),
-        'dwell': _parse_measurements(row[7], metadata),
-    }), kmer
+    reads_data, reads = get_reads(db, reference_id)
+    pos_data = reads_data[:, pos, :]
+    valid = ~np.isnan(pos_data[:, 0])
+    return pd.DataFrame({'read': np.array(reads)[valid],
+                         'intensity': pos_data[valid, 0],
+                         'dwell': pos_data[valid, 1]})
 
 
-def get_read(db: str,
-             reference_id: str,
-             read_id: str,
-             positions: Optional[list[int]]=None,
-             variables: Optional[Tuple[str, ...]]=('dwell', 'intensity')):
-    """
-    Get a numpy array with the signal data for a specific read from a kmer data DB.
-
-    By default it returns intensity and dwell for all positions.
-    Passing a collection of positions filtering the results.
-    Possible variables are ("intensity", "intensity_std", "dwell").
-
-    Parameters
-    ----------
-    db : str
-        Path to the SQLite database produced by the preprocessing
-        command of Nanocompore.
-    reference_id : str
-        ID for a reference sequence (transcript).
-    read_id : str
-        String with UUID of the read.
-    positions : list[int]
-        Optional iterable with positions for which to return results.
-    variables : Tuple[str, ...]
-        Optional tuple with variables to get.
-        Possible variables are ("intensity", "intensity_std", "dwell").
-
-    Returns
-    -------
-    tuple
-        Tuple with shape (signal_data, sample, condition)
-        signal_data is a 2D array with shape (positions, variables).
-        sample is the sample label for the read
-        conditions is the condition label for the read
-        Note: the positions would always span from 0 to the maximum position
-        with data available. If no signal data is available for a position
-        it will contain a np.nan value.
-    """
-    signal_data, _, samples =  get_reads(db,
-                                         reference_id,
-                                         reads=[read_id],
-                                         positions=positions,
-                                         variables=variables)
-    return signal_data[0], samples[0]
-
-
-def get_reads(db: str,
-              reference_id: str,
-              positions: Optional[list[int]]=None,
-              reads: Optional[list[str]]=None,
-              variables: Optional[Tuple[str, ...]]=('dwell', 'intensity')):
-    """
-    Get a numpy array with read data for specific reference_id from
-    a kmer_data sqlite DB.
-
-    By default it returns intensity and dwell for all positions and reads.
-    Passing a collection of positions and reads can be used for filtering
-    the results.
-    Possible variables are ("intensity", "intensity_std", "dwell").
-
-    Parameters
-    ----------
-    db : str
-        Path to the SQLite database produced by the preprocessing
-        command of Nanocompore.
-    reference_id : str
-        ID for a reference sequence (transcript).
-    positions : list[int]
-        Optional iterable with positions for which to return results.
-    reads : list[str]
-        Optional list of UUIDs of the reads for which to get data.
-    variables : Tuple[str, ...]
-        Optional tuple with variables to get.
-        Possible variables are ("intensity", "intensity_std", "dwell").
-
-    Returns
-    -------
-    tuple
-        (signal_data, reads, samples, conditions)
-
-        signal_data is a 3D array with shape (reads, positions, variables).
-        reads is an array of read uuids
-        samples is an array of sample labels
-        conditions is an array of condition labels
-
-        Note: the positions would always span from 0 to the maximum position
-        with data available. If no signal data is available for a position
-        on a read, the array will contain np.nan at the corresponding indices.
-
-    Raises
-    ------
-    ValueError:
-        If an invalid variable is requested.
-    """
-    if positions:
-        positions = set(positions)
-    if reads:
-        reads = set(reads)
-
-    for var in variables:
-        if var not in ['intensity', 'intensity_std', 'dwell']:
-            raise ValueError(f"Variable {var} not supported. You can use 'intensity', 'intensity_std' and 'dwell'.")
-
-    conn = sqlite3.connect(db)
-    cursor = conn.cursor()
-
-    metadata = get_metadata(db)
-
-    transcript_id = cursor.execute(GET_TRANSCRIPT_ID,
-                                   (reference_id,)).fetchone()[0]
-
-    if positions:
-        ref_len = max(positions)
-    else:
-        _, ref_len = cursor.execute(GET_MINMAX_POS, (transcript_id,)).fetchone()
-
-    res = cursor.execute(GET_READS_SQL.format(', '.join(variables)),
-                         (transcript_id,))
-
-    data = [_map_db_kmer_row(row, variables, metadata)
-            for row in res.fetchall()
-            if positions is None or row[0] in positions]
-
-    # Get all reads for which there's data for this transcript
-    all_read_ids = list({read
-                         for row in data
-                         for read in row['reads']})
-
-    # Map the integer ids of the reads to their uuids
-    ids_to_reads = _get_read_uuids(cursor, all_read_ids)
-
-    # If the user requests specific reads,
-    # we filter all reads to include only them.
-    if reads:
-        all_read_ids = [read_id
-                        for read_id in all_read_ids
-                        if ids_to_reads[read_id] in reads]
-    nreads = len(all_read_ids)
-
-    # Fix indices in the tensor for each read and variable
-    read_indices = dict(zip(all_read_ids, range(nreads)))
-    var_indices = dict(zip(variables, range(len(variables))))
-
-    tensor = np.empty((nreads, ref_len, len(variables)))
-    tensor.fill(np.nan)
-    res_reads = np.empty(nreads, dtype=object)
-    res_samples = np.empty(nreads, dtype=object)
-    res_conditions = np.empty(nreads, dtype=object)
-
-    for kmer in data:
-        pos = kmer['pos']
-        kmer_samples = kmer['samples']
-        kmer_conditions = kmer['conditions']
-        kmer_read_ids = kmer['reads']
-        for i, read_id in enumerate(kmer_read_ids):
-            read = ids_to_reads[read_id]
-            if reads and read not in reads:
-                continue
-            read_indx = read_indices[read_id]
-            res_reads[read_indx] = read
-            res_samples[read_indx] = kmer_samples[i]
-            res_conditions[read_indx] = kmer_conditions[i]
-            for var in variables:
-                var_indx = var_indices[var]
-                tensor[read_indx, pos-1, var_indx] = kmer[var][i]
-
-    return tensor, res_reads, res_samples, res_conditions
-
-
-def get_metadata(db: str):
+def get_metadata(db: str) -> dict[str, str]:
     """
     Returns the metadata from the given database.
 
@@ -307,59 +176,5 @@ def get_metadata(db: str):
     with closing(sqlite3.connect(db)) as conn,\
          closing(conn.cursor()) as cursor:
         query = "SELECT key, value FROM metadata"
-        metadata = {k: v
-                    for k, v in cursor.execute(query).fetchall()}
-        metadata[DB_METADATA_CONDITION_SAMPLES_KEY] = json.loads(metadata[DB_METADATA_CONDITION_SAMPLES_KEY])
-        metadata[SAMPLE_TO_CONDITION_KEY] = {s: c
-                                             for c, samples in metadata[DB_METADATA_CONDITION_SAMPLES_KEY].items()
-                                             for s in samples}
-        return metadata
-
-
-def _map_db_kmer_row(row, variables, metadata):
-    pos = row[0]
-    samples = _parse_samples(row[1], metadata)
-    read_ids = _parse_reads(row[2], metadata)
-    result = {
-        'pos': pos,
-        'samples': samples,
-        'conditions': [metadata[SAMPLE_TO_CONDITION_KEY][samp] for samp in samples],
-        'reads': read_ids,
-    }
-    for i, var in enumerate(variables):
-        result[var] = _parse_measurements(row[3+i], metadata)
-    return result
-
-
-def _parse_reads(binary, metadata):
-    read_id_type = getattr(np, metadata[DB_METADATA_READ_ID_TYPE_KEY])
-    return np.frombuffer(binary, dtype=read_id_type)
-
-
-def _parse_samples(binary, metadata):
-    sample_id_type = getattr(np, metadata[DB_METADATA_SAMPLE_ID_TYPE_KEY])
-    sample_labels = metadata[DB_METADATA_SAMPLE_LABELS_KEY].split(',')
-    return np.array([sample_labels[i]
-                    for i in np.frombuffer(binary, dtype=sample_id_type)])
-
-
-def _parse_measurements(binary, metadata):
-    measurement_type = getattr(np, metadata[DB_METADATA_MEASUREMENT_TYPE_KEY])
-    return np.frombuffer(binary, dtype=measurement_type)
-
-
-def _get_read_uuids(cursor, reads_ids):
-    query = "SELECT id, read FROM reads WHERE id IN ({})"
-    query = query.format(','.join(map(str, reads_ids)))
-    mappings = {}
-    for ids in _chunk(reads_ids, 1000):
-        for row in cursor.execute(query).fetchall():
-            mappings[row[0]] = row[1]
-
-    return mappings
-
-
-def _chunk(li, n):
-    for i in range(0, len(li), n):
-        yield li[i:i + n]
+        return {k: v for k, v in cursor.execute(query).fetchall()}
 

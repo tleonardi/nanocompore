@@ -258,5 +258,6 @@ class RemoraPreprocessor(Preprocessor):
                 'pod5': self._pod5,
                 'bam': self._bam,
                 'kit': self._kit,
-                'max_reads': self._max_reads}
+                'max_reads': self._max_reads,
+                'resquiggler': 'remora'}
 

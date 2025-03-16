@@ -319,6 +319,17 @@ class PreprocessingDB:
                     for row in cursor.execute(query).fetchall()}
 
 
+    def get_references(self):
+        with closing(self.connect()) as conn,\
+             closing(conn.cursor()) as cursor:
+            query = """
+            SELECT DISTINCT name, id
+            FROM transcripts
+            """
+            return {TranscriptRow(row[0], row[1])
+                    for row in cursor.execute(query).fetchall()}
+
+
     @staticmethod
     def write_signal_data_rows(connection, rows):
         with closing(connection.cursor()) as cursor:
