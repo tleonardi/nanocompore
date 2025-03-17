@@ -9,7 +9,6 @@ from nanocompore.common import READ_ID_TYPE
 from nanocompore.common import MEASUREMENTS_TYPE
 from nanocompore.common import Kit
 from nanocompore.config import Config
-from nanocompore.kmer import KmerData
 from nanocompore.preprocessing import RemoraPreprocessor
 from tests.common import BASIC_CONFIG
 

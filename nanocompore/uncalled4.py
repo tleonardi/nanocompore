@@ -16,7 +16,6 @@ from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import wait
 from typing import Dict
 
-from nanocompore.kmer import KmerData
 from nanocompore.common import INTENSITY_POS
 from nanocompore.common import DWELL_POS
 

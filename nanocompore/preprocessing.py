@@ -25,7 +25,6 @@ from nanocompore.common import monitor_workers
 from nanocompore.database import INSERT_READS_QUERY
 from nanocompore.database import INSERT_TRANSCRIPTS_QUERY
 from nanocompore.database import PreprocessingDB
-from nanocompore.kmer import KmerData
 from nanocompore.remora_wrapper import Remora
 
 

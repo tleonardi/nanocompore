@@ -12,7 +12,6 @@ from remora import io, refine_signal_map, RemoraError
 
 from nanocompore.common import Kit
 from nanocompore.common import NanocomporeError
-from nanocompore.kmer import KmerData
 
 
 RNA002_LEVELS_FILE = "models/rna002_5mer_levels_v1.txt"
@@ -93,7 +92,8 @@ class Remora:
                Float[np.ndarray, "reads positions"],
                list[str]]:
         """
-        Returns a generator that yields KmerData objects.
+        Returns the intensity and dwell time data
+        for the resquiggled reads.
 
         Parameters
         ----------

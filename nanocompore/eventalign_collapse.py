@@ -24,7 +24,6 @@ import numpy as np
 from loguru import logger
 from pyfaidx import Fasta
 
-from nanocompore.kmer import KmerData
 from nanocompore.database import CREATE_SIGNAL_DATA_TABLE_QUERY
 from nanocompore.database import CREATE_READS_TABLE_QUERY
 from nanocompore.database import CREATE_TRANSCRIPTS_TABLE_QUERY

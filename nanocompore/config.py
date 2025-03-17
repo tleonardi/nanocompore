@@ -5,6 +5,9 @@ from schema import Schema, And, Or, Optional
 
 from nanocompore.common import is_valid_fasta
 from nanocompore.common import Kit
+from nanocompore.common import EVENTALIGN
+from nanocompore.common import REMORA
+from nanocompore.common import UNCALLED4
 
 
 def valid_device(value):
@@ -62,7 +65,7 @@ def validate_db_data(config):
     -------
         bool
     """
-    if config['resquiggler'] not in ('eventalign', 'remora'):
+    if config['resquiggler'] not in (EVENTALIGN, REMORA):
         return True
     for condition, cond_data in config['data'].items():
         for sample, sample_data in cond_data.items():
@@ -85,7 +88,7 @@ def validate_uncalled4_data(config):
     -------
         bool
     """
-    if config['resquiggler'] != 'uncalled4':
+    if config['resquiggler'] != UNCALLED4:
         return True
     for condition, cond_data in config['data'].items():
         for sample, sample_data in cond_data.items():

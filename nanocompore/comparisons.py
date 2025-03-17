@@ -1,24 +1,22 @@
 import gc
-
-from collections import defaultdict
-
 import time
+from collections import defaultdict
+from typing import Union
+
 import numpy as np
 import pandas as pd
 import torch
-
-from typing import Union
-from jaxtyping import Float, Int
-from numpy.lib.stride_tricks import sliding_window_view
 from gmm_gpu.gmm import GMM
+from jaxtyping import Float, Int
 from loguru import logger
+from numpy.lib.stride_tricks import sliding_window_view
 from scipy.stats import mannwhitneyu, ttest_ind, chi2_contingency, chi2
 from scipy.stats.mstats import ks_twosamp
 
 from nanocompore.common import NanocomporeError
-from nanocompore.transcript import Transcript
 from nanocompore.gof_tests import gof_test_multirep
 from nanocompore.gof_tests import gof_test_singlerep
+from nanocompore.transcript import Transcript
 
 
 INTENSITY = 0
@@ -163,75 +161,6 @@ class TranscriptComparator:
         return transcript, results
 
 
-    def kmers_to_tensor(self, kmers, device):
-        """
-        Converts the list of kmers to tensors.
-        Returns:
-        - measurements: tensor with shape (positions, reads, vars) containing the
-                        signal measurements.
-        - samples: tensor with shape (positions, reads) containing sample ids.
-        - conditions: tensor with shape (positions, reads) containing condition ids.
-        - positions: tensor with shape (positions) with the transcript positions.
-        """
-        reads = {read
-                 for kmer in kmers
-                 for read in kmer.reads}
-
-        min_pos, max_pos = np.inf, -1
-        for kmer in kmers:
-            if kmer.pos > max_pos:
-                max_pos = kmer.pos
-            if kmer.pos < min_pos:
-                min_pos = kmer.pos
-
-        read_indices = dict(zip(reads, range(len(reads))))
-        get_indices = np.vectorize(read_indices.get)
-
-        initial_positions = max_pos - min_pos + 1
-
-        TENSOR_DEPTH = 4 if self._motor_dwell_offset == 0 else 5
-
-        tensor = np.full((initial_positions, len(reads), TENSOR_DEPTH), np.nan)
-        valid_positions = torch.full((initial_positions,), False)
-        tmp_matrix = np.empty((len(reads), 4), dtype=float)
-        for kmer in sorted(kmers, key=lambda kmer: kmer.pos, reverse=True):
-            indices = get_indices(kmer.reads)
-            pos = kmer.pos - min_pos
-            valid_positions[pos] = True
-            nreads = len(kmer.reads)
-            # It's a bit faster to put all the kmer data
-            # (which is numpy arrays), into one big matrix
-            # in consecutive positions and then to reorder
-            # the rows appropritately.
-            tmp_matrix[:nreads, 0] = kmer.condition_ids
-            tmp_matrix[:nreads, 1] = kmer.sample_ids
-            tmp_matrix[:nreads, 2] = kmer.intensity
-            tmp_matrix[:nreads, 3] = np.log10(kmer.dwell)
-            tensor[pos, indices, :4] = tmp_matrix[:nreads, :]
-        if self._motor_dwell_offset > 0:
-            end = initial_positions - self._motor_dwell_offset
-            if end > 0:
-                tensor[:end, :, 4] = tensor[self._motor_dwell_offset:initial_positions, :, 3]
-
-        # valid positions are those that have at least some values
-        tensor = torch.tensor(tensor[valid_positions.numpy()],
-                              dtype=self._dtype)
-
-        positions = torch.arange(min_pos, max_pos + 1)[valid_positions]
-        return (tensor[:, :, 2:TENSOR_DEPTH].clone(), # measurements
-                tensor[:, :, 1].clone(), # samples
-                tensor[:, :, 0].clone(), # conditions
-                positions.clone())
-
-
-    def _get_motor_kmer(self, kmer, kmers):
-        for other_kmer in kmers:
-            if (kmer.transcript_id == other_kmer.transcript_id and
-                other_kmer.pos == kmer.pos + self._motor_dwell_offset):
-                return other_kmer
-        return None
-
-
     def _get_test_masks(self, auto_test_mask, n_positions):
         base_tests = set(self._config.get_comparison_methods()) - {'auto'}
         if auto_test_mask is not None:
@@ -364,7 +293,10 @@ class TranscriptComparator:
     def _gof_test_multirep(self, test_data, samples, conditions):
         pvals = []
         for i in range(test_data.shape[0]):
-            pval = gof_test_multirep(test_data[i, :, :], conditions[i, :], self._config)
+            pval = gof_test_multirep(test_data[i, :, :],
+                                     samples[i, :],
+                                     conditions[i, :],
+                                     self._config)
             pvals.append(pval)
         return {'GOF_pvalue': pvals}
 
@@ -694,7 +626,7 @@ def combine_pvalues_hou(pvalues, weights, cor_mat):
     combined_p_value = chi2.sf(tau/c, f)
     # Return a very small number if pvalue = 0
     if combined_p_value == 0:
-        combined_p_value = np.finfo(np.float).tiny
+        combined_p_value = np.finfo(np.float64).tiny
     return combined_p_value
 
 
@@ -702,9 +634,4 @@ def calculate_lor(contingency):
     odds1 = (contingency[0, 0]/contingency[0, 1])
     odds2 = (contingency[1, 0]/contingency[1, 1])
     return np.round(np.log(odds1/odds2), 3)
-
-
-def contingency_to_str(contingency):
-    return ','.join(['|'.join([str(n.item()) for n in contingency[:, 0]]),
-                     '|'.join([str(n.item()) for n in contingency[:, 1]])])
 

@@ -28,6 +28,7 @@ from nanocompore.common import INTENSITY_POS
 from nanocompore.common import DWELL_POS
 from nanocompore.common import MOTOR_DWELL_POS
 from nanocompore.common import MEASUREMENTS_TYPE
+from nanocompore.common import UNCALLED4
 from nanocompore.common import TranscriptRow
 from nanocompore.common import encode_kmer
 from nanocompore.common import get_reads_invalid_ratio
@@ -39,7 +40,6 @@ from nanocompore.comparisons import retry
 from nanocompore.config import Config
 from nanocompore.database import ResultsDB
 from nanocompore.database import PreprocessingDB
-from nanocompore.kmer import KmerData
 from nanocompore.postprocessing import Postprocessor
 from nanocompore.transcript import Transcript
 from nanocompore.uncalled4 import Uncalled4
@@ -116,7 +116,7 @@ class RunCmd(object):
         manager = multiprocessing.Manager()
         num_finished = manager.Value('i', 0)
 
-        if self._config.get_resquiggler() == 'uncalled4':
+        if self._config.get_resquiggler() == UNCALLED4:
             worker_class = Uncalled4Worker
         else:
             worker_class = GenericWorker
@@ -200,7 +200,7 @@ class RunCmd(object):
 
 
     def _get_transcripts_for_processing(self):
-        if self._config.get_resquiggler() == "uncalled4":
+        if self._config.get_resquiggler() == UNCALLED4:
             return get_references_from_bams(self._config)
         else:
             logger.info("Getting references from the input databases.")

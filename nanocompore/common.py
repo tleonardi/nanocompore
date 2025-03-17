@@ -48,32 +48,21 @@ INTENSITY_POS = 0
 DWELL_POS = 1
 MOTOR_DWELL_POS = 2
 
+EVENTALIGN = 'eventalign'
+UNCALLED4 = 'uncalled4'
+REMORA = 'remora'
 
-def is_valid_position(pos, seq_len, kit):
-    """
-    Takes a position (in 0-based transcriptomic coords),
-    the length of the reference transcript and the kit
-    used and returns whether the position is within the
-    trimmed range of the transcript.
-    """
-    # E.g. if we have 5mer model with center at base 4 and
-    # a transcript of length 100 then positions 0, 1, and 2
-    # on the left and 99 on the right would be invalid.
-    if pos < kit.center - 1 or pos >= seq_len - (kit.len - kit.center):
-        return False
-    return True
+TranscriptRow = namedtuple('TranscriptRow', 'ref_id id')
 
 
 def get_pos_kmer(pos, seq, kit):
     """
     Takes a position <pos> (in 0-based transcriptomic coords)
-    and the reference sequence and returns the kmer that
-    has its central (most influential) base at <pos>, depending
+    and the reference sequence and returns the k-mer that
+    starts at the given position with k-mer length depending
     on the kit.
-    E.g. for RNA002, where the 4th base of the 5mer is the center
-    it would return the seq[pos-3:pos+2].
     """
-    return seq[(pos - kit.center + 1):(pos + kit.len - kit.center + 1)]
+    return seq[pos:pos+kit.len]
 
 
 class NanocomporeError(Exception):
@@ -87,70 +76,7 @@ class NanocomporeWarning(Warning):
     pass
 
 
-def build_eventalign_fn_dict(pod5_list1, bam_list1, pod5_list2, bam_list2, label1, label2):
-    """
-    Build the eventalign_fn_dict from file lists and labels
-    """
-
-    pod5_list1 = pod5_list1.split(",")
-    bam_list1 = bam_list1.split(",")
-
-    pod5_list2 = pod5_list2.split(",")
-    bam_list2 = bam_list2.split(",")
-
-    if len(pod5_list1) == len(bam_list1) and len(pod5_list2) == len(bam_list2):
-        d = defaultdict(dict)
-        d[label1] = build_condition_dict(pod5_list1, bam_list1, label1)
-        d[label2] = build_condition_dict(pod5_list2, bam_list2, label2)
-        return d
-
-    else:
-        pod5_list1_len = len(pod5_list1)
-        bam_list1_len = len(bam_list1)
-        pod5_list2_len = len(pod5_list2)
-        bam_list2_len = len(bam_list2)
-        raise NanocomporeError (f"Mismatch in file list lengths:\npod5_list1 {pod5_list1_len}; bam_list1 {bam_list1_len}\npod5_list2 {pod5_list2_len}; bam_list2 {bam_list2_len}\n")
-
-
-def build_condition_dict(pod5_list, bam_list, label):
-    condition_list = defaultdict()
-    for i, (pod5, bam) in enumerate(zip(pod5_list, bam_list)):
-        condition_list[f"{label}_{i}"] = {'pod5':pod5, 'bam':bam}
-    return condition_list
-
-
-def build_eventalign_fn_dict_from_tsv(infile):
-    fn_dict = defaultdict(dict)
-    num_samples = set()
-    with open(infile, 'r') as tsv:
-        for i, line in enumerate(tsv):
-            if line:
-                try:
-                    sample, cond, pod5, bam = line.strip().split('\t')
-                    num_samples.add(sample)
-                    fn_dict[cond][sample] = {'pod5':pod5, 'bam':bam}
-                except Exception:
-                    raise NanocomporeError(f"Error with entry {i} in input samples tsv file\n")
-
-    if len(num_samples) != i+1:
-        raise NanocomporeError("Not all sample labels are unique\nCheck sample label column in input samples tsv file\n")
-
-    return fn_dict
-
-
-def set_logger(log_level, log_fn=None):
-    log_level = log_level.upper()
-    logger.remove()
-    logger.add(sys.stderr, format="{time} {level} - {process.name} | {message}", enqueue=True, level=log_level)
-    if log_fn:
-        if os.path.isfile(log_fn):
-            os.remove(log_fn)
-        logger.add(log_fn, format="{time} {level} - {process.name} | {message}", enqueue=True, level="DEBUG")
-
-
 def log_init_state(loc):
-    #logger.debug("\tpackage_name: {}".format(pkg.__name__))
-    #logger.debug("\tpackage_version: {}".format(pkg.__version__))
     logger.debug("\ttimestamp: {}".format(str(datetime.datetime.now())))
     for i, j in loc.items():
         if type(j) in [int, float, complex, list, dict, str, bool, set, tuple]: # Avoid non standard types
@@ -165,56 +91,7 @@ def mkdir(fn, exist_ok=False):
         raise NanocomporeError("Error creating output folder `{}`".format(fn))
 
 
-def access_file(fn, **kwargs):
-    """ Check if the file is readable """
-    return os.path.isfile (fn) and os.access (fn, os.R_OK)
-
-
-def numeric_cast_list(l):
-    """ Cast str values to integer or float from a list """
-    l2 = []
-    for v in l:
-        l2.append(numeric_cast(v))
-    return l2
-
-
-def numeric_cast_dict(keys, values):
-    """ Cast str values to integer or float from a list """
-    d = OrderedDict()
-    for k, v in zip(keys, values):
-        d[k] = numeric_cast(v)
-    return d
-
-
-def numeric_cast(v):
-    if type(v) is str:
-        try:
-            v = int(v)
-        except ValueError:
-            try:
-                v = float(v)
-            except ValueError:
-                pass
-    return v
-
-
-def counter_to_str (c):
-    """ Transform a counter dict to a tabulated str """
-    m = ""
-    for i, j in c.most_common():
-        m += "\t{}: {:,}".format(i, j)
-    return m
-
-
-def all_values_in (required_val_list, all_val_list):
-    """Check that all values in required_val_list are found in all_val_list"""
-    for v in required_val_list:
-        if v not in all_val_list:
-            return False
-    return True
-
-
-def doc_func (func):
+def doc_func(func):
     """Parse the function description string"""
 
     docstr_list = []
@@ -227,7 +104,7 @@ def doc_func (func):
     return "\n".join(docstr_list)
 
 
-def make_arg_dict (func):
+def make_arg_dict(func):
     """Parse the arguments default value, type and doc"""
 
     # Init method for classes
@@ -252,7 +129,7 @@ def make_arg_dict (func):
 
         # Parse the docstring in a dict
         docstr_dict = OrderedDict()
-        lab=None
+        lab = None
         for l in inspect.getdoc(func).split("\n"):
             l = l.strip()
             if l:
@@ -348,87 +225,6 @@ def is_valid_fasta(file):
         return False
 
 
-class Indexer:
-    def __init__(self, initial_index=1):
-        self._ids = {}
-        self._current_id = initial_index
-
-
-    def add(self, elements):
-        """
-        Add elements to the indexer.
-
-        All new elements will be assigned a unique index
-        and the new mappings will be returned to the
-        caller as a list of (element, id) pairs.
-        """
-        new_elements = [element
-                        for element in elements
-                        if element not in self._ids]
-        new_mappings = []
-        for element in new_elements:
-            self._ids[element] = self._current_id
-            new_mappings.append((element, self._current_id))
-            self._current_id += 1
-        return new_mappings
-
-
-    def get_ids(self, elements):
-        return [self._ids[element] for element in elements]
-
-
-    @property
-    def current_id(self):
-        return self._current_id
-
-
-TranscriptRow = namedtuple('TranscriptRow', 'ref_id id')
-
-
-def match_kmer_with_motor_dwell(kmer, motor_effect_kmer):
-    """
-    Combines the measurements for the kmer and a second
-    downsream kmer where the motor effect is manifested.
-    Returns an 2D array with one row with shape
-    (intensity, dwell, motor_dwell) per read.
-    """
-    data = {read: [i, d, None, s, c]
-            for read, i, d, s, c in zip(kmer.reads,
-                                        kmer.intensity,
-                                        kmer.dwell,
-                                        kmer.sample_labels,
-                                        kmer.condition_labels) }
-
-    for i, read in enumerate(motor_effect_kmer.reads):
-        if read not in data:
-            continue
-        data[read][2] = motor_effect_kmer.dwell[i]
-
-    samples = np.array([read[3] for read in data.values() if read[2]])
-    conditions = np.array([read[4] for read in data.values() if read[2]])
-    data = np.array([read[:3] for read in data.values() if read[2]])
-
-    data[:, [1, 2]] = np.log10(data[:, [1, 2]])
-
-    return data, samples, conditions
-
-
-def get_kmer_data(kmer, motor_effect_kmer, config):
-    if motor_effect_kmer:
-        logger.trace(f"Motor dwell included. Pos {kmer.pos}, motor pos: {motor_effect_kmer.pos}.")
-        data, sample_labels, condition_labels = match_kmer_with_motor_dwell(kmer, motor_effect_kmer)
-        condition_counts = Counter(condition_labels)
-        if all(condition_counts.get(cond, 0) >= config.get_min_coverage()
-               for cond in config.get_condition_labels()):
-            return data, sample_labels, condition_labels
-
-    data = np.array(list(zip(kmer.intensity,
-                             np.log10(kmer.dwell))))
-    sample_labels = np.array(kmer.sample_labels)
-    condition_labels = np.array(kmer.condition_labels)
-    return data, sample_labels, condition_labels
-
-
 def encode_kmer(kmer):
     encoding = 0
     for base in kmer:
@@ -454,20 +250,6 @@ def decode_kmer(encoding, kmer_size):
         kmer.append(base)
         encoding >>= 2
     return ''.join(kmer[::-1])
-
-
-def chunks(iterator, chunk_size):
-    chunk = []
-    i = 0
-    for elem in iterator:
-        chunk.append(elem)
-        i += 1
-        if i == chunk_size:
-            yield chunk
-            chunk = []
-            i = 0
-    if len(chunk) > 0:
-        yield chunk
 
 
 def monitor_workers(workers, delay_sec=5):
