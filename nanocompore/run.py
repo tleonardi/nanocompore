@@ -381,6 +381,9 @@ class Worker(multiprocessing.Process):
 
             try:
                 data, samples, conditions = self._read_data(transcript)
+                # If we don't have valid reads, just continue
+                if data.shape[1] == 0:
+                    continue
                 prepared_data = self._prepare_data(data, samples, conditions)
                 data, samples, conditions, positions = prepared_data
                 data, positions = self._filter_low_cov_positions(data, positions)
@@ -417,7 +420,7 @@ class Worker(multiprocessing.Process):
                         self._task_queue.put((task, retries + 1))
                 else:
                     msg = traceback.format_exc()
-                    logger.error(f"Error in Worker {self._id}: {msg}")
+                    logger.error(f"Error in Worker {self._id} for reference {transcript_ref.ref_id}: {msg}")
             finally:
                 logger.info(f"Worker {self._id} is finishing a task.")
                 with self._sync_lock:

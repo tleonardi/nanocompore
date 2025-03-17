@@ -132,6 +132,9 @@ class Uncalled4:
         # false positives.
         reads_tensor = np.where(reads_tensor == -32768, np.nan, reads_tensor)
 
+        if len(read_ids) == 0:
+            return reads_tensor, np.array([]), np.array([])
+
         read_ids = np.array(read_ids)
         sample_id_mapper = np.vectorize(self._config.get_sample_ids().get)
         sample_ids = sample_id_mapper(sample_labels)

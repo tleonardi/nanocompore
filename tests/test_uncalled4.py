@@ -98,3 +98,39 @@ def test_get_data():
     # Position 5 shouldn't have a value.
     assert np.isnan(tensor[5, 0, 0])
 
+
+def test_get_data_no_reads():
+    config_yaml = copy.deepcopy(BASIC_CONFIG)
+    # Note we use the same bam that contains
+    # a single read so it doesn't matter
+    # which read in the result we use for
+    # the assertions.
+    config_yaml['data'] = {
+        'cond1': {
+            'sample1': {
+                'bam': 'tests/fixtures/uncalled4_sample.bam'
+            }
+        },
+        'cond2': { 
+            'sample2': {
+                'bam': 'tests/fixtures/empty.bam'
+            }
+        }
+    }
+    config_yaml['depleted_condition'] = 'cond1'
+    config_yaml['kit'] = 'RNA004'
+    config = Config(config_yaml)
+    ref = 'ENST00000234590.10|ENSG00000074800.16|OTTHUMG00000001773.11|OTTHUMT00000497295.2|ENO1-201|ENO1|1781|protein_coding|'
+    fasta_fh = Fasta('tests/fixtures/uncalled4_reference.fa')
+    ref_seq = str(fasta_fh[ref])
+
+    bams = {sample: pysam.AlignmentFile(sample_def['bam'], 'rb')
+            for cond, cond_def in config.get_data().items()
+            for sample, sample_def in cond_def.items()}
+    uncalled4 = Uncalled4(config, ref, ref_seq, bams)
+    tensor, sample_ids, condition_ids = uncalled4.get_data()
+
+    assert tensor.shape == (1781, 0, 2)
+    assert len(sample_ids) == 0
+    assert len(condition_ids) == 0
+
