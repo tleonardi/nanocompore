@@ -79,11 +79,11 @@ class TranscriptComparator:
             read_order = read_valid_positions.argsort(descending=True)
             selected = torch.full((read_order.shape[0],), False)
             for cond in [0, 1]:
-                cond_selected = read_order[conditions[0, read_order] == cond][:max_reads]
+                cond_selected = read_order[conditions[read_order] == cond][:max_reads]
                 selected[cond_selected] = True
             data = data[:, selected, :]
-            samples = samples[:, selected]
-            conditions = conditions[:, selected]
+            samples = samples[selected]
+            conditions = conditions[selected]
 
         if device.startswith('cuda'):
             torch.cuda.empty_cache()
@@ -94,7 +94,7 @@ class TranscriptComparator:
             return (transcript, None)
 
         results = pd.DataFrame({'transcript_id': transcript.id,
-                                'pos': positions})
+                                'pos': positions.cpu()})
 
         logger.debug("Start shift stats")
         t = time.time()
@@ -124,8 +124,6 @@ class TranscriptComparator:
                            f"transcript {transcript.name}, but are required for scaling the data. " + \
                            f"The positions {positions[bad_stds].tolist()} will be skipped.")
             data = data[~bad_stds]
-            # samples = samples[~bad_stds]
-            # conditions = conditions[~bad_stds]
             positions = positions[~bad_stds]
             n_positions = positions.shape[0]
             results.drop(np.arange(results.shape[0])[bad_stds],
@@ -176,8 +174,8 @@ class TranscriptComparator:
 
 
     def _auto_test_mask(self, conditions):
-        depleted_reads = (conditions == 0).nansum(1)
-        non_depleted_reads = (conditions == 1).nansum(1)
+        depleted_reads = (conditions == 0).nansum()
+        non_depleted_reads = (conditions == 1).nansum()
         return np.array([self._resolve_auto_test(counts)
                          for counts in zip(depleted_reads, non_depleted_reads)])
 
@@ -253,8 +251,8 @@ class TranscriptComparator:
         intensity_pvals = []
         dwell_pvals = []
         for i in range(test_data.shape[0]):
-            cond0_data = test_data[i, cond0_mask[i], :]
-            cond1_data = test_data[i, ~cond0_mask[i], :]
+            cond0_data = test_data[i, cond0_mask, :]
+            cond1_data = test_data[i, ~cond0_mask, :]
             try:
                 pval = stat_test(self._drop_nans(cond0_data[:, INTENSITY]),
                                  self._drop_nans(cond1_data[:, INTENSITY])).pvalue
@@ -285,7 +283,7 @@ class TranscriptComparator:
     def _gof_test_singlerep(self, test_data, conditions):
         pvals = []
         for i in range(test_data.shape[0]):
-            pval = gof_test_singlerep(test_data[i, :, :], conditions[i, :], self._config)
+            pval = gof_test_singlerep(test_data[i, :, :], conditions, self._config)
             pvals.append(pval)
         return {'GOF_pvalue': pvals}
 
@@ -294,8 +292,8 @@ class TranscriptComparator:
         pvals = []
         for i in range(test_data.shape[0]):
             pval = gof_test_multirep(test_data[i, :, :],
-                                     samples[i, :],
-                                     conditions[i, :],
+                                     samples,
+                                     conditions,
                                      self._config)
             pvals.append(pval)
         return {'GOF_pvalue': pvals}
@@ -322,14 +320,14 @@ class TranscriptComparator:
         columns = set()
         if dim3_data.shape[0] > 0:
             dim3_results = self._gmm_test_split(dim3_data,
-                                                samples[split == 0, :],
-                                                conditions[split == 0, :],
+                                                samples[split == 0],
+                                                conditions[split == 0],
                                                 device)
             columns.update(dim3_results.keys())
         if dim2_data.shape[0] > 0:
             dim2_results = self._gmm_test_split(dim2_data,
-                                                samples[split == 1, :],
-                                                conditions[split == 1, :],
+                                                samples[split == 1],
+                                                conditions[split == 1],
                                                 device)
             columns.update(dim2_results.keys())
 
@@ -371,13 +369,14 @@ class TranscriptComparator:
         gmm2 = retry(lambda: fit_model(2), exception=torch.OutOfMemoryError)
 
         logger.info(f"GMM fitting time: {time.time() - s}")
-        pred = gmm2.predict(test_data)
+        pred = gmm2.predict(test_data, force_cpu_result=False)
         bic2 = gmm2.bic(test_data)
         del gmm2
         gc.collect()
         if device.startswith('cuda'):
             torch.cuda.empty_cache()
             torch.cuda.reset_peak_memory_stats()
+        valid = ~conditions.isnan()
         pvals = []
         lors = []
         cluster_counts = defaultdict(list)
@@ -389,8 +388,7 @@ class TranscriptComparator:
                     cluster_counts[f'{sample}_mod'].append(np.nan)
                     cluster_counts[f'{sample}_unmod'].append(np.nan)
                 continue
-            valid = ~conditions[i, :].isnan()
-            contingency = crosstab(conditions[i, valid], pred[i, valid]) + 1
+            contingency = crosstab(conditions[valid], pred[i, valid]) + 1
 
             pval = chi2_contingency(contingency).pvalue
             pvals.append(pval)
@@ -399,8 +397,8 @@ class TranscriptComparator:
             lors.append(lor)
 
             counts = self._get_cluster_counts(contingency,
-                                              samples[i, valid],
-                                              conditions[i, valid],
+                                              samples[valid],
+                                              conditions[valid],
                                               pred[i, valid])
             for col, value in counts.items():
                 cluster_counts[col].append(value)
