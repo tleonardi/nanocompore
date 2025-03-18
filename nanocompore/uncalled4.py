@@ -13,7 +13,7 @@ from jaxtyping import Float, Int
 
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
-from concurrent.futures import wait
+from concurrent.futures import as_completed
 from typing import Dict
 
 from nanocompore.common import INTENSITY_POS
@@ -89,30 +89,23 @@ class Uncalled4:
         read_counts = defaultdict(lambda: 0)
         for sample, condition, _ in self._config.get_sample_condition_bam_data():
             count = self._bams[sample].count(reference=self._ref_id)
-            read_counts[condition] += min(count, self._config.get_downsample_high_coverage())
+            read_counts[condition] += count
         read_count = sum(read_counts.values())
 
         # shape is: (positions, reads, vars)
         reads_tensor = np.full((ref_len, read_count, 2), np.nan, dtype=np.float32)
 
         n_samples = len(self._config.get_sample_condition_bam_data())
-        condition_counts = defaultdict(lambda: 0)
         read_index = 0
         with ThreadPoolExecutor(max_workers=n_samples) as executor:
             futures = [executor.submit(get_reads, (self._bams[sample], self._ref_id, sample, condition))
                        for sample, condition, _ in self._config.get_sample_condition_bam_data()]
-            wait(futures, timeout=10)
 
-            zipped_reads = zip(*[future.result() for future in futures])
-            for read_group in zipped_reads:
-                for read, sample, condition in read_group:
+            for future in as_completed(futures):
+                sample_reads = future.result()
+                for read, sample, condition in sample_reads:
                     if read.is_secondary or read.is_supplementary:
                         continue
-
-                    if condition_counts[condition] >= self._config.get_downsample_high_coverage():
-                        continue
-
-                    condition_counts[condition] += 1
 
                     self._copy_signal_to_tensor(read, reads_tensor, read_index)
 

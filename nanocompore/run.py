@@ -386,7 +386,7 @@ class Worker(multiprocessing.Process):
                     continue
                 prepared_data = self._prepare_data(data, samples, conditions)
                 data, samples, conditions, positions = prepared_data
-                data, positions = self._filter_low_cov_positions(data, positions)
+                data, positions = self._filter_low_cov_positions(data, positions, conditions)
 
                 transcript, results = self._comparator.compare_transcript(
                         transcript,
@@ -430,9 +430,11 @@ class Worker(multiprocessing.Process):
             logger.info(f"Worker {self._id} completed a batch of transcripts. Will restart now.")
 
 
-    def _filter_low_cov_positions(self, data, positions):
-        coverage_per_pos = torch.sum(~data[:, :, INTENSITY_POS].isnan(), dim=1)
-        valid_positions = coverage_per_pos >= self._conf.get_min_coverage()
+    def _filter_low_cov_positions(self, data, positions, conditions):
+        min_cov = self._conf.get_min_coverage()
+        cov_cond_0 = torch.sum(~data[:, conditions == 0, INTENSITY_POS].isnan(), dim=1)
+        cov_cond_1 = torch.sum(~data[:, conditions == 1, INTENSITY_POS].isnan(), dim=1)
+        valid_positions = torch.logical_and(cov_cond_0 >= min_cov, cov_cond_1 >= min_cov)
         return data[valid_positions], positions[valid_positions]
 
 
@@ -483,7 +485,7 @@ class Worker(multiprocessing.Process):
                 data[:end, :, MOTOR_DWELL_POS] = data[motor_offset:, :, DWELL_POS]
 
         # Mark positions for which we don't have any reads as invalid.
-        valid_positions = (~np.isnan(data).any(2)).all(1)
+        valid_positions = np.any(~np.isnan(data[:, :, INTENSITY_POS]), axis=1)
         tensor = torch.tensor(data[valid_positions, :, :],
                               dtype=torch.float32,
                               device=self._device)
