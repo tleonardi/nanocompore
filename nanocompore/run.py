@@ -484,7 +484,7 @@ class Worker(multiprocessing.Process):
             if end > 0:
                 data[:end, :, MOTOR_DWELL_POS] = data[motor_offset:, :, DWELL_POS]
 
-        # Mark positions for which we don't have any reads as invalid.
+        # Keep only positions for which we have at least one read.
         valid_positions = np.any(~np.isnan(data[:, :, INTENSITY_POS]), axis=1)
         tensor = torch.tensor(data[valid_positions, :, :],
                               dtype=torch.float32,

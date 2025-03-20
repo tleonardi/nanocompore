@@ -235,7 +235,6 @@ class RemoraPreprocessor(Preprocessor):
         self._kit = kit
         self._max_reads = max_reads
         super().__init__(fasta_ref, output, threads)
-        self._remora = Remora(pod5, bam, kit, max_reads)
 
 
     def _get_references(self) -> set[str]:
@@ -249,7 +248,8 @@ class RemoraPreprocessor(Preprocessor):
     ) -> tuple[Float[np.ndarray, "reads positions"],
                Float[np.ndarray, "reads positions"],
                list[str]]:
-        return self._remora.get_resquiggled_data(ref_id, ref_seq)
+        remora = Remora(self._pod5, self._bam, self._kit, self._max_reads)
+        return remora.get_resquiggled_data(ref_id, ref_seq)
 
 
     def _get_metadata(self) -> dict[str, Any]:

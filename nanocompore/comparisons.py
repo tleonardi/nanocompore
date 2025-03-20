@@ -126,7 +126,7 @@ class TranscriptComparator:
             data = data[~bad_stds]
             positions = positions[~bad_stds]
             n_positions = positions.shape[0]
-            results.drop(np.arange(results.shape[0])[bad_stds],
+            results.drop(np.arange(results.shape[0])[bad_stds.cpu()],
                          inplace=True,
                          axis=0)
 
