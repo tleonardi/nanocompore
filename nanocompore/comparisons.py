@@ -320,14 +320,14 @@ class TranscriptComparator:
         columns = set()
         if dim3_data.shape[0] > 0:
             dim3_results = self._gmm_test_split(dim3_data,
-                                                samples[split == 0],
-                                                conditions[split == 0],
+                                                samples,
+                                                conditions,
                                                 device)
             columns.update(dim3_results.keys())
         if dim2_data.shape[0] > 0:
             dim2_results = self._gmm_test_split(dim2_data,
-                                                samples[split == 1],
-                                                conditions[split == 1],
+                                                samples,
+                                                conditions,
                                                 device)
             columns.update(dim2_results.keys())
 

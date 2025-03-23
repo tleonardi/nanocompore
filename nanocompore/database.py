@@ -135,8 +135,9 @@ INSERT INTO reads (read, id, invalid_kmers) VALUES(?, ?, ?);
 GET_SIGNAL_DATA_FOR_TRANSCRIPT_QUERY = """
 SELECT intensity, dwell
 FROM signal_data sd
-JON reads r ON sd.read_id = r.id
-WHERE transcript_id = ?
+JOIN reads r ON sd.read_id = r.id
+JOIN transcripts t ON sd.transcript_id = t.id
+WHERE t.name = ?
   AND r.invalid_kmers <= ?
 ORDER BY r.invalid_kmers ASC
 LIMIT ?
@@ -311,11 +312,12 @@ class PreprocessingDB:
         with closing(self.connect()) as conn,\
              closing(conn.cursor()) as cursor:
             query = """
-            SELECT DISTINCT t.name, t.id
+            SELECT t.name, COUNT(sd.read_id)
             FROM signal_data sd
             INNER JOIN transcripts t ON sd.transcript_id = t.id
+            GROUP BY t.id
             """
-            return {TranscriptRow(row[0], row[1])
+            return {row[0]: row[1]
                     for row in cursor.execute(query).fetchall()}
 
 
@@ -340,7 +342,7 @@ class PreprocessingDB:
 
     @staticmethod
     def get_signal_data(connection,
-                        transcript_id: int,
+                        transcript_name: str,
                         max_invalid_ratio: float,
                         max_rows: int):
         """
@@ -351,8 +353,8 @@ class PreprocessingDB:
         ----------
         connection : sqlite3.connection
             Connection to the database.
-        transcript_id : int
-            Internal database id of the transcript.
+        transcript_name : str
+            The name of the transcript (transcript reference).
         max_invalid_ratio : float
             Will return only reads with invalid ratio smaller
             than the given number.
@@ -368,7 +370,7 @@ class PreprocessingDB:
         """
         with closing(connection.cursor()) as cursor:
             return cursor.execute(GET_SIGNAL_DATA_FOR_TRANSCRIPT_QUERY,
-                                  (transcript_id,
+                                  (transcript_name,
                                    max_invalid_ratio,
                                    max_rows)).fetchall()
 

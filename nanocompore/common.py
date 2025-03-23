@@ -274,27 +274,13 @@ def monitor_workers(workers, delay_sec=5):
                 sys.exit(1)
 
 
-def get_references_from_bam(bam_path: str) -> set[str]:
-    references = set()
+def get_references_from_bam(bam_path: str) -> dict[str, int]:
+    references = {}
     bam = pysam.AlignmentFile(bam_path, "rb")
     for line in bam.get_index_statistics():
         if line.mapped > 0:
-            references.add(line.contig)
+            references[line.contig] = line.mapped
     return references
-
-
-def get_references_from_bams(config, threads=4):
-    logger.info("Getting references from the BAMs.")
-    references = set()
-    with ThreadPoolExecutor(max_workers=threads) as executor:
-        futures = [executor.submit(get_references_from_bam, sample_def['bam'])
-                   for condition_def in config.get_data().values()
-                   for sample, sample_def in condition_def.items()]
-        for future in as_completed(futures):
-            references.update(future.result())
-    logger.info(f"Found {len(references)} references.")
-    return {TranscriptRow(ref_id, i)
-            for ref_id, i in zip(references, range(len(references)))}
 
 
 def get_reads_invalid_ratio(intensity: Float[np.ndarray, "positions reads"]): 

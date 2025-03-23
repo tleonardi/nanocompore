@@ -6,6 +6,7 @@ import sys
 import time
 import traceback
 
+from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import as_completed
 from concurrent.futures import wait
@@ -32,7 +33,7 @@ from nanocompore.common import UNCALLED4
 from nanocompore.common import TranscriptRow
 from nanocompore.common import encode_kmer
 from nanocompore.common import get_reads_invalid_ratio
-from nanocompore.common import get_references_from_bams
+from nanocompore.common import get_references_from_bam
 from nanocompore.common import get_pos_kmer
 from nanocompore.common import log_init_state
 from nanocompore.comparisons import TranscriptComparator
@@ -200,19 +201,26 @@ class RunCmd(object):
 
 
     def _get_transcripts_for_processing(self):
-        if self._config.get_resquiggler() == UNCALLED4:
-            return get_references_from_bams(self._config)
-        else:
-            logger.info("Getting references from the input databases.")
-            references = set()
-            with ThreadPoolExecutor(max_workers=4) as executor:
-                futures = [executor.submit(PreprocessingDB(sample_def['db']).get_references_with_data)
-                           for condition_def in self._config.get_data().values()
-                           for sample, sample_def in condition_def.items()]
-                for future in as_completed(futures):
-                    references.update(future.result())
-            logger.info(f"Found {len(references)} references.")
-            return references
+        min_counts = self._config.get_min_coverage()
+        references = defaultdict(lambda: 0)
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            if self._config.get_resquiggler() == UNCALLED4:
+                fn = lambda sample_def: executor.submit(get_references_from_bam,
+                                                        sample_def['bam'])
+            else:
+                fn = lambda sample_def: executor.submit(
+                        PreprocessingDB(sample_def['db']).get_references_with_data)
+            futures = [fn(sample_def)
+                       for condition_def in self._config.get_data().values()
+                       for sample, sample_def in condition_def.items()]
+            for future in as_completed(futures):
+                for ref_id, count in future.result().items():
+                    references[ref_id] += count
+        references = {TranscriptRow(ref_id, i)
+                      for i, (ref_id, count) in enumerate(references.items())
+                      if count >= min_counts}
+        logger.info(f"Found {len(references)} references.")
+        return references
 
 
     def _filter_processed_transcripts(self, transcripts: set[TranscriptRow]):
@@ -380,7 +388,10 @@ class Worker(multiprocessing.Process):
                                     ref_seq=str(self._fasta_fh[transcript_ref.ref_id]))
 
             try:
+
+                start_time = time.time()
                 data, samples, conditions = self._read_data(transcript)
+                logger.debug(f"Worker {self._id} read data for transcript {transcript.name} in {time.time() - start_time}")
                 # If we don't have valid reads, just continue
                 if data.shape[1] == 0:
                     continue
@@ -660,7 +671,7 @@ class GenericWorker(Worker):
                          device,
                          config)
         data_def = self._conf.get_sample_condition_db_data()
-        self._dbs = {sample: sqlite3.connect(db)
+        self._dbs = {sample: sqlite3.connect(db, check_same_thread=False)
                      for sample, _, db in data_def}
 
 
@@ -700,7 +711,7 @@ class GenericWorker(Worker):
         with ThreadPoolExecutor(max_workers=n_samples) as executor:
             futures = [executor.submit(get_transcript_signals_from_db,
                                        (self._dbs[sample],
-                                        transcript.id,
+                                        transcript.name,
                                         self._conf.get_max_invalid_kmers_freq(),
                                         self._conf.get_downsample_high_coverage(),
                                         sample,
@@ -708,16 +719,21 @@ class GenericWorker(Worker):
                        for sample, condition, _ in self._conf.get_sample_condition_db_data()]
             for future in as_completed(futures):
                 signal_data, sample, condition = future.result()
+                if len(signal_data) == 0:
+                    continue
                 # intensity will have shape (Reads, Positions)
-                intensity = np.array(np.frombuffer(intensity, dtype=MEASUREMENTS_TYPE)
-                                     for intensity, _ in signal_data)
+                intensity = np.array([np.frombuffer(intensity, dtype=MEASUREMENTS_TYPE)
+                                      for intensity, _ in signal_data])
                 intensities.append(intensity)
                 # dwell will have shape (Reads, Positions)
-                dwell = np.array(np.frombuffer(dwell, dtype=MEASUREMENTS_TYPE)
-                                 for _, dwell in signal_data)
+                dwell = np.array([np.frombuffer(dwell, dtype=MEASUREMENTS_TYPE)
+                                  for _, dwell in signal_data])
                 dwells.append(dwell)
                 sample_labels.extend([sample for _ in range(len(signal_data))])
                 condition_labels.extend([condition for _ in range(len(signal_data))])
+
+        if len(sample_labels) == 0:
+            return np.empty((0, 0, 0)), np.array([]), np.array([])
 
         # The tensor has shape: (Positions, Reads, Vars)
         # Note, intensity and dwell have shape (Reads, Positions)
@@ -742,7 +758,7 @@ class GenericWorker(Worker):
 
 def get_transcript_signals_from_db(args):
     (connection,
-     transcript_id,
+     transcript_name,
      max_invalid_ratio,
      max_reads,
      sample,
@@ -757,7 +773,7 @@ def get_transcript_signals_from_db(args):
     # the data from different samples of the same conditions
     # some of those reads would be discarded potentially.
     signal_data = PreprocessingDB.get_signal_data(connection,
-                                                  transcript_id,
+                                                  transcript_name,
                                                   max_invalid_ratio,
                                                   max_reads)
     return signal_data, sample, condition
