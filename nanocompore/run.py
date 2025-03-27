@@ -88,11 +88,13 @@ class RunCmd(object):
 
         if self._config.get_progress():
             print("Getting the list of transcripts for processing...")
-        transcripts = self._get_transcripts_for_processing()
+
         db_path = ResultsDB(self._config, init_db=False).db_path
         db_exists = os.path.isfile(db_path)
         if db_exists and self._config.get_result_exists_strategy() == 'continue':
-
+            db = ResultsDB(self._config, init_db=False)
+            transcript_index_start = db.get_next_transcript_id()
+            transcripts = self._get_transcripts_for_processing(initial_index=transcript_index_start)
             all_transcripts_num = len(transcripts)
             transcripts = self._filter_processed_transcripts(transcripts)
             already_processed = all_transcripts_num - len(transcripts)
@@ -102,6 +104,7 @@ class RunCmd(object):
         else:
             # Initialize the database
             ResultsDB(self._config, init_db=True)
+            transcripts = self._get_transcripts_for_processing()
             logger.info(f"Found a total of {len(transcripts)} transcripts for processing.")
 
         task_queue = multiprocessing.JoinableQueue()
@@ -200,7 +203,7 @@ class RunCmd(object):
             print("Done.")
 
 
-    def _get_transcripts_for_processing(self):
+    def _get_transcripts_for_processing(self, initial_index=1) -> set[TranscriptRow]:
         min_counts = self._config.get_min_coverage()
         references = defaultdict(lambda: 0)
         with ThreadPoolExecutor(max_workers=4) as executor:
@@ -216,18 +219,22 @@ class RunCmd(object):
             for future in as_completed(futures):
                 for ref_id, count in future.result().items():
                     references[ref_id] += count
-        references = {TranscriptRow(ref_id, i)
-                      for i, (ref_id, count) in enumerate(references.items())
-                      if count >= min_counts}
+        # Get only refs that pass the min_coverage requirements
+        filtered_refs = {ref_id
+                         for ref_id, count in references.items()
+                         if count >= min_counts}
         logger.info(f"Found {len(references)} references.")
-        return references
+        return {TranscriptRow(ref_id, i)
+                for ref_id, i in zip(filtered_refs,
+                                     range(initial_index,
+                                           initial_index + len(filtered_refs)))}
 
 
-    def _filter_processed_transcripts(self, transcripts: set[TranscriptRow]):
+    def _filter_processed_transcripts(self, transcripts: set[TranscriptRow]) -> set[TranscriptRow]:
         db = ResultsDB(self._config, init_db=False)
         logger.info(f'Preprocessing db: {db.db_path}')
         existing_transcripts = set(db.get_transcripts())
-        return [tx for tx in transcripts if tx.ref_id not in existing_transcripts]
+        return {tx for tx in transcripts if tx.ref_id not in existing_transcripts}
 
 
     def _get_workers_with_device(self):
@@ -394,6 +401,10 @@ class Worker(multiprocessing.Process):
                 logger.debug(f"Worker {self._id} read data for transcript {transcript.name} in {time.time() - start_time}")
                 # If we don't have valid reads, just continue
                 if data.shape[1] == 0:
+                    with self._db_lock:
+                        logger.info(f"Worker {self._id}: Not enough valid reads for {transcript.name}. "
+                                    "Saving the transcript as processed.")
+                        self._db_manager.save_transcript(transcript)
                     continue
                 prepared_data = self._prepare_data(data, samples, conditions)
                 data, samples, conditions, positions = prepared_data
@@ -408,6 +419,10 @@ class Worker(multiprocessing.Process):
                         self._device)
 
                 if results is None:
+                    with self._db_lock:
+                        logger.info(f"Worker {self._id}: No test results for {transcript.name}. "
+                                    "Saving the transcript as processed.")
+                        self._db_manager.save_transcript(transcript)
                     continue
 
                 seq = transcript.seq
@@ -619,7 +634,7 @@ class Uncalled4Worker(Worker):
 
         invalid_ratios = get_reads_invalid_ratio(data[:, :, INTENSITY_POS])
         valid_reads = invalid_ratios < self._conf.get_max_invalid_kmers_freq()
-            
+
         return data[:, valid_reads], samples[valid_reads], conditions[valid_reads]
 
 

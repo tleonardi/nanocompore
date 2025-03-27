@@ -179,6 +179,13 @@ class ResultsDB():
             return [row[0] for row in cursor.execute(query).fetchall()]
 
 
+    def get_next_transcript_id(self):
+        with closing(sqlite3.connect(self.db_path)) as conn,\
+             closing(conn.cursor()) as cursor:
+            query = "SELECT MAX(id) FROM transcripts"
+            return cursor.execute(query).fetchone()[0] + 1
+
+
     def save_test_results(self, transcript, test_results):
         with closing(sqlite3.connect(self.db_path)) as conn,\
              closing(conn.cursor()) as cursor:
@@ -186,6 +193,12 @@ class ResultsDB():
             test_columns = dict(zip(test_results.columns, test_results.dtypes))
             self._create_missing_columns(test_columns, cursor)
             test_results.to_sql('kmer_results', conn, if_exists='append', index=False)
+
+
+    def save_transcript(self, transcript):
+        with closing(sqlite3.connect(self.db_path)) as conn,\
+             closing(conn.cursor()) as cursor:
+            cursor.execute(INSERT_TRANSCRIPTS_QUERY, (transcript.id, transcript.name))
 
 
     def index_database(self):
@@ -308,7 +321,7 @@ class PreprocessingDB:
                 Path(other_db).unlink()
 
 
-    def get_references_with_data(self):
+    def get_references_with_data(self) -> dict[str, int]:
         with closing(self.connect()) as conn,\
              closing(conn.cursor()) as cursor:
             query = """

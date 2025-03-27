@@ -102,13 +102,11 @@ def test_get_data():
 def test_get_data_no_reads():
     config_yaml = copy.deepcopy(BASIC_CONFIG)
     # Note we use the same bam that contains
-    # a single read so it doesn't matter
-    # which read in the result we use for
-    # the assertions.
+    # no reads for both conditions
     config_yaml['data'] = {
         'cond1': {
             'sample1': {
-                'bam': 'tests/fixtures/uncalled4_sample.bam'
+                'bam': 'tests/fixtures/empty.bam'
             }
         },
         'cond2': { 
