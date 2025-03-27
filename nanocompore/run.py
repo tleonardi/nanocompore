@@ -204,25 +204,36 @@ class RunCmd(object):
 
 
     def _get_transcripts_for_processing(self, initial_index=1) -> set[TranscriptRow]:
-        min_counts = self._config.get_min_coverage()
-        references = defaultdict(lambda: 0)
+        min_coverage = self._config.get_min_coverage()
+        # References is a dict of the form
+        # ref_id => [cond0_counts, cond1_counts]
+        references = defaultdict(lambda: [0, 0])
         with ThreadPoolExecutor(max_workers=4) as executor:
+            # We prepare functions to get data concurrently from
+            # dbs or bams depending on the resquigglers.
             if self._config.get_resquiggler() == UNCALLED4:
                 fn = lambda sample_def: executor.submit(get_references_from_bam,
                                                         sample_def['bam'])
             else:
                 fn = lambda sample_def: executor.submit(
                         PreprocessingDB(sample_def['db']).get_references_with_data)
-            futures = [fn(sample_def)
-                       for condition_def in self._config.get_data().values()
-                       for sample, sample_def in condition_def.items()]
+
+            futures = {fn(sample_def): cond
+                       for cond, condition_def in self._config.get_data().items()
+                       for sample, sample_def in condition_def.items()}
+
+            cond_to_id = self._config.get_condition_ids()
             for future in as_completed(futures):
+                condition = futures[future]
+                condition_id = cond_to_id[condition]
                 for ref_id, count in future.result().items():
-                    references[ref_id] += count
-        # Get only refs that pass the min_coverage requirements
+                    references[ref_id][condition_id] += count
+
+        # Get only refs that pass the min_coverage
+        # requirements for both conditions.
         filtered_refs = {ref_id
-                         for ref_id, count in references.items()
-                         if count >= min_counts}
+                         for ref_id, (cond0_count, cond1_count) in references.items()
+                         if cond0_count >= min_coverage and cond1_count >= min_coverage}
         logger.info(f"Found {len(references)} references.")
         return {TranscriptRow(ref_id, i)
                 for ref_id, i in zip(filtered_refs,
