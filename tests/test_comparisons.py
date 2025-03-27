@@ -5,8 +5,8 @@ import numpy as np
 import pandas as pd
 
 from nanocompore.comparisons import TranscriptComparator
-from nanocompore.comparisons import calculate_lor
-from nanocompore.comparisons import crosstab
+from nanocompore.comparisons import calculate_lors
+from nanocompore.comparisons import get_contigency_matrices
 from nanocompore.config import Config
 
 from tests.common import BASIC_CONFIG
@@ -201,42 +201,48 @@ def test_combine_context_pvalues():
 
 
 def test_calculate_lor():
-    contingency = np.array([[13, 11],
-                            [12, 10]])
-    assert calculate_lor(contingency) == -0.015
-
-
-def test_crosstab():
-    table = crosstab(np.array([0, 1, 0, 1, 0, 1]),
-                     np.array([0, 0, 0, 1, 1, 1]))
-    assert table[0, 0] == 2
-    assert table[0, 1] == 1
-    assert table[1, 0] == 1
-    assert table[1, 1] == 2
+    contingencies = torch.tensor([
+        # pos 0
+        [[13, 11],
+         [12, 10]],
+        # pos 1
+        [[9, 11],
+         [7, 21]],
+        # pos 2
+        [[2, 1],
+         [7, 1]]])
+    assert torch.all(calculate_lors(contingencies) == torch.tensor([-0.015, 0.898, -1.253]))
 
 
 def test_get_cluster_counts():
     config = Config(BASIC_CONFIG)
     # Condition 0 is the knockdown (depleted condition).
-    # Since most of the points for the non-depleted condition (1)
+    # E.g. for the first position:
+    # Most of the points for the non-depleted condition (1)
     # are found in cluster 1, then we can guess that the
     # modification cluster is 1.
+    # For the third, cluster 0 will be the modified one.
     conditions = torch.tensor([0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1])
     samples = torch.tensor([0, 0, 1, 1, 1, 2, 2, 3, 3, 3, 3])
-    predictions = torch.tensor([0, 0, 1, 0, 0, 1, 0, 0, 1, 1, 1])
+    # We have predictions for three positions.
+    predictions = torch.tensor([[0, 0, 1, 0, 0, 1, 0, 0, 1, 1, 1],
+                                [0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1],
+                                [1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0]])
 
-    contingency = crosstab(conditions, predictions)
+    contingency = get_contigency_matrices(conditions, predictions)
 
     comparator = TranscriptComparator(config)
 
-
     cluster_counts = comparator._get_cluster_counts(contingency, samples, conditions, predictions)
 
-    print(cluster_counts)
-    assert cluster_counts == {'kd1_mod': 0, 'kd1_unmod': 2,
-                              'kd2_mod': 1, 'kd2_unmod': 2,
-                              'wt1_mod': 1, 'wt1_unmod': 1,
-                              'wt2_mod': 3, 'wt2_unmod': 1}
+    assert np.all(cluster_counts['kd1_mod'] == np.array([0, 0, 0]))
+    assert np.all(cluster_counts['kd2_mod'] == np.array([1, 0, 0]))
+    assert np.all(cluster_counts['wt1_mod'] == np.array([1, 2, 2]))
+    assert np.all(cluster_counts['wt2_mod'] == np.array([3, 4, 4]))
+    assert np.all(cluster_counts['kd1_unmod'] == np.array([2, 2, 2]))
+    assert np.all(cluster_counts['kd2_unmod'] == np.array([2, 3, 3]))
+    assert np.all(cluster_counts['wt1_unmod'] == np.array([1, 0, 0]))
+    assert np.all(cluster_counts['wt2_unmod'] == np.array([1, 0, 0]))
 
 
 def get_float(value):

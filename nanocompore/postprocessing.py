@@ -30,6 +30,11 @@ class Postprocessor():
         logger.info("Gathering all the data for reporting.")
         data = self._db.get_all_results()
 
+        # Make sure counts are integer
+        data = data.astype({col: 'int'
+                            for col in data.columns
+                            if col.endswith('_mod') or col.endswith('_unmod')})
+
         logger.info("Adding genomic positions to data.")
         data = self._add_genomic_positions(data)
 
