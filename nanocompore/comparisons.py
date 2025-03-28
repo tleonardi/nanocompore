@@ -377,7 +377,7 @@ class TranscriptComparator:
             torch.cuda.empty_cache()
             torch.cuda.reset_peak_memory_stats()
 
-        contingencies = get_contigency_matrices(conditions, pred)
+        contingencies = get_contigency_matrices(conditions, pred).to(device=device)
         counts = self._get_cluster_counts(contingencies, samples, conditions, pred)
         # We add 1 to all cells in all contingency
         # matrices to make sure we don't encounter
@@ -385,7 +385,7 @@ class TranscriptComparator:
         contingencies += 1
         lors = calculate_lors(contingencies)
         pvals = np.array([chi2_contingency(cont).pvalue
-                          for cont in contingencies])
+                          for cont in contingencies.cpu().numpy()])
         # If a single component fits the data
         # better we ignore the results from
         # the two-component GMM.
@@ -394,7 +394,7 @@ class TranscriptComparator:
         pvals[ignored_tests] = np.nan
 
         return {'GMM_chi2_pvalue': pvals,
-                'GMM_LOR': lors.numpy()} | counts
+                'GMM_LOR': lors.cpu().numpy()} | counts
 
 
     def _split_by_ndim(self, test_data):
@@ -508,8 +508,8 @@ class TranscriptComparator:
             mod_counts = (sample_predictions == sample_mod_clusters).sum(dim=1)
             unmod_counts = sample_totals - mod_counts
             # unmod_count = (sample_predictions != sample_mod_clusters).sum().item()
-            cluster_counts[f'{sample_label}_mod'] = mod_counts.numpy().astype(np.uint32)
-            cluster_counts[f'{sample_label}_unmod'] = unmod_counts.numpy().astype(np.uint32)
+            cluster_counts[f'{sample_label}_mod'] = mod_counts.cpu().numpy().astype(np.uint32)
+            cluster_counts[f'{sample_label}_unmod'] = unmod_counts.cpu().numpy().astype(np.uint32)
 
         return cluster_counts
 
