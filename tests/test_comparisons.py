@@ -214,6 +214,38 @@ def test_calculate_lor():
     assert torch.all(calculate_lors(contingencies) == torch.tensor([-0.015, 0.898, -1.253]))
 
 
+def test_get_contigency_matrices():
+    # conditions has shape (reads,)
+    conditions = torch.tensor([0, 1, 0, 1, 0, 1])
+    # predictions has shape (positions, reads)
+    predictions = torch.tensor([[0, 0, 0, 1, 1, 1],
+                                [0, 1, 0, 1, 0, 1]])
+    expected = torch.tensor([
+        # pos 0 contengency matrix
+        [[2.0, 1],
+         [1, 2]],
+        # pos 1 contingency matrix
+        [[3, 0],
+         [0, 3]]])
+    assert torch.all(get_contigency_matrices(conditions, predictions) == expected)
+
+
+def test_get_contigency_matrices_with_gaps():
+    # conditions has shape (reads,)
+    conditions = torch.tensor([0, 1, 0, 1, 0, 1])
+    # predictions has shape (positions, reads)
+    predictions = torch.tensor([[0, 0, 0, np.nan, 1, 1],
+                                [0, 1, 0, np.nan, 0, 1]])
+    expected = torch.tensor([
+        # pos 0 contengency matrix
+        [[2.0, 1],
+         [1, 1]],
+        # pos 1 contingency matrix
+        [[3, 0],
+         [0, 2]]])
+    assert torch.all(get_contigency_matrices(conditions, predictions) == expected)
+
+
 def test_get_cluster_counts():
     config = Config(BASIC_CONFIG)
     # Condition 0 is the knockdown (depleted condition).

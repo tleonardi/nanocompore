@@ -254,16 +254,18 @@ class TranscriptComparator:
             cond0_data = test_data[i, cond0_mask, :]
             cond1_data = test_data[i, ~cond0_mask, :]
             try:
-                pval = stat_test(self._drop_nans(cond0_data[:, INTENSITY]),
-                                 self._drop_nans(cond1_data[:, INTENSITY])).pvalue
+                pval = stat_test(self._drop_nans(cond0_data[:, INTENSITY]).cpu(),
+                                 self._drop_nans(cond1_data[:, INTENSITY]).cpu()).pvalue
                 intensity_pvals.append(pval)
-            except Exception:
+            except Exception as e:
+                logger.error(f"Error in nonparametric test on the intensity: {e}")
                 intensity_pvals.append(np.nan)
             try:
-                pval = stat_test(self._drop_nans(cond0_data[:, DWELL]),
-                                 self._drop_nans(cond1_data[:, DWELL])).pvalue
+                pval = stat_test(self._drop_nans(cond0_data[:, DWELL]).cpu(),
+                                 self._drop_nans(cond1_data[:, DWELL]).cpu()).pvalue
                 dwell_pvals.append(pval)
-            except Exception:
+            except Exception as e:
+                logger.error(f"Error in nonparametric test on the dwell time: {e}")
                 dwell_pvals.append(np.nan)
         return {f'{test}_intensity_pvalue': intensity_pvals,
                 f'{test}_dwell_pvalue': dwell_pvals}
@@ -370,6 +372,8 @@ class TranscriptComparator:
 
         logger.info(f"GMM fitting time: {time.time() - s}")
         pred = gmm2.predict(test_data, force_cpu_result=False)
+        pred = torch.where(test_data[:, :, 0].isnan(), np.nan, pred)
+
         bic2 = gmm2.bic(test_data)
         del gmm2
         gc.collect()

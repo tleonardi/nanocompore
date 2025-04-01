@@ -417,6 +417,7 @@ class Worker(multiprocessing.Process):
                                     "Saving the transcript as processed.")
                         self._db_manager.save_transcript(transcript)
                     continue
+
                 prepared_data = self._prepare_data(data, samples, conditions)
                 data, samples, conditions, positions = prepared_data
                 data, positions = self._filter_low_cov_positions(data, positions, conditions)
@@ -510,6 +511,10 @@ class Worker(multiprocessing.Process):
             - 1D tensor of condition ids with size R
             - 1D tensor of reference positions with size P
         """
+        # We use the log10 of the dwell time. This
+        # significantly improves the accuracy of the detection.
+        data[:, :, DWELL_POS] = np.log10(data[:, :, DWELL_POS])
+
         motor_offset = self._conf.get_motor_dwell_offset()
         num_positions = data.shape[0]
         if self._conf.get_motor_dwell_offset() > 0:
@@ -645,6 +650,8 @@ class Uncalled4Worker(Worker):
 
         invalid_ratios = get_reads_invalid_ratio(data[:, :, INTENSITY_POS])
         valid_reads = invalid_ratios < self._conf.get_max_invalid_kmers_freq()
+
+        logger.debug(f"Filtering uncalled4 reads in read_data: valid {valid_reads.sum()} out of {valid_reads.shape[0]}")
 
         return data[:, valid_reads], samples[valid_reads], conditions[valid_reads]
 

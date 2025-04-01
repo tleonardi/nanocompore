@@ -291,8 +291,8 @@ def get_reads_invalid_ratio(intensity: Float[np.ndarray, "positions reads"]):
     read length.
 
     This is the method employed for Uncalled4 and Remora.
-    For eventalign there's a custom method, that takes
-    in consideration the richer information provided
+    For eventalign there's a custom code (in eventalign collapse),
+    that takes in consideration the richer information provided
     by the resquiggler.
 
     Parameters

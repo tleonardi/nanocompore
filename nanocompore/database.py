@@ -139,8 +139,6 @@ JOIN reads r ON sd.read_id = r.id
 JOIN transcripts t ON sd.transcript_id = t.id
 WHERE t.name = ?
   AND r.invalid_kmers <= ?
-ORDER BY r.invalid_kmers ASC
-LIMIT ?
 """
 
 BASE_KMER_RESULT_COLUMNS = ['id', 'transcript_id', 'pos', 'kmer']
@@ -383,7 +381,5 @@ class PreprocessingDB:
         """
         with closing(connection.cursor()) as cursor:
             return cursor.execute(GET_SIGNAL_DATA_FOR_TRANSCRIPT_QUERY,
-                                  (transcript_name,
-                                   max_invalid_ratio,
-                                   max_rows)).fetchall()
+                                  (transcript_name, max_invalid_ratio)).fetchall()
 

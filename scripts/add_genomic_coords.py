@@ -1,5 +1,5 @@
 # This should be executed with python >= 3.13 with GIL disabled. E.g.
-# $ PYTHON_GIL=0 python3.13t add_genomic_coords.py out_nanocompore_results.tsv gencode41.annotation.sqlite
+# $ PYTHON_GIL=0 python3.13t add_genomic_coords.py out_nanocompore_results.tsv gencode41.annotation.gtf
 
 import argparse
 import sys
@@ -9,7 +9,6 @@ from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import closing
 from pathlib import Path
-from threading import Thread, Lock
 
 import pandas as pd
 import numpy as np
@@ -17,13 +16,13 @@ import numpy as np
 
 parser = argparse.ArgumentParser(description='Add genomic positions to Nanocompore results.')
 parser.add_argument('input_tsv', help='The results tsv file from Nanocompore.')
-parser.add_argument('gtf_db', help='The annotation SQLite DB produced from the GTF.')
+parser.add_argument('gtf', help='The annotation GTF.')
 parser.add_argument('-t','--threads', help='Number of threads to use (default: 14).', nargs='?', const=14, default=14, type=int)
 parser.add_argument('-b','--batch_size', help='Number of rows in each batch (defalut: 3,000,000).', nargs='?', const=3_000_000, default=3_000_000, type=int)
 args = parser.parse_args()
 
 INPUT_FN = args.input_tsv
-GTF_FN = args.gtf_db
+GTF_FN = args.gtf
 MAX_ROWS = args.batch_size
 THREADS = args.threads
 
@@ -36,27 +35,6 @@ class Exon:
         self.strand = strand
         self.start = start
         self.end = end
-
-
-def get_exons(refs):
-    if not isinstance(refs, set):
-        refs = set(refs)
-    params = ','.join('?' for _ in refs)
-    query = f"""
-    SELECT parent, seqid, strand, start, end
-    FROM features f
-    JOIN (SELECT parent, child
-          FROM relations
-          WHERE child LIKE 'exon_%' AND
-                parent IN ({params})) r
-    ON f.id = r.child
-    """
-    exons = defaultdict(list)
-    with closing(sqlite3.connect(GTF_FN)) as conn:
-        for row in conn.execute(query, tuple(refs)).fetchall():
-            # if row[0] in refs:
-            exons[row[0]].append(Exon(*row[1:]))
-    return exons
 
 
 def get_transcript_len(exons):
@@ -105,14 +83,29 @@ def set_genomic_coords(args):
     data.loc[r, 'chr'] = chroms
     data.loc[r, 'strand'] = strands
     data.loc[r, 'genomicPos'] = gx_positions
-        
+
 
 if __name__ == '__main__':
     writers = []
-    lock = Lock()
 
     columns = None
     read = 0
+
+    print('Parsing the GTF annotation.')
+    gtf = pd.read_csv(GTF_FN,
+                      sep='\t',
+                      comment='#',
+                      header=None,
+                      names=['chr', 'source', 'feature', 'start', 'end', 'score', 'strand', 'frame', 'attribute'])
+    gtf = gtf[gtf.feature == 'exon']
+    gtf['transcript_id'] = gtf.attribute.str.split('; ').apply(lambda x: x[1]).str.split(' ').apply(lambda x: x[1]).str.strip('"')
+    all_exons = defaultdict(list)
+    for _, row in gtf.iterrows():
+        all_exons[row.transcript_id].append(Exon(row.chr, row.strand, row.start, row.end))
+
+    print(f'Got {len(all_exons)} transcripts from the annotation.')
+
+
     print('Starting to read CSV and add genomic positions')
     while True:
         if read == 0:
@@ -124,12 +117,9 @@ if __name__ == '__main__':
         if data.shape[0] == 0:
             break
 
-        print(f'Read {data.shape[0]} rows.')
+        print(f'Processing {data.shape[0]} rows.')
 
-        print('Getting exons from the annotation...')
         refs = data.ref_id.str.split('|').apply(lambda x: x[0]).unique()
-        all_exons = get_exons(refs)
-        print(f'Got {len(all_exons)} exons.')
 
         data['genomicPos'] = pd.Series(dtype='int')
         data['chr'] = pd.Series(dtype='str')
@@ -148,17 +138,10 @@ if __name__ == '__main__':
 
         data['genomicPos'] = data['genomicPos'].astype(int)
     
-        def write_fn():
-            lock.acquire()
-            if read == 0:
-                data.to_csv(result_fn, sep='\t', index=False)
-            else:
-                data.to_csv(result_fn, sep='\t', index=False, header=False, mode='a')
-            lock.release()
-
-        writer = Thread(target=write_fn)
-        writer.start()
-        writers.append(writer)
+        if read == 0:
+            data.to_csv(result_fn, sep='\t', index=False)
+        else:
+            data.to_csv(result_fn, sep='\t', index=False, header=False, mode='a')
 
         read += data.shape[0]
 
