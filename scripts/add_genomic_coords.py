@@ -47,7 +47,7 @@ def get_exons(refs):
     FROM features f
     JOIN (SELECT parent, child
           FROM relations
-          WHERE child LIKE "exon_%" AND
+          WHERE child LIKE 'exon_%' AND
                 parent IN ({params})) r
     ON f.id = r.child
     """

@@ -22,8 +22,7 @@ from nanocompore.common import DWELL_POS
 
 def get_reads(args):
     bam, ref_id, sample, condition = args
-    for read in bam.fetch(ref_id):
-        yield read, sample, condition
+    return [(read, sample, condition) for read in bam.fetch(ref_id)]
 
 
 class Uncalled4:

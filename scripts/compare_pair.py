@@ -21,6 +21,7 @@ parser.add_argument('--name1', help='Name for the first result.', required=True)
 parser.add_argument('--name2', help='Name for the second result.', required=True)
 # parser.add_argument('--mods', help='BED file with true modified positions.', required=True)
 parser.add_argument('--ref', help='Sites with sufficient coverage in both conditions', required=True)
+parser.add_argument('--shift', help='Shift the positions in the Nanocompore results before comparing them to the reference.', nargs='?', type=int, const=0, default=0)
 args = parser.parse_args()
 
 
@@ -64,6 +65,9 @@ names = [args.name1, args.name2]
 
 def get_binned(run):
     df = pd.read_csv(tsvs[run], sep='\t') #, nrows=100000)
+    if args.shift != 0:
+        print(f'Shifting results {tsvs[run]} by {args.shift}')
+        df['genomicPos'] += np.where(df['strand'] == '+', args.shift, -args.shift)
     col = cols[run]
     # The q-value for positions we miss is set to 1.0
     df[col] = df[col].fillna(1.0)
@@ -88,8 +92,8 @@ def get_binned(run):
     binned.columns = ['predicted', 'LOR']
 
     binned = ref.join(binned,
-                     on=['chr', 'strand', 'bin'],
-                     how='left')
+                      on=['chr', 'strand', 'bin'],
+                      how='left')
     # If the reference is missing a position, we assume
     # it's a true negative.
     # binned['modified'] = binned['modified'].fillna(False)
