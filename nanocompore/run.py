@@ -352,9 +352,9 @@ class Worker(multiprocessing.Process):
         self._conf = config
         self._db_manager = ResultsDB(self._conf, init_db=False)
         self._fasta_fh = Fasta(self._conf.get_fasta_ref())
-        self._comparator = TranscriptComparator(config=self._conf)
+        self._comparator = TranscriptComparator(config=self._conf, worker=self)
         self._kit = self._conf.get_kit()
-        logger.info(f"Worker {worker_id} started with pid {os.getpid()}.")
+        self.log("info", f"Starting on pid {os.getpid()}.")
 
 
     def run(self):
@@ -386,35 +386,38 @@ class Worker(multiprocessing.Process):
             # https://github.com/python/cpython/issues/87302
             with self._sync_lock:
                 try:
-                    logger.info(f"Worker {self._id} getting a task from "
-                                f"a queue with size {self._task_queue.qsize()}")
+                    self.log("info",
+                             f"getting a task from a queue with size {self._task_queue.qsize()}")
                     msg = self._task_queue.get(block=False)
                 except queue.Empty:
-                    logger.info(f"Worker {self._id} could not find more "
-                                "tasks in the queue and will terminate.")
+                    self.log("info", "Cannot find more tasks in the queue and will terminate.")
                     break
 
             transcript_ref, retries = msg
             if retries > 2:
-                logger.error(f"Worker {self._id}: Transcript "
-                             f"{transcript_ref.ref_id} was retried "
-                             "too many times. Won't retry again.")
+                self.log("error",
+                         f"Transcript {transcript_ref.ref_id} was retried too many times. "
+                         "Won't retry again")
                 continue
-            logger.info(f"Worker {self._id} starts processing {transcript_ref.ref_id}")
-            transcript = Transcript(id=transcript_ref.id,
-                                    ref_id=transcript_ref.ref_id,
-                                    ref_seq=str(self._fasta_fh[transcript_ref.ref_id]))
+            self.log("info", f"Starting to process {transcript_ref.ref_id}")
+            transcript = Transcript(
+                    id=transcript_ref.id,
+                    ref_id=transcript_ref.ref_id,
+                    ref_seq=str(self._fasta_fh[transcript_ref.ref_id]))
 
             try:
 
                 start_time = time.time()
                 data, samples, conditions = self._read_data(transcript)
-                logger.debug(f"Worker {self._id} read data for transcript {transcript.name} in {time.time() - start_time}")
+                self.log("debug",
+                         f"Read data for transcript {transcript.name} in "
+                         f"{time.time() - start_time}.")
                 # If we don't have valid reads, just continue
                 if data.shape[1] == 0:
                     with self._db_lock:
-                        logger.info(f"Worker {self._id}: Not enough valid reads for {transcript.name}. "
-                                    "Saving the transcript as processed.")
+                        self.log("info",
+                                 f"Not enough valid reads for {transcript.name}. "
+                                 "Saving the transcript as processed.")
                         self._db_manager.save_transcript(transcript)
                     continue
 
@@ -432,8 +435,9 @@ class Worker(multiprocessing.Process):
 
                 if results is None:
                     with self._db_lock:
-                        logger.info(f"Worker {self._id}: No test results for {transcript.name}. "
-                                    "Saving the transcript as processed.")
+                        self.log("info",
+                                 f"No test results for {transcript.name}. "
+                                 "Saving the transcript as processed.")
                         self._db_manager.save_transcript(transcript)
                     continue
 
@@ -441,10 +445,13 @@ class Worker(multiprocessing.Process):
                 kmers = results.pos.apply(lambda pos: get_pos_kmer(pos, seq, self._kit))
                 results['kmer'] = kmers.apply(encode_kmer)
                 with self._db_lock:
-                    logger.info(f"Worker {self._id}: Saving the results for {transcript.name}")
+                    self.log("info", f"Saving the results for {transcript.name}.")
                     self._db_manager.save_test_results(transcript, results)
             except torch.OutOfMemoryError:
                 task = TranscriptRow(transcript.name, transcript.id)
+                self.log("info",
+                         f"Returning {transcript_ref.ref_id} to the queue for processing it "
+                         "later because it failed with an OutOfMemory")
                 logger.info(f"Worker {self._id} returns {transcript_ref.ref_id} to " + \
                              "the queue for later processing because it failed with OutOfMemory.")
                 with self._sync_lock:
@@ -458,14 +465,32 @@ class Worker(multiprocessing.Process):
                         self._task_queue.put((task, retries + 1))
                 else:
                     msg = traceback.format_exc()
-                    logger.error(f"Error in Worker {self._id} for reference {transcript_ref.ref_id}: {msg}")
+                    self.log("error",
+                             f"Encountered an error for {transcript_ref.ref_id}: {msg}")
             finally:
-                logger.info(f"Worker {self._id} is finishing a task.")
+                self.log("info", f"Finishing a task: {transcript_ref.ref_id}.")
                 with self._sync_lock:
                     self._num_finished.value += 1
                     self._task_queue.task_done()
         else:
-            logger.info(f"Worker {self._id} completed a batch of transcripts. Will restart now.")
+            self.log("info", "Completed a batch of transcripts. Will restart now.")
+
+
+    def log(self, level, msg):
+        # We use opt(depth=1)" in order to write the line
+        # number from which the log function is called.
+        if level.upper() == "ERROR":
+            logger.opt(depth=1).error(f"[Worker {self._id}] {msg}")
+        elif level.upper() == "WARNING":
+            logger.opt(depth=1).warning(f"[Worker {self._id}] {msg}")
+        elif level.upper() == "INFO":
+            logger.opt(depth=1).info(f"[Worker {self._id}] {msg}")
+        elif level.upper() == "DEBUG":
+            logger.opt(depth=1).debug(f"[Worker {self._id}] {msg}")
+        elif level.upper() == "TRACE":
+            logger.opt(depth=1).trace(f"[Worker {self._id}] {msg}")
+        else:
+            raise ValueError(f"Unrecognized log level: {level}")
 
 
     def _filter_low_cov_positions(self, data, positions, conditions):
@@ -513,7 +538,11 @@ class Worker(multiprocessing.Process):
         """
         # We use the log10 of the dwell time. This
         # significantly improves the accuracy of the detection.
-        data[:, :, DWELL_POS] = np.log10(data[:, :, DWELL_POS])
+        # We add a small epsilon number to make sure there's no
+        # division by zero when calculating the logarithm.
+        # As all data is shifted with the same amount, this
+        # shouldn't have any effecto on the modification detection.
+        data[:, :, DWELL_POS] = np.log10(data[:, :, DWELL_POS] + 1e-10)
 
         motor_offset = self._conf.get_motor_dwell_offset()
         num_positions = data.shape[0]
@@ -540,6 +569,7 @@ class Worker(multiprocessing.Process):
         positions = torch.arange(data.shape[0],
                                  dtype=torch.int16,
                                  device=self._device)[valid_positions]
+
         return (tensor, samples, conditions, positions)
 
 
@@ -651,7 +681,9 @@ class Uncalled4Worker(Worker):
         invalid_ratios = get_reads_invalid_ratio(data[:, :, INTENSITY_POS])
         valid_reads = invalid_ratios < self._conf.get_max_invalid_kmers_freq()
 
-        logger.debug(f"Filtering uncalled4 reads in read_data: valid {valid_reads.sum()} out of {valid_reads.shape[0]}")
+        self.log("debug",
+                 f"Filtering uncalled4 reads in read_data: "
+                 f"valid {valid_reads.sum()} out of {valid_reads.shape[0]}")
 
         return data[:, valid_reads], samples[valid_reads], conditions[valid_reads]
 

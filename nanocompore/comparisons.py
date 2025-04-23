@@ -28,11 +28,12 @@ class TranscriptComparator:
     """
     Compare a set of positions.
     """
-    def __init__(self, config, random_seed=42, dtype=torch.float32):
+    def __init__(self, config, worker, random_seed=42, dtype=torch.float32):
         self._config = config
         self._random_seed = random_seed
         self._dtype = dtype
         self._motor_dwell_offset = self._config.get_motor_dwell_offset()
+        self._worker = worker
 
 
     def compare_transcript(
@@ -96,14 +97,14 @@ class TranscriptComparator:
         results = pd.DataFrame({'transcript_id': transcript.id,
                                 'pos': positions.cpu()})
 
-        logger.debug("Start shift stats")
+        self._worker.log("trace", "Start shift stats")
         t = time.time()
         retry(lambda: self._add_shift_stats(results, data, conditions, device),
               exception=torch.OutOfMemoryError)
         if device.startswith('cuda'):
             torch.cuda.empty_cache()
             torch.cuda.reset_peak_memory_stats()
-        logger.debug(f"Finished shift stats ({time.time() - t})")
+        self._worker.log("debug", f"Finished shift stats ({time.time() - t})")
 
         std = nanstd(data, 1).unsqueeze(1)
         outliers = (((data - data.nanmean(1, keepdim=True)) / std).abs() > 3).any(2)
@@ -120,9 +121,11 @@ class TranscriptComparator:
         # for all/most reads.
         bad_stds = std.isnan().any(1) | (std == 0).any(1)
         if bad_stds.any():
-            logger.warning("The standard deviation cannot be calculated for some positions on " + \
-                           f"transcript {transcript.name}, but are required for scaling the data. " + \
-                           f"The positions {positions[bad_stds].tolist()} will be skipped.")
+            self._worker.log(
+                    "warning",
+                    "The standard deviation cannot be calculated for some positions on "
+                    f"transcript {transcript.name}, but are required for scaling the data. "
+                    f"The positions {positions[bad_stds].tolist()} will be skipped.")
             data = data[~bad_stds]
             positions = positions[~bad_stds]
             n_positions = positions.shape[0]
@@ -137,14 +140,14 @@ class TranscriptComparator:
         test_masks = self._get_test_masks(auto_test_mask, n_positions)
 
         for test, mask in test_masks.items():
-            logger.debug(f"Start {test}")
+            self._worker.log("debug", f"Start {test}")
             t = time.time()
             test_results = self._run_test(test,
                                           data[mask, :, :],
                                           samples,
                                           conditions,
                                           device=device)
-            logger.debug(f"Finished {test} ({time.time() - t})")
+            self._worker.log("debug", f"Finished {test} ({time.time() - t})")
             self._merge_results(results, test_results, test, mask, auto_test_mask, n_positions)
 
         context = self._config.get_sequence_context()
@@ -258,14 +261,16 @@ class TranscriptComparator:
                                  self._drop_nans(cond1_data[:, INTENSITY]).cpu()).pvalue
                 intensity_pvals.append(pval)
             except Exception as e:
-                logger.error(f"Error in nonparametric test on the intensity: {e}")
+                self._worker.log("error",
+                                 f"Error in nonparametric test on the intensity: {e}")
                 intensity_pvals.append(np.nan)
             try:
                 pval = stat_test(self._drop_nans(cond0_data[:, DWELL]).cpu(),
                                  self._drop_nans(cond1_data[:, DWELL]).cpu()).pvalue
                 dwell_pvals.append(pval)
             except Exception as e:
-                logger.error(f"Error in nonparametric test on the dwell time: {e}")
+                self._worker.log("error",
+                                 f"Error in nonparametric test on the dwell time: {e}")
                 dwell_pvals.append(np.nan)
         return {f'{test}_intensity_pvalue': intensity_pvals,
                 f'{test}_dwell_pvalue': dwell_pvals}
@@ -370,7 +375,7 @@ class TranscriptComparator:
         gc.collect()
         gmm2 = retry(lambda: fit_model(2), exception=torch.OutOfMemoryError)
 
-        logger.info(f"GMM fitting time: {time.time() - s}")
+        self._worker.log("info", f"GMM fitting time: {time.time() - s}")
         pred = gmm2.predict(test_data, force_cpu_result=False)
         pred = torch.where(test_data[:, :, 0].isnan(), np.nan, pred)
 
@@ -530,7 +535,7 @@ def retry(fn, delay=5, backoff=5, max_attempts=3, exception=Exception):
             return fn()
         except exception as e:
             attempts += 1
-            logger.warning(f"Got error {e} on attempt {attempts}/{max_attempts}")
+            self._worker.log("warning", f"Got error {e} on attempt {attempts}/{max_attempts}")
             time.sleep(delay)
             delay += backoff
     else:
