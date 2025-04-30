@@ -28,3 +28,8 @@ BASIC_CONFIG = {
     'resquiggler': 'uncalled4',
 }
 
+
+class MockWorker:
+    def log(self, level, msg):
+        pass
+

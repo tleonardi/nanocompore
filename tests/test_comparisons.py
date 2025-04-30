@@ -10,6 +10,7 @@ from nanocompore.comparisons import get_contigency_matrices
 from nanocompore.config import Config
 
 from tests.common import BASIC_CONFIG
+from tests.common import MockWorker
 
 
 def test_add_shift_stats():
@@ -35,7 +36,7 @@ def test_add_shift_stats():
     conditions = torch.tensor([0, 1, 0, 1])
                                
 
-    comparator = TranscriptComparator(config)
+    comparator = TranscriptComparator(config, MockWorker())
 
     results = {}
     comparator._add_shift_stats(results,
@@ -80,7 +81,7 @@ def test_add_shift_stats_with_motor_dwell():
     ])
     conditions = torch.tensor([0, 1, 0, 1])
 
-    comparator = TranscriptComparator(config)
+    comparator = TranscriptComparator(config, MockWorker())
 
     results = {}
     comparator._add_shift_stats(results,
@@ -107,7 +108,7 @@ def test_add_shift_stats_with_motor_dwell():
 
 def test_nonparametric_test_KS():
     config = Config(BASIC_CONFIG)
-    comparator = TranscriptComparator(config)
+    comparator = TranscriptComparator(config, MockWorker())
     data = torch.tensor([
         # pos 3
         [
@@ -153,7 +154,7 @@ def test_combine_context_pvalues():
     yaml['sequence_context_weights'] = 'harmonic'
     yaml['sequence_context'] = 3
     config = Config(yaml)
-    comparator = TranscriptComparator(config)
+    comparator = TranscriptComparator(config, MockWorker())
     results = pd.DataFrame({'pos': range(1, 17),
                             'GMM_chi2_pvalue': [0.001,
                                                 np.nan,
@@ -263,7 +264,7 @@ def test_get_cluster_counts():
 
     contingency = get_contigency_matrices(conditions, predictions)
 
-    comparator = TranscriptComparator(config)
+    comparator = TranscriptComparator(config, MockWorker())
 
     cluster_counts = comparator._get_cluster_counts(contingency, samples, conditions, predictions)
 
@@ -279,4 +280,6 @@ def test_get_cluster_counts():
 
 def get_float(value):
     return round(float(value), 3)
+
+
 
