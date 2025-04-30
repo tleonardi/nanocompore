@@ -251,17 +251,11 @@ class RunCmd(object):
     def _get_workers_with_device(self):
         devices = self._config.get_devices()
         result = {}
-        if isinstance(devices, dict):
-            worker = 0
-            for device, procs in devices.items():
-                for _ in range(procs):
-                    result[worker] = device
-                    worker += 1
-        else:
-            if not isinstance(devices, list):
-                devices = [devices]
-            for worker in range(self._config.get_nthreads() - 1):
-                result[worker] = devices[worker % len(devices)]
+        worker = 0
+        for device, procs in devices.items():
+            for _ in range(procs):
+                result[worker] = device
+                worker += 1
         return result
 
 

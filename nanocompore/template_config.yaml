@@ -11,7 +11,10 @@
 #     to an SQLite database file produced by the subcommands
 #     "eventalign_collapse" or "remora_resquiggle".
 data:
-  # Only two conditions are supported
+  # Only two conditions are supported. There's
+  # no limit to the number of samples per condition.
+  # You can change the labels appropriately, but
+  # note that all labels should be unique.
   condition1:
     sample1:
       bam: "/path/to/file.bam"
@@ -46,34 +49,17 @@ resquiggler: 'eventalign'
 # === OPTIONAL FIELDS ===
 
 
-# Which computing device to use for the analysis (e.g. CPU vs GPU).
-# This setting is used by the run subcommand.
-# The accepted values are: "cpu", "cuda", "cuda:N"
-# You can set the parameter using one of two methods:
-# - Single value, e.g. "cpu" to use the CPU. In this case,
-#   the number of worker processes will be determined by the
-#   "nthreads" setting and all workers will use the device
-#   specified here.
-# - A map of devices and number of worker processes,
-#   e.g. {"cpu": 4, "cuda:0": 8, "cuda:1": 8} to start 4
-#   worker processes on the CPU and 8 worker processes on
-#   each of the two GPUs. Note that if this method is used,
-#   the "nthreads" parameter will be ignored.
+# Control how many worker processes to run and which
+# computing device they should run on.
+# The parameter should be a map of devices and number of worker processes.
+# The accepted device values are: "cpu", "cuda", "cuda:N"
+# For example, to use 4 worker processes on the CPU and
+# 8 worker processes on each of the two available GPUs
+# one can set the following:
 # devices:
 #   "cpu": 4
 #   "cuda:0": 8
 #   "cuda:1": 8
-
-
-# Number of processes to use.
-# Note: one process will be used as an orchestrator
-# and will not be used to compare the samples.
-# The number of worker processes is hence nthreads - 1.
-# Note: if the number of worker processes are set for
-# each device in the "devices" parameter "nthreads" will
-# be ignored by the run subcommand.
-# The default value is 2.
-# nthreads: 2
 
 # What to do if the output directory already exists.
 # Possible options are:

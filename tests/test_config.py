@@ -58,16 +58,6 @@ class TestConfig:
         assert "Invalid fasta file" == str(exception_info.value)
 
 
-    def test_too_few_threads(self):
-        yaml = copy.deepcopy(BASIC_CONFIG)
-        yaml['nthreads'] = 1
-
-        with pytest.raises(schema.SchemaError) as exception_info:
-            config = Config(yaml)
-
-        assert "nthreads must be >= 2" == str(exception_info.value)
-
-
     def test_unsupported_comparison_method(self):
         yaml = copy.deepcopy(BASIC_CONFIG)
         yaml['comparison_methods'] = ['unsupported_method']

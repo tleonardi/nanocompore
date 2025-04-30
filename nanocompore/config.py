@@ -1,5 +1,4 @@
 import re
-import os
 
 from schema import Schema, And, Or, Optional
 
@@ -32,23 +31,22 @@ def validate_device(value):
 
     Parameters
     ----------
-    value : str | dict
+    value : dict
         Device configuration.
 
     Returns
     -------
         bool
     """
-    if isinstance(value, str):
-        return valid_device(value)
-
     if isinstance(value, dict):
         for k, v in value.items():
             if not valid_device(k) or not isinstance(v, int) or v < 0:
                 return False
         return True
     raise ValueError("The value for 'devices' in the configuration "
-                     f"is of unexpected type: {type(value)}")
+                     f"is of unexpected type: {type(value)}. Should "
+                     "be a map of devices and numbers of workers. "
+                     'E.g. {"cpu": 5, "cuda:1": 8, "cuda:2": 8}')
 
 
 def validate_db_data(config):
@@ -119,7 +117,6 @@ CONFIG_SCHEMA = Schema(And({
     'kit': Or(*[v.name for v in Kit]),
     Optional('devices'): validate_device,
     Optional('bed'): And(lambda f: open(f, 'r'), error='Invalid bed file'),
-    Optional('nthreads'): And(lambda n: n >= 2, error='nthreads must be >= 2'),
     Optional('min_coverage'): And(int, lambda n: n >= 0, error='min_coverage must be >= 0'),
     Optional('downsample_high_coverage'): And(int, lambda n: n >= 0, error='downsample_high_coverage must be >= 0'),
     Optional('min_ref_length'): And(int, lambda n: n >= 0, error='min_ref_length must be >= 0'),
@@ -169,8 +166,7 @@ CONFIG_SCHEMA = Schema(And({
 
 
 DEFAULT_KIT = 'RNA002'
-DEFAULT_DEVICES = 'cpu'
-DEFAULT_NTHEARDS = 2
+DEFAULT_DEVICES = {'cpu': 2}
 DEFAULT_MIN_COVERAGE = 30
 DEFAULT_MAX_READS = 5000
 DEFAULT_DOWNSAMPLE_HIGH_COVERAGE = 5000
@@ -236,13 +232,6 @@ class Config:
         E.g. cpu or cuda.
         """
         return self._config.get('devices', DEFAULT_DEVICES)
-
-
-    def get_nthreads(self):
-        """
-        Number of threads to use.
-        """
-        return self._config.get('nthreads', DEFAULT_NTHEARDS)
 
 
     def get_fasta_ref(self):
