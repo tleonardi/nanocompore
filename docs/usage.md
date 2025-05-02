@@ -1,28 +1,116 @@
 # How to use Nanocompore
 
-Nanocompore was designed to be used either through a python API or a command line interface. The package contains 3 main modules: `SampComp`, `SampCompDB` and `SimReads`
+Once all samples have been preprocessed as explained in the [Data preparation]( e/data_preparation) page, we can proceed to perform the comparison of the two conditions with Nanocompore.
 
-### Eventalign_collapse
+### Creating a configuration file
 
-As its name suggests `Eventalign_collapse`, collapses nanopolish eventalign files at kmer level. This step drastically reduces the size of the resquiggled file and allow to index the data by read and reference, which allows fast random access to the file by `SampComp`. This step is required and described in the data preparation section. It can be run either through the API (`nanocompore.Eventalign_collapse.Eventalign_collapse`) or the CLI (`nanocompore eventalign_collapse`).
+Nanocompore uses a YAML configuration file that contains all parameters for a given analysis. We can generate a new configuration using the **template** subcommand:
 
-* [SampComp Usage](https://nanocompore.rna.rocks/demo/Eventalign_collapse_usage/)
+```bash
+nanocompore template analysis.yaml
+```
 
-### SampComp
+This will create a file called "analysis.yaml" in the current working directory. The file lists all parameters for Nanocompore documented with comments explaining their function and possible values. Here's the top part of the configuration file which describes the required fields:
 
-This is the main module which compares the signal of 2 experimental conditions. It takes Nanopolished datasets as input and generates a database containing all the results as output. `SampComp` has to be run first either through the API (`nanocompore.SampComp.SampComp`) or the CLI (`nanocompore sampcomp`).
+```yaml
+# === REQUIRED FIELDS ===
 
-* [SampComp Usage](https://nanocompore.rna.rocks/demo/SampComp_usage/)
+# Specify all the conditions and samples to bo analysed.
+# Depending on the resquiggler used, Nanocompore expect different
+# fields to be defined for all samples:
+# - Uncalled4:
+#   - Each sample should have the "bam" field set with a path
+#     to a bam file containing the Uncalled4 resquiggling data.
+# - Eventalign or Remora:
+#   - Each sample should have the "db" field set with a path
+#     to an SQLite database file produced by the subcommands
+#     "eventalign_collapse" or "remora_resquiggle".
+data:
+  # Only two conditions are supported. There's
+  # no limit to the number of samples per condition.
+  # You can change the labels appropriately, but
+  # note that all labels should be unique.
+  condition1:
+    sample1:
+      bam: "/path/to/file.bam"
+      db: "/path/to/collapsed_eventalign.sqlite"
+    sample2:
+      bam: "/path/to/file.bam"
+      db: "/path/to/collapsed_eventalign.sqlite"
+    # you can list as many samples as you want
+  condition2:
+    sample3:
+      bam: "/path/to/file.bam"
+      db: "/path/to/collapsed_eventalign.sqlite"
+    sample4:
+      bam: "/path/to/file.bam"
+      db: "/path/to/collapsed_eventalign.sqlite"
+
+# Which of the two conditions is the one that's
+# depleted of modifications.
+depleted_condition: condition1
+
+# Reference genome/transcriptome in fasta format
+fasta: "/path/to/reference.fa"
+
+# The kit that was used for sequencing.
+# Possible values: RNA002, RNA004
+kit: "RNA004"
+
+# Specify which resquiggler you have used for your data.
+# Possible options are "eventalign", "uncalled4", and "remora".
+resquiggler: 'eventalign'
+```
+The `data` field should list all samples, preprocessed with the same resquiggler. The `fasta` parameter should be set to the transcriptome reference (a FASTA file) that was used for the alignment of the reads.
+
+Below, the file will list various optional parameters that the user can tweak. The most important ones are discussed below.
+
+#### Performance tuning
+
+The main way to control the performance and resource usage of Nanocompore is through the `devices` parameter.
+
+```yaml
+# Control how many worker processes to run and which
+# computing device they should run on.
+# The parameter should be a map of devices and number of worker processes.
+# The accepted device values are: "cpu", "cuda", "cuda:N"
+# For example, to use 4 worker processes on the CPU and
+# 8 worker processes on each of the two available GPUs
+# one can set the following:
+devices:
+  "cpu": 4
+  "cuda:0": 8
+  "cuda:1": 8
+```
+The `devices` parameter specifies how many worker processes Nanocompore should run. Typically, the more parallelization we use, the faster the analysis will go, as long as this matches the computational resources available. However, increasing the number of workers means that more memory would be used, potentially leading to out-of-memory errors. Some guidelines to consider:
+- Running the analysis on GPU devices is significantly faster than using CPUs.
+- If using CPUs, a reasonable starting point is setting the parameter to `"cpu": N-1` where N is the number of available CPU cores. This would allow each worker to utilize one core while leaving one core for the main orchestrator process.
+- If using GPUs, the user is advised to try experimenting with different number of workers to tune the performance according to their GPU model. In particular, one should increase the worker count to achieve high GPU utilization, while making sure that the GPU memory consumption is low enough to avoid out-of-memory errors. Each worker process would have a copy of the CUDA context, which takes a few hundred MB of memory. On top of that, the worker will load to the GPU memory the data for the transcript that it currently is processing. Monitoring the run logs can show you if out of memory errors occur. In the case of such error, Nanocompore will add the transcript back to the queue to retry it later (up to 3 times), so an occasional out-of-memory is not a reason to be very worried. However, if they are too frequent it means that the GPU is overloaded which would lead to lower performance and potential loss of results.
+- For example, for a GPU model NVIDIA Tesla P100-PCIE, which has 12GB of memory we typically use 8 workers per GPU device.
+- You can mix devices to improve the performance. However, bear in mind that GPU workers would also use the CPU to some degree. Hence, it's not recommended to use all CPU cores with CPU workers if you also run GPU workers. E.g. if you have 32 cores and you run 16 GPU workers, you can try running 15 CPU workers on top, but it's not wise to try running 32 CPU workers.
+
+#### Continue a previous run
+
+By default, if the output directory for the run already exists, Nanocompore will stop and output an error message. You can instruct Nanocompore how to proceed in such cases by changing the parameter `result_exists_strategy`: 
+
+```yaml
+# What to do if the output directory already exists.
+# Possible options are:
+# - stop (default): stop the execution with an error.
+# - overwrite: delete the existing directory and start from scratch.
+# - continue: try to continue from where the previous execution left off.
+result_exists_strategy: "continue"
+```
+If you set the parameter to "continue", Nanocompore will try to reuse the database that was created in the previous run and won't repeat the analysis for any transcripts that have already been analysed and written to the database.
 
 
-### SampCompDB
+### Run the analysis
 
-`SampCompDB` is a wrapper around the DBM object database generated by `SampComp`. This module performs secondary statistical analyses and provide simple high level functions to plot, explore and export the results. At the moment `SampCompDB` is only accessible through the interactive python API (`nanocompore.SampCompDB.SampCompDB`). We strongly recommend to use [jupyter notebook](https://jupyter.org/).
+Once you have created a configuration, you can run the analysis on your data with:
 
-* [SampCompDB Usage](https://nanocompore.rna.rocks/demo/SampCompDB_usage/)
+```bash
+nanocompore run analysis.yaml
+```
 
-### SimReads
+Nanocompore should immediately create a directory "nanocompore_output" in the current working directory (unless you have set the `outpath` parameter in the configuration file to a different location). All working files, logs, and results will be placed in that directory.
 
-This module can be used to generate artificial datasets based on a model file obtained from IVT generated RNA sequenced by direct RNA sequencing ([Datasets](https://github.com/nanopore-wgs-consortium/NA12878/blob/master/nanopore-human-transcriptome/fastq_fast5_bulk.md), from the Nanopore RNA consortium). In addition, one can also simulate the presence of modifications by allowing to deviate from the model for selected positions.
-
-* [Simulate_reads Usage](https://nanocompore.rna.rocks/demo/SimReads_usage)

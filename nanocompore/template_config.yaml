@@ -39,6 +39,7 @@ depleted_condition: condition1
 fasta: "/path/to/reference.fa"
 
 # The kit that was used for sequencing.
+# Possible values: RNA002, RNA004
 kit: "RNA004"
 
 # Specify which resquiggler you have used for your data.
