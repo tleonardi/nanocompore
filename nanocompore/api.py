@@ -31,15 +31,15 @@ def get_references(db: str, has_data=True) -> list[str]:
     """
     if has_data:
         transcripts = PreprocessingDB(db).get_references_with_data()
+        return list(transcripts.keys())
     else:
         transcripts = PreprocessingDB(db).get_references()
-    return [t.ref_id for t in transcripts]
+        return [t.ref_id for t in transcripts]
 
 
 def get_reads(db: str,
               reference_id: str,
-              selected_reads: Optional[list[str]]=None,
-              variables: Optional[tuple[str, ...]]=('dwell', 'intensity')
+              selected_reads: Optional[list[str]]=None
     ) -> tuple[
             Float[np.ndarray, "reads positions variables"],
             list[str]]:
@@ -83,8 +83,8 @@ def get_reads(db: str,
         signal_data = np.stack([intensity, dwell], axis=2)
         if selected_reads:
             read_set = set(selected_reads)
-            mask = np.array([read in selected_reads for read in reads])
-            filtered_reads = [read for read in reads if read in selected_reads]
+            mask = np.array([read in read_set for read in reads])
+            filtered_reads = [read for read in reads if read in read_set]
             return signal_data[mask], filtered_reads
         return signal_data, reads
 

@@ -1,8 +1,8 @@
 # Data preparation
 
-Before using Nanocompore, sequencing data have to be basecalled (Dorado), aligned on a transcriptome reference (Minimap2) and resquiggled. Nanocompore supports multiple different resquigglers: Nanopolish/f5c eventalign, Uncalled4 align or Remora's API.
+Before using Nanocompore, sequencing data have to be basecalled (Dorado), aligned to a transcriptome reference (Minimap2), and resquiggled. Nanocompore supports multiple different resquigglers: Nanopolish/f5c eventalign, Uncalled4 align or Remora's API.
 
-We're planning to release a Nextflow pipeline that would automate all those steps. However, the manual steps for performing the preprocessing are described below. The guide is based on https://doi.org/10.1002/cpz1.683. Note that this should be repeated for all samples.
+We're planning to release a Nextflow pipeline that would automate all those steps. However, the manual steps for performing the preprocessing are described below. The guide is based on [https://doi.org/10.1002/cpz1.683](https://doi.org/10.1002/cpz1.683). Note that this procedure should be repeated for all samples.
 
 ### Reads basecalling
 

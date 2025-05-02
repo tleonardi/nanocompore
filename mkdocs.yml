@@ -24,11 +24,13 @@ nav:
     - Installation instructions: installation.md
     - Data preparation: data_preparation.md
     - Usage:
-        - How to use Nanocompore: usage.md
-        - Collapse nanopolish data at kmer level: demo/Eventalign_collapse_usage.ipynb
-        - Compare samples with SampComp: demo/SampComp_usage.ipynb
-        - Generate plots and tables with SampCompDB: demo/SampCompDB_usage.ipynb
-        - Generate simulated reads: demo/SimReads_usage.ipynb
+        - Running Nanocompore: usage.md
+        - Outputs: output.md
+        - API: api.md
+        # - Collapse nanopolish data at kmer level: demo/Eventalign_collapse_usage.ipynb
+        # - Compare samples with SampComp: demo/SampComp_usage.ipynb
+        # - Generate plots and tables with SampCompDB: demo/SampCompDB_usage.ipynb
+        # - Generate simulated reads: demo/SimReads_usage.ipynb
     - Alternative and complementary packages: alternative.md
     - Citing: citing.md
     - Contributing: contributing.md
@@ -65,4 +67,9 @@ markdown_extensions:
   - pymdownx.tilde
 
 plugins:
-  - mknotebooks
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            docstring_style: numpy
+#   - mknotebooks

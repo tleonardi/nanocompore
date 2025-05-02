@@ -48,12 +48,13 @@ nanocompore = "nanocompore.__main__:main"
 [dependency-groups]
 dev = [
     "pytest<9,>=8",
-    "nbconvert<6,>=5",
-    "mkdocs<2,>=1",
-    "pymdown-extensions<7,>=6",
+    "nbconvert<8,>=7",
+    "mkdocs>=1.6",
+    "pymdown-extensions>=10",
     "mknotebooks<1,>=0",
-    "mkdocs-material<5,>=4",
-    "markdown<3.2",
+    "mkdocs-material>=9.6",
+    "markdown>=3.8",
+    "mkdocstrings[python]>=0.18",
 ]
 
 [tool.pdm.build]
