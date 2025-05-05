@@ -11,8 +11,6 @@ import numpy as np
 from loguru import logger
 
 from nanocompore.common import NanocomporeError
-from nanocompore.common import READ_ID_TYPE
-from nanocompore.common import SAMPLE_ID_TYPE
 from nanocompore.common import TranscriptRow
 
 
@@ -215,7 +213,7 @@ class ResultsDB():
                 if column in existing_columns:
                     continue
 
-                if column_type is float or column_type == np.float64:
+                if column_type in (float, np.float64, np.float32):
                     column_type = 'FLOAT'
                 elif column_type is str:
                     column_type = 'VARCHR'

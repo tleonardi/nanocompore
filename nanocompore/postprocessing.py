@@ -70,11 +70,15 @@ class Postprocessor():
 
 
     def _write_results_shift_stats(self, data, shift_stats):
-        #writes the shift stats to a tsv file
+        """
+        Writes the shift statistics to a tsv file.
+        """
         shift_stats_tsv = os.path.join(self._outpath, f"{self._prefix}nanocompore_shift_stats.tsv")
         logger.debug(f"Starting to write results to {shift_stats_tsv}")
-        columns_to_save = ['name', 'pos'].extend(shift_stats)
-        aliases = ['ref_id', 'pos'].extend(shift_stats)
+        columns_to_save = ['name', 'pos']
+        aliases = ['ref_id', 'pos']
+        columns_to_save.extend(shift_stats)
+        aliases.extend(shift_stats)
         data.to_csv(shift_stats_tsv, sep='\t', columns=columns_to_save, header=aliases, index=False)
 
 

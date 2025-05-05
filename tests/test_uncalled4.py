@@ -38,7 +38,7 @@ def test_get_data():
     bams = {sample: pysam.AlignmentFile(sample_def['bam'], 'rb')
             for cond, cond_def in config.get_data().items()
             for sample, sample_def in cond_def.items()}
-    uncalled4 = Uncalled4(config, ref, ref_seq, bams)
+    uncalled4 = Uncalled4(ref, len(ref_seq), bams, config.get_kit())
     tensor, sample_ids, condition_ids = uncalled4.get_data()
     # 1781 positions on the transcript, 2 reads and 2 vars (intensity and dwell)
     assert tensor.shape == (1781, 2, 2)
@@ -125,7 +125,7 @@ def test_get_data_no_reads():
     bams = {sample: pysam.AlignmentFile(sample_def['bam'], 'rb')
             for cond, cond_def in config.get_data().items()
             for sample, sample_def in cond_def.items()}
-    uncalled4 = Uncalled4(config, ref, ref_seq, bams)
+    uncalled4 = Uncalled4(ref, len(ref_seq), bams, config.get_kit())
     tensor, sample_ids, condition_ids = uncalled4.get_data()
 
     assert tensor.shape == (1781, 0, 2)

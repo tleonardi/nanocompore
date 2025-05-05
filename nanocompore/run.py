@@ -666,11 +666,20 @@ class Uncalled4Worker(Worker):
             - sample ids: 1D array with int ids of the samples
             - condition ids: 1D array with int ids of the conditinos (0 or 1).
         """
-        uncalled4 = Uncalled4(self._conf,
-                              transcript.name,
-                              transcript.seq,
-                              self._bams)
-        data, samples, conditions = uncalled4.get_data()
+        uncalled4 = Uncalled4(transcript.name,
+                              len(transcript.seq),
+                              self._bams,
+                              self._conf.get_kit())
+        data, _, samples = uncalled4.get_data()
+
+        # convert sample labels to sample int ids
+        sample_id_mapper = np.vectorize(self._conf.get_sample_ids().get)
+        sample_ids = sample_id_mapper(samples)
+
+        # convert sample labels to condition int ids
+        samp_to_cond_mapper = np.vectorize(self._conf.sample_to_condition().get)
+        condition_id_mapper = np.vectorize(self._conf.get_condition_ids().get)
+        condition_ids = condition_id_mapper(samp_to_cond_mapper(samples))
 
         invalid_ratios = get_reads_invalid_ratio(data[:, :, INTENSITY_POS])
         valid_reads = invalid_ratios < self._conf.get_max_invalid_kmers_freq()
@@ -679,7 +688,7 @@ class Uncalled4Worker(Worker):
                  f"Filtering uncalled4 reads in read_data: "
                  f"valid {valid_reads.sum()} out of {valid_reads.shape[0]}")
 
-        return data[:, valid_reads], samples[valid_reads], conditions[valid_reads]
+        return data[:, valid_reads], sample_ids[valid_reads], condition_ids[valid_reads]
 
 
     def close(self):

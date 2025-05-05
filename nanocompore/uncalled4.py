@@ -6,62 +6,53 @@ in the BAM files. This parser reads the BAM file produced
 by Uncalled4 and extracts the data from the tags.
 """
 
-import pysam
-import numpy as np
-import numpy.typing as npt
-from jaxtyping import Float, Int
-
-from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import as_completed
-from typing import Dict
+from typing import Dict, Union
+
+import numpy as np
+import pysam
+
+from jaxtyping import Float, Int
 
 from nanocompore.common import INTENSITY_POS
 from nanocompore.common import DWELL_POS
+from nanocompore.common import Kit
 
 
 def get_reads(args):
-    bam, ref_id, sample, condition = args
-    return [(read, sample, condition) for read in bam.fetch(ref_id)]
+    bam, ref_id, sample = args
+    return [(read, sample) for read in bam.fetch(ref_id)]
 
 
 class Uncalled4:
     def __init__(self,
-                 config,
-                 ref_id,
-                 seq,
-                 bams=None):
+                 ref_id: str,
+                 ref_len: int,
+                 bams: Dict[Union[str, int], pysam.AlignmentFile],
+                 kit: Kit):
         """
         Initialize an Uncalled4 parser.
 
         Parameters
         ----------
-        config : nanocompore.config.Config
-            A configuration object that contains all the
-            parameters for the experiment.
         ref_id : str
             Reference id for the transcript that will be parsed.
-        seq : str
-            The sequence of the transcript.
-        bams : Dict[str, pysam.AlignmentFile]
+        ref_len : int
+            The length of the reference sequence.
+        bams : Dict[Union[str, int], pysam.AlignmentFile]
             Dictionary that maps the sample label to the BAM file for the
-            sample, opened as a pysam.AlignmentFile. Default value is None.
-            If no value is provided, the files would be opened during the
-            initialization of the object. Providing them allows the caller
-            to reuse the same opened file for multiple instances.
+            sample, opened as a pysam.AlignmentFile.
+        kit : Kit
+            The chemistry kit used for sequencing the samples.
         """
-        self._config = config
-        self._seq = seq
+        self._ref_len = ref_len
         self._ref_id = ref_id
-        if bams:
-            self._bams = bams
-        else:
-            self._bams = {sample: pysam.AlignmentFile(sample_def['bam'], 'rb')
-                          for _, cond_def in config.get_data().items()
-                          for sample, sample_def in cond_def.items()}
+        self._bams = bams
+        self._kit = kit
 
 
-    def get_data(self) -> tuple[Float[np.ndarray, "positions reads"],
+    def get_data(self) -> tuple[Float[np.ndarray, "positions reads vars"],
                                 Int[np.ndarray, "reads"],
                                 Int[np.ndarray, "reads"]]:
         """
@@ -69,40 +60,32 @@ class Uncalled4:
 
         Returns
         -------
-        tuple[Float[np.ndarray, "positions reads"],
+        tuple[Float[np.ndarray, "positions reads vars"],
               Int[np.ndarray, "reads"],
               Int[np.ndarray, "reads"]]
             Tuple with:
             - Tensor with shape (Positions, Reads, Vars)
               containing the signal measurements.
-            - 1D array of sample ids with size R.
-            - 1D array of condition ids with size R.
+            - 1D array of size <Reads> with read ids.
+            - 1D array of size <Reads> with sample labels.
         """
-        kit = self._config.get_kit()
-        ref_len = len(self._seq)
-
         read_ids = []
         sample_labels = []
-        condition_labels = []
 
-        read_counts = defaultdict(lambda: 0)
-        for sample, condition, _ in self._config.get_sample_condition_bam_data():
-            count = self._bams[sample].count(reference=self._ref_id)
-            read_counts[condition] += count
-        read_count = sum(read_counts.values())
+        read_count = sum(bam.count(reference=self._ref_id)
+                          for bam in self._bams.values())
 
         # shape is: (positions, reads, vars)
-        reads_tensor = np.full((ref_len, read_count, 2), np.nan, dtype=np.float32)
+        reads_tensor = np.full((self._ref_len, read_count, 2), np.nan, dtype=np.float32)
 
-        n_samples = len(self._config.get_sample_condition_bam_data())
+        n_samples = len(self._bams)
         read_index = 0
         with ThreadPoolExecutor(max_workers=n_samples) as executor:
-            futures = [executor.submit(get_reads, (self._bams[sample], self._ref_id, sample, condition))
-                       for sample, condition, _ in self._config.get_sample_condition_bam_data()]
-
+            futures = [executor.submit(get_reads, (bam, self._ref_id, sample))
+                       for sample, bam in self._bams.items()]
             for future in as_completed(futures):
                 sample_reads = future.result()
-                for read, sample, condition in sample_reads:
+                for read, sample in sample_reads:
                     if read.is_secondary or read.is_supplementary:
                         continue
 
@@ -110,7 +93,6 @@ class Uncalled4:
 
                     read_ids.append(read.query_name)
                     sample_labels.append(sample)
-                    condition_labels.append(condition)
 
                     read_index += 1
 
@@ -128,12 +110,9 @@ class Uncalled4:
             return reads_tensor, np.array([]), np.array([])
 
         read_ids = np.array(read_ids)
-        sample_id_mapper = np.vectorize(self._config.get_sample_ids().get)
-        sample_ids = sample_id_mapper(sample_labels)
-        condition_id_mapper = np.vectorize(self._config.get_condition_ids().get)
-        condition_ids = condition_id_mapper(condition_labels)
+        sample_labels = np.array(sample_labels)
 
-        return reads_tensor, sample_ids, condition_ids
+        return reads_tensor, read_ids, sample_labels
 
 
     def _copy_signal_to_tensor(self, read, tensor, read_index):
@@ -153,7 +132,7 @@ class Uncalled4:
         # kmer size.
         ur = read.get_tag('ur')
 
-        kit = self._config.get_kit()
+        kit = self._kit
 
         # The signal measurements are ordered in
         # 3' to 5' direction so we invert them.

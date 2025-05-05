@@ -274,11 +274,27 @@ def monitor_workers(workers, delay_sec=5):
                 sys.exit(1)
 
 
-def get_references_from_bam(bam_path: str) -> dict[str, int]:
+def get_references_from_bam(bam_path: str, has_data: bool=True) -> dict[str, int]:
+    """
+    Return references from the BAM's index.
+
+    Parameters
+    ----------
+    bam_path : str
+        Path to the BAM file.
+    has_data : bool
+        If set to true, return only references that have
+        at least one mapped read to them.
+
+    Returns
+    -------
+    dict[str, int]
+        ref_id => number of reads
+    """
     references = {}
     bam = pysam.AlignmentFile(bam_path, "rb")
     for line in bam.get_index_statistics():
-        if line.mapped > 0:
+        if (has_data and line.mapped > 0) or not has_data:
             references[line.contig] = line.mapped
     return references
 
