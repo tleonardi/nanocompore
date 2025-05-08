@@ -436,7 +436,16 @@ class Config:
         return dict(zip(labels, range(len(labels))))
 
 
-    def get_condition_ids(self):
+    def get_condition_ids(self) -> dict[str, int]:
+        """
+        Returns a (condition label => condition id)
+        mapping.
+
+        Returns
+        -------
+        dict[str, int]
+            Condition label => condition id dict
+        """
         labels = self.get_condition_labels()
         return dict(zip(labels, range(len(labels))))
 

@@ -418,6 +418,9 @@ class Worker(multiprocessing.Process):
                 prepared_data = self._prepare_data(data, samples, conditions)
                 data, samples, conditions, positions = prepared_data
                 data, positions = self._filter_low_cov_positions(data, positions, conditions)
+                max_reads = self._conf.get_downsample_high_coverage()
+                data, samples, conditions = self._downsample(
+                        data, samples, conditions, max_reads)
 
                 transcript, results = self._comparator.compare_transcript(
                         transcript,
@@ -493,6 +496,21 @@ class Worker(multiprocessing.Process):
         cov_cond_1 = torch.sum(~data[:, conditions == 1, INTENSITY_POS].isnan(), dim=1)
         valid_positions = torch.logical_and(cov_cond_0 >= min_cov, cov_cond_1 >= min_cov)
         return data[valid_positions], positions[valid_positions]
+
+
+    def _downsample(self, data, samples, conditions, max_reads):
+        if data.shape[1] > max_reads:
+            read_valid_positions = (~data.isnan().any(2)).sum(0)
+            read_order = read_valid_positions.argsort(descending=True)
+            selected = torch.full((read_order.shape[0],), False)
+            for cond in [0, 1]:
+                cond_selected = read_order[conditions[read_order] == cond][:max_reads]
+                selected[cond_selected] = True
+            data = data[:, selected, :]
+            samples = samples[selected]
+            conditions = conditions[selected]
+        return data, samples, conditions
+
 
 
     def _prepare_data(self,
@@ -670,7 +688,11 @@ class Uncalled4Worker(Worker):
                               len(transcript.seq),
                               self._bams,
                               self._conf.get_kit())
-        data, _, samples = uncalled4.get_data()
+        data, reads, samples = uncalled4.get_data()
+
+        order = np.argsort(reads)
+        data = data[:, order, :]
+        samples = samples[order]
 
         # convert sample labels to sample int ids
         sample_id_mapper = np.vectorize(self._conf.get_sample_ids().get)
@@ -767,15 +789,17 @@ class GenericWorker(Worker):
             - sample ids: 1D array with int ids of the samples
             - condition ids: 1D array with int ids of the conditinos (0 or 1).
         """
-        intensities = []
-        dwells = []
-        sample_labels = []
-        condition_labels = []
+        intensities = {}
+        dwells = {}
+        sample_counts = {}
         n_samples = len(self._dbs)
         # Here we will use multi-threaded reading from
         # the input databases (one thread per sample)
         # and then we'll combine the reads into one
-        # large tensor.
+        # large tensor. However, we take care to
+        # ensure that the data is read in the same
+        # order each time in order to make the
+        # GMM fitting deterministic.
         with ThreadPoolExecutor(max_workers=n_samples) as executor:
             futures = [executor.submit(get_transcript_signals_from_db,
                                        (self._dbs[sample],
@@ -786,34 +810,41 @@ class GenericWorker(Worker):
                                         condition))
                        for sample, condition, _ in self._conf.get_sample_condition_db_data()]
             for future in as_completed(futures):
-                signal_data, sample, condition = future.result()
+                signal_data, sample, _ = future.result()
+                sample_counts[sample] = len(signal_data)
                 if len(signal_data) == 0:
                     continue
                 # intensity will have shape (Reads, Positions)
                 intensity = np.array([np.frombuffer(intensity, dtype=MEASUREMENTS_TYPE)
                                       for intensity, _ in signal_data])
-                intensities.append(intensity)
+                intensities[sample] = intensity
                 # dwell will have shape (Reads, Positions)
                 dwell = np.array([np.frombuffer(dwell, dtype=MEASUREMENTS_TYPE)
                                   for _, dwell in signal_data])
-                dwells.append(dwell)
-                sample_labels.extend([sample for _ in range(len(signal_data))])
-                condition_labels.extend([condition for _ in range(len(signal_data))])
+                dwells[sample] = dwell
 
-        if len(sample_labels) == 0:
+        if all([c == 0 for c in sample_counts.values()]):
             return np.empty((0, 0, 0)), np.array([]), np.array([])
+
+        ordered_intensities = [intensities[s]
+                               for s in self._conf.get_sample_labels()]
+        ordered_dwells = [dwells[s]
+                          for s in self._conf.get_sample_labels()]
 
         # The tensor has shape: (Positions, Reads, Vars)
         # Note, intensity and dwell have shape (Reads, Positions)
         # so we transpose them before stacking them.
-        tensor = np.stack([np.concatenate(intensities).T,
-                           np.concatenate(dwells).T],
+        tensor = np.stack([np.concatenate(ordered_intensities).T,
+                           np.concatenate(ordered_dwells).T],
                           axis=2)
 
-        sample_id_mapper = np.vectorize(self._conf.get_sample_ids().get)
-        sample_ids = sample_id_mapper(sample_labels)
-        condition_id_mapper = np.vectorize(self._conf.get_condition_ids().get)
-        condition_ids = condition_id_mapper(condition_labels)
+        sample_ids = np.concatenate([np.full(sample_counts[samp], sid)
+                                     for samp, sid in self._conf.get_sample_ids().items()])
+        samp_to_cond = self._conf.sample_to_condition()
+        cond_label_to_id = self._conf.get_condition_ids()
+        condition_ids = np.concatenate([np.full(sample_counts[samp],
+                                                cond_label_to_id[samp_to_cond[samp]])
+                                        for samp in self._conf.get_sample_ids().keys()])
 
         return tensor, sample_ids, condition_ids
 

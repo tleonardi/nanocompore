@@ -74,22 +74,6 @@ class TranscriptComparator:
             Tuple with the Transcript and the comparison
             results stored in a pandas DataFrame.
         """
-        max_reads = self._config.get_downsample_high_coverage()
-        if data.shape[1] > max_reads:
-            read_valid_positions = (~data.isnan().any(2)).sum(0)
-            read_order = read_valid_positions.argsort(descending=True)
-            selected = torch.full((read_order.shape[0],), False)
-            for cond in [0, 1]:
-                cond_selected = read_order[conditions[read_order] == cond][:max_reads]
-                selected[cond_selected] = True
-            data = data[:, selected, :]
-            samples = samples[selected]
-            conditions = conditions[selected]
-
-        if device.startswith('cuda'):
-            torch.cuda.empty_cache()
-            torch.cuda.reset_peak_memory_stats()
-
         n_positions = len(positions)
         if n_positions == 0:
             return (transcript, None)
