@@ -175,6 +175,41 @@ class ResultsDB():
             return [row[0] for row in cursor.execute(query).fetchall()]
 
 
+    def get_cols_for_ref(self, cols: list[str], ref: str) -> pd.DataFrame:
+        """
+        Returns the data for the given reference, selecting
+        only the listed columns.
+
+        Parameters
+        ----------
+        cols : list[str]
+            List of column names to select.
+        ref : str
+            Reference id.
+
+        Returns
+        -------
+        pd.DataFrame
+            The dataframe would contain a "pos" column
+            along with the list of provided columns.
+        """
+        cols = ['pos'] + cols
+        col_list = ', '.join(cols)
+        query = f'''
+        SELECT {col_list}
+        FROM kmer_results res
+        JOIN transcripts t ON t.id = res.transcript_id
+        WHERE t.name = ?
+        '''
+        with closing(sqlite3.connect(self.db_path)) as conn,\
+             closing(conn.cursor()) as cursor:
+            results = cursor.execute(query, (ref,)).fetchall()
+
+            df = pd.DataFrame([dict(zip(cols, row))
+                               for row in results])
+            return df
+
+
     def get_next_transcript_id(self):
         with closing(sqlite3.connect(self.db_path)) as conn,\
              closing(conn.cursor()) as cursor:

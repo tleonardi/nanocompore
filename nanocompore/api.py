@@ -439,7 +439,7 @@ def _get_sample_db_reads(
         dwell = np.array([np.frombuffer(row[1], dtype=MEASUREMENTS_TYPE)
                           for row in rows])
         reads = [row[2] for row in rows]
-        signal_data = np.stack([intensity, dwell], axis=2)
+        signal_data = np.dstack([intensity, dwell])
         if selected_reads:
             read_set = set(selected_reads)
             mask = np.array([read in read_set for read in reads])

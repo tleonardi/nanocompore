@@ -26,7 +26,9 @@ nav:
     - Usage:
         - Running Nanocompore: usage.md
         - Outputs: output.md
-        - API: api.md
+        - Plotting: plotting.md
+        - Data API: data_api.md
+        - Plotting API: plotting_api.md
         # - Collapse nanopolish data at kmer level: demo/Eventalign_collapse_usage.ipynb
         # - Compare samples with SampComp: demo/SampComp_usage.ipynb
         # - Generate plots and tables with SampCompDB: demo/SampCompDB_usage.ipynb
