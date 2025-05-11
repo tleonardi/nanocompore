@@ -191,7 +191,7 @@ class Postprocessor():
                 # Correct the p-values using the Benjamini-Hochberg method.
                 # We'll ignore NaNs when performing the correction.
                 logger.debug(f"Starting to correct pvalues for {column} with {method}")
-                corrected_pvals = self.__multipletests_filter_nan(pvals, method)
+                corrected_pvals = self._multipletests_filter_nan(pvals, method)
 
                 # Replace the original p-values with the corrected p-values in the dataframe
                 corrected_column = column.replace("pvalue", "qvalue")
@@ -202,26 +202,34 @@ class Postprocessor():
 
 
     @staticmethod
-    def __multipletests_filter_nan(pvalues, method="fdr_bh"):
+    def _multipletests_filter_nan(pvalues: np.ndarray, method="fdr_bh") -> np.ndarray:
         """
         Performs p-value correction for multiple hypothesis testing
         using the method specified. The pvalues list can contain
         np.nan values, which are ignored during p-value correction.
-        test: input=[0.1, 0.01, np.nan, 0.01, 0.5, 0.4, 0.01, 0.001, np.nan, np.nan, 0.01, np.nan]
-        out: array([0.13333333, 0.016, nan, 0.016, 0.5, 0.45714286, 0.016, 0.008, nan, nan, 0.016, nan])
-        """
-        if np.isnan(pvalues).all():
-            return pvalues
 
-        pvalues_no_nan = [p for p in pvalues if not np.isnan(p)]
-        corrected_p_values = multipletests(pvalues_no_nan, method=method)[1]
-        current_corrected = 0
-        results = np.empty(len(pvalues))
-        for i, p in enumerate(pvalues):
-            if np.isnan(p):
-                results[i] = np.nan
-            else:
-                results[i] = corrected_p_values[current_corrected]
-                current_corrected += 1
-        return results
+        Parameters
+        ----------
+        pvalues : np.ndarray
+            Array of p-values to correct.
+        method :
+            Which correction strategy to use. Should be supported
+            by statsmodels's multipletests method.
+
+        Returns
+        -------
+        np.ndarray
+            Array of q-values.
+
+        Example
+        -------
+        input = np.array([0.1, 0.01, np.nan, 0.01, 0.5, 0.4, 0.01, 0.001, np.nan, np.nan, 0.01, np.nan])
+        Postprocessor._multipletests_filter_nan(input)
+        array([0.13333333, 0.016, nan, 0.016, 0.5, 0.45714286, 0.016, 0.008, nan, nan, 0.016, nan])
+        """
+        nans = np.isnan(pvalues)
+        corrected_p_values = multipletests(pvalues[~nans], method=method)[1]
+        qvalues = np.copy(pvalues)
+        qvalues[~nans] = corrected_p_values
+        return qvalues
 
