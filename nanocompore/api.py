@@ -383,9 +383,10 @@ def _get_db_reads(
     all_samples = []
     for i, db in enumerate(dbs):
         data, reads = _get_sample_db_reads(db, reference_id, selected_reads)
-        all_data.append(data)
-        all_reads.extend(reads)
-        all_samples.extend(np.full((len(reads),), i))
+        if len(reads) > 0:
+            all_data.append(data)
+            all_reads.extend(reads)
+            all_samples.extend(np.full((len(reads),), i))
     return np.concatenate(all_data), all_reads, all_samples
 
 
@@ -394,7 +395,7 @@ def _get_sample_db_reads(
         reference_id: str,
         selected_reads: Optional[list[str]]=None
     ) -> tuple[
-            Float[np.ndarray, "reads positions variables"],
+            Union[Float[np.ndarray, "reads positions variables"], None],
             list[str]]:
     """
     Get a numpy array with read data for specific reference_id from
@@ -412,13 +413,14 @@ def _get_sample_db_reads(
 
     Returns
     -------
-    tuple[Float[np.ndarray, ["reads positions variables"]],
+    tuple[Union[Float[np.ndarray, ["reads positions variables"]], None],
           list[str]]
 
         A tuple with (signal_data, reads)
 
         - signal_data is a 3D array with shape (reads, positions, variables).
-          In the variables dimension 0=intensity, 1=dwell time.
+          In the variables dimension 0=intensity, 1=dwell time. If no reads
+          are found for the reference, signal_data will be None.
         - reads is a list of read ids (bam qname).
 
     Examples
@@ -439,6 +441,8 @@ def _get_sample_db_reads(
         dwell = np.array([np.frombuffer(row[1], dtype=MEASUREMENTS_TYPE)
                           for row in rows])
         reads = [row[2] for row in rows]
+        if len(reads) == 0:
+            return None, reads
         signal_data = np.dstack([intensity, dwell])
         if selected_reads:
             read_set = set(selected_reads)

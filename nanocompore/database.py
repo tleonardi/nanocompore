@@ -318,7 +318,7 @@ class PreprocessingDB:
             cursor.execute(CREATE_METADATA_TABLE_QUERY)
             cursor.execute(DROP_TRANSCRIPTS_ID_INDEX_QUERY)
         self.write_metadata(metadata)
-    
+
 
     def create_indices(self):
         with closing(self.connect()) as conn,\
@@ -387,8 +387,7 @@ class PreprocessingDB:
     @staticmethod
     def get_signal_data(connection,
                         transcript_name: str,
-                        max_invalid_ratio: float,
-                        max_rows: int):
+                        max_invalid_ratio: float):
         """
         Get signal data for a transcript.
         Will return reads with lower invalid ratio first.
@@ -402,8 +401,6 @@ class PreprocessingDB:
         max_invalid_ratio : float
             Will return only reads with invalid ratio smaller
             than the given number.
-        max_rows : int
-            Maximum rows to return.
 
         Returns
         -------

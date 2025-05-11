@@ -1,5 +1,7 @@
 import copy
 
+from unittest.mock import Mock, call
+
 import torch
 import numpy as np
 import pandas as pd
@@ -8,9 +10,11 @@ from nanocompore.comparisons import TranscriptComparator
 from nanocompore.comparisons import calculate_lors
 from nanocompore.comparisons import get_contigency_matrices
 from nanocompore.config import Config
+from nanocompore.common import MOTOR_DWELL_POS
 
 from tests.common import BASIC_CONFIG
 from tests.common import MockWorker
+from tests.common import naneq
 
 
 def test_add_shift_stats():
@@ -34,7 +38,7 @@ def test_add_shift_stats():
         ],
     ])
     conditions = torch.tensor([0, 1, 0, 1])
-                               
+
 
     comparator = TranscriptComparator(config, MockWorker())
 
@@ -278,8 +282,114 @@ def test_get_cluster_counts():
     assert np.all(cluster_counts['wt2_unmod'] == np.array([1, 0, 0]))
 
 
+def test_gmm_test():
+    config_yaml = copy.deepcopy(BASIC_CONFIG)
+    config_yaml['motor_dwell_offset'] = 1
+    config = Config(config_yaml)
+    comparator = TranscriptComparator(config, MockWorker())
+
+    data = torch.tensor([
+        # pos 0 (2d test because high proportion of missing motor dwell)
+        [[1., 1., np.nan],
+         [np.nan, np.nan, 1.0],
+         [1., 1., np.nan],
+         [np.nan, np.nan, 1.0],
+         [1., 1., 1.0],
+         [1., 1., np.nan]],
+        # pos 1 (should be run with 3d test)
+        [[2., 2., 2.0],
+         [2., 2., 2.0],
+         [2., 2., 2.0],
+         [2.0, 2.0, 2.0],
+         [1., 1., 2.0],
+         [2., 2., 2.0]],
+        # pos 2 (2d test because high proportion of missing motor dwell)
+        [[np.nan, np.nan, np.nan],
+         [np.nan, np.nan, 3.0],
+         [3., 3., np.nan],
+         [np.nan, np.nan, 3.0],
+         [3., 3., np.nan],
+         [np.nan, np.nan, np.nan]],
+    ])
+    samples = torch.arange(6)
+    conditions = torch.tensor([0, 0, 0, 1, 1, 1])
+
+    gmm_results_2d = {'GMM_chi2_pvalue': np.array([0.1, 0.82]),
+                      'GMM_LOR': np.array([0.8, 0.2])}
+    gmm_results_3d = {'GMM_chi2_pvalue': np.array([0.01]),
+                      'GMM_LOR': np.array([1.3])}
+
+    def test(data, samples, conditions, device):
+        if data.shape[2] == 3:
+            return gmm_results_3d
+        return gmm_results_2d
+
+    comparator._gmm_test_split = Mock(side_effect=test)
+
+    results = comparator._gmm_test(data, samples, conditions, 'cpu')
+
+    callargs = comparator._gmm_test_split.call_args_list
+
+    # Validate that the gmm_test_split is called once for pos 1 with 3d data
+    # and once for positions 0 and2 with 2d data. Since we don't want to
+    # impose the order we try both ways.
+    assert ((naneq(callargs[0].args[0], data[[True, False, True], :, :MOTOR_DWELL_POS])
+             and
+             naneq(callargs[1].args[0], data[[False, True, False]]))
+            or
+            (naneq(callargs[0].args[0], data[[False, True, False]])
+             and
+             naneq(callargs[1].args[0], data[[True, False, True], :, :MOTOR_DWELL_POS])))
+
+    # Validate that the results of the 2d and 3d tests
+    # are properly merged in the correct order.
+    assert np.array_equal(results['GMM_chi2_pvalue'], np.array([0.1, 0.01, 0.82]))
+    assert np.array_equal(results['GMM_LOR'], np.array([0.8, 1.3, 0.2]))
+
+
+def test_gmm_test_split_single_component():
+    config = Config(BASIC_CONFIG)
+    comparator = TranscriptComparator(config, MockWorker())
+
+    rand_gen = np.random.default_rng(seed=42)
+    data = torch.tensor(rand_gen.standard_normal((1, 100, 2)))
+    samples = torch.tensor([samp
+                            for samp in [0, 1, 2, 3]
+                            for _ in range(25)])
+    conditions = torch.tensor([cond
+                               for cond in [0, 1]
+                               for _ in range(50)])
+
+    # The data is sampled from a normal distribution
+    # and one component should fit it better (i.e.
+    # should have lower BIC value). We should've
+    # detected that and omit reporting the p-value
+    # from the 2-component GMM.
+    results = comparator._gmm_test_split(data, samples, conditions, 'cpu')
+    assert len(results['GMM_chi2_pvalue']) == 1
+    assert np.isnan(results['GMM_chi2_pvalue'][0])
+
+
+def test_gmm_test_split_two_components():
+    config = Config(BASIC_CONFIG)
+    comparator = TranscriptComparator(config, MockWorker())
+
+    rand_gen = np.random.default_rng(seed=42)
+    data = torch.tensor(rand_gen.standard_normal((1, 100, 2)))
+    data[:, 50:, :] += 3
+
+    samples = torch.tensor([samp
+                            for samp in [0, 1, 2, 3]
+                            for _ in range(25)])
+    conditions = torch.tensor([cond
+                               for cond in [0, 1]
+                               for _ in range(50)])
+
+    results = comparator._gmm_test_split(data, samples, conditions, 'cpu')
+    assert len(results['GMM_chi2_pvalue']) == 1
+    assert results['GMM_chi2_pvalue'] < 0.01
+
+
 def get_float(value):
     return round(float(value), 3)
-
-
 

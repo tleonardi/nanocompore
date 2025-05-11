@@ -77,3 +77,63 @@ def test_eventalign_collapse():
         # Make sure to delete the sqlite database
         Path(db_out).unlink()
 
+
+def test_read_data():
+    tsv_in = os.path.join(cwd, 'tests/fixtures/kd1_eventalign.tsv')
+    ref = os.path.join(cwd, 'tests/fixtures/test_reference.fa')
+    db_out = 'collapsed.sqlite'
+
+    collapser = EventalignCollapser(tsv_in, ref, db_out, 2, '.')
+
+    fstart = 161
+    fend = 6649
+
+    with open(tsv_in) as f:
+        data = collapser._read_data(f, fstart, fend)
+
+    read, kmers = data[0]
+
+    assert read == '3f46f499-8ce4-4817-8177-8ad61b784f27'
+    assert len(kmers) == 3
+    assert kmers[0].pos == 301
+
+    # Test that the two events for the position
+    # are collapsed:
+    # The first sample from the first event
+    assert kmers[0].measurements[0] == 120.907
+    # The last sample from the second event
+    assert kmers[0].measurements[-1] == 98.3254
+    assert kmers[0].dwell == 0.00498 + 0.00332
+    # The first event is valid, but the second
+    # is not, so the collapsed kmer should be
+    # invalid as well.
+    assert not kmers[0].valid
+
+
+def test_process_ref():
+    tsv_in = os.path.join(cwd, 'tests/fixtures/kd1_eventalign.tsv')
+    ref = os.path.join(cwd, 'tests/fixtures/test_reference.fa')
+    db_out = 'collapsed.sqlite'
+
+    collapser = EventalignCollapser(tsv_in, ref, db_out, 2, '.')
+
+    fstart = 161
+    fend = 6649
+
+    with open(tsv_in) as f:
+        data = collapser._read_data(f, fstart, fend)
+
+    ref_id = 'ENST00000674681.1|ENSG00000075624.17|OTTHUMG00000023268|-|ACTB-219|ACTB|2554|protein_coding|'
+    ref_len = 2554
+
+    intensity, dwell, read_invalid_ratios = collapser._process_ref(ref_id, data, ref_len)
+
+    assert intensity.shape == (3, 2554)
+    assert round(float(intensity[0, 301]), 3) == 117.218
+
+    assert dwell.shape == (3, 2554)
+    assert round(float(dwell[0, 301]), 4) == 0.00498 + 0.00332
+
+    assert len(read_invalid_ratios) == 3
+    assert round(read_invalid_ratios['3f46f499-8ce4-4817-8177-8ad61b784f27'], 3) == 0.333
+

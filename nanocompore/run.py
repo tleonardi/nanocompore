@@ -417,7 +417,8 @@ class Worker(multiprocessing.Process):
 
                 prepared_data = self._prepare_data(data, samples, conditions)
                 data, samples, conditions, positions = prepared_data
-                data, positions = self._filter_low_cov_positions(data, positions, conditions)
+                min_cov = self._conf.get_min_coverage()
+                data, positions = self._filter_low_cov_positions(data, positions, conditions, min_cov)
                 max_reads = self._conf.get_downsample_high_coverage()
                 data, samples, conditions = self._downsample(
                         data, samples, conditions, max_reads)
@@ -490,8 +491,7 @@ class Worker(multiprocessing.Process):
             raise ValueError(f"Unrecognized log level: {level}")
 
 
-    def _filter_low_cov_positions(self, data, positions, conditions):
-        min_cov = self._conf.get_min_coverage()
+    def _filter_low_cov_positions(self, data, positions, conditions, min_cov):
         cov_cond_0 = torch.sum(~data[:, conditions == 0, INTENSITY_POS].isnan(), dim=1)
         cov_cond_1 = torch.sum(~data[:, conditions == 1, INTENSITY_POS].isnan(), dim=1)
         valid_positions = torch.logical_and(cov_cond_0 >= min_cov, cov_cond_1 >= min_cov)
@@ -510,7 +510,6 @@ class Worker(multiprocessing.Process):
             samples = samples[selected]
             conditions = conditions[selected]
         return data, samples, conditions
-
 
 
     def _prepare_data(self,
@@ -553,7 +552,7 @@ class Worker(multiprocessing.Process):
         # We add a small epsilon number to make sure there's no
         # division by zero when calculating the logarithm.
         # As all data is shifted with the same amount, this
-        # shouldn't have any effecto on the modification detection.
+        # shouldn't have any effect on the modification detection.
         data[:, :, DWELL_POS] = np.log10(data[:, :, DWELL_POS] + 1e-10)
 
         motor_offset = self._conf.get_motor_dwell_offset()
@@ -805,7 +804,6 @@ class GenericWorker(Worker):
                                        (self._dbs[sample],
                                         transcript.name,
                                         self._conf.get_max_invalid_kmers_freq(),
-                                        self._conf.get_downsample_high_coverage(),
                                         sample,
                                         condition))
                        for sample, condition, _ in self._conf.get_sample_condition_db_data()]
@@ -827,9 +825,11 @@ class GenericWorker(Worker):
             return np.empty((0, 0, 0)), np.array([]), np.array([])
 
         ordered_intensities = [intensities[s]
-                               for s in self._conf.get_sample_labels()]
+                               for s in self._conf.get_sample_labels()
+                               if s in intensities]
         ordered_dwells = [dwells[s]
-                          for s in self._conf.get_sample_labels()]
+                          for s in self._conf.get_sample_labels()
+                          if s in dwells]
 
         # The tensor has shape: (Positions, Reads, Vars)
         # Note, intensity and dwell have shape (Reads, Positions)
@@ -859,7 +859,6 @@ def get_transcript_signals_from_db(args):
     (connection,
      transcript_name,
      max_invalid_ratio,
-     max_reads,
      sample,
      condition) = args
     # Note: we use config.get_downsample_high_coverage to
@@ -873,7 +872,6 @@ def get_transcript_signals_from_db(args):
     # some of those reads would be discarded potentially.
     signal_data = PreprocessingDB.get_signal_data(connection,
                                                   transcript_name,
-                                                  max_invalid_ratio,
-                                                  max_reads)
+                                                  max_invalid_ratio)
     return signal_data, sample, condition
 

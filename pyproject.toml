@@ -24,7 +24,7 @@ dependencies = [
     "schema<1.0.0,>=0.7.5",
     "pynvml<13.0.0,>=12.0.0",
     "jaxtyping>=0.2.38",
-    "gmm-gpu>=0.2.3",
+    "gmm-gpu>=0.2.4",
 ]
 name = "nanocompore"
 version = "1.0.4"
@@ -55,6 +55,8 @@ dev = [
     "mkdocs-material>=9.6",
     "markdown>=3.8",
     "mkdocstrings[python]>=0.18",
+    "pytest-cov>=6.1.1",
+    "pytest-xdist>=3.6.1",
 ]
 
 [tool.pdm.build]

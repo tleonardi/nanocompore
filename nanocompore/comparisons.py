@@ -382,7 +382,7 @@ class TranscriptComparator:
         # If a single component fits the data
         # better we ignore the results from
         # the two-component GMM.
-        ignored_tests = bic1 <= bic2
+        ignored_tests = (bic1 <= bic2).numpy()
         lors[ignored_tests] = np.nan
         pvals[ignored_tests] = np.nan
 
@@ -391,11 +391,14 @@ class TranscriptComparator:
 
 
     def _split_by_ndim(self, test_data):
-        any_motor_dwell_nan = (test_data[:, :, MOTOR].isnan() &
-                               ~test_data[:, :, INTENSITY].isnan()).sum(1) > 0
-        return (test_data[~any_motor_dwell_nan],
-                test_data[any_motor_dwell_nan, :, :MOTOR],
-                any_motor_dwell_nan.int())
+        valid = ~test_data.isnan()
+        with_motor = (valid[:, :, INTENSITY] & valid[:, :, MOTOR]).sum(1)
+        total = valid[:, :, INTENSITY].sum(1)
+        use_motor = with_motor >= 0.9 * total
+
+        return (test_data[use_motor],
+                test_data[~use_motor, :, :MOTOR],
+                (~use_motor).int())
 
 
     def _add_shift_stats(self, results, data, conditions, device):
