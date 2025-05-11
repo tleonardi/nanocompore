@@ -147,6 +147,7 @@ CONFIG_SCHEMA = Schema(And({
     Optional('result_exists_strategy'): Or("stop", "continue", "overwrite"),
     Optional('log_level'): Or('warning', 'info', 'debug'),
     Optional('progress'): bool,
+    Optional('export_shift_stats'): bool,
     Optional('correction_method'): 'fdr_bh'},
     # Additional validation of the full configuration
     And(validate_db_data,
@@ -185,6 +186,7 @@ DEFAULT_OUTPREFIX = 'out_'
 DEFAULT_RESULT_EXISTS_STRATEGY = 'stop'
 DEFAULT_LOG_LEVEL = 'info'
 DEFAULT_PROGRESS = False
+DEFAULT_EXPORT_SHIFT_STATS = False
 DEFAULT_CORRECTION_METHOD = 'fdr_bh'
 DEFAULT_READ_LEVEL_DATA = False
 DEFAULT_READ_LEVEL_DATA_TRANSCRIPTS = []
@@ -380,6 +382,14 @@ class Config:
         Display a progress bar during execution.
         """
         return self._config.get('progress', DEFAULT_PROGRESS)
+
+
+    def get_export_shift_stats(self):
+        """
+        Whether to export shift statistics from the DB
+        to a TSV during postprocessing.
+        """
+        return self._config.get('export_shift_stats', DEFAULT_EXPORT_SHIFT_STATS)
 
 
     def get_correction_method(self):

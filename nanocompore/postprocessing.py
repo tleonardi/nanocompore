@@ -49,8 +49,12 @@ class Postprocessor():
         tests, shift_stats = self._get_stats_tests(data)
         self._write_results_tsv(data, tests)
 
-        logger.info("Writing the shift stats to a file.")
-        self._write_results_shift_stats(data, shift_stats)
+        if self._config.get_export_shift_stats():
+            logger.info("Writing the shift stats to a file.")
+            self._write_results_shift_stats(data, shift_stats)
+        else:
+            logger.info("Exporting shift statistics to a TSV is disabled. "
+                        "However, you can still find them in the result database.")
 
         if self._bed_fn:
             data.sort_values(['chr', 'strand', 'name', 'genomicPos'], inplace=True)
