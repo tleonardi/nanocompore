@@ -1,4 +1,5 @@
 import copy
+import multiprocessing
 import os
 import shutil
 import tempfile
@@ -33,6 +34,26 @@ def test_run():
     output_path = tempfile.mkdtemp(prefix="test_")
     config_yaml['outpath'] = output_path
     config_yaml['min_coverage'] = 1
+
+    # This is a workaround for a very nasty issue
+    # where running this integration test after
+    # test_comparisons would cause it to crash with
+    # a segmentation fault.
+    # I've traced the problem and it appears that when
+    # we run the GMM in the following tests:
+    # - test_comparisons.test_gmm_test_split_single_component
+    # - test_comparisons.test_gmm_test_split_two_components
+    # then initialising any tensors in the run flow here
+    # causes the segfault in the GOMP library.
+    # Probably we're hitting some incompatibility
+    # between the multiprocessing and the MPI used
+    # by pytorch.
+    # The workaround is to use spawn() to start the
+    # worker processes, so that the torch memory
+    # is not shared between the processes.
+    # We then revert the change back to using
+    # fork().
+    multiprocessing.set_start_method("spawn", force=True)
     try:
         config = Config(config_yaml)
         run_cmd = RunCmd(config)
@@ -43,12 +64,11 @@ def test_run():
             assert len(f.readlines()) == 3520
     finally:
         shutil.rmtree(output_path)
+        multiprocessing.set_start_method("fork", force=True)
 
 
 def test_prepare_data_no_motor():
-    # config_yaml = copy.deepcopy(BASIC_CONFIG)
     config = Config(BASIC_CONFIG)
-    # run_cmd = RunCmd(config)
 
     worker = Worker(1, None, None, None, 0, 'cpu', config)
 
@@ -222,6 +242,7 @@ def test_read_data_uncalled4():
     config = Config(BASIC_CONFIG)
 
     worker = Uncalled4Worker(1, None, None, None, 0, 'cpu', config)
+    worker.setup()
     ref_id = 'ENST00000674681.1|ENSG00000075624.17|OTTHUMG00000023268|-|ACTB-219|ACTB|2554|protein_coding|'
     fasta_fh = Fasta(config.get_fasta_ref())
     ref_seq = str(fasta_fh[ref_id])
@@ -250,6 +271,7 @@ def test_read_data_eventalign():
     config = Config(BASIC_EVENTALIGN_CONFIG)
 
     worker = GenericWorker(1, None, None, None, 0, 'cpu', config)
+    worker.setup()
     ref_id = 'ENST00000674681.1|ENSG00000075624.17|OTTHUMG00000023268|-|ACTB-219|ACTB|2554|protein_coding|'
     fasta_fh = Fasta(config.get_fasta_ref())
     ref_seq = str(fasta_fh[ref_id])
@@ -284,4 +306,6 @@ def test_read_data_eventalign():
 
     expected_condition_ids = np.array([0, 0, 0, 1])
     assert np.array_equal(conditions, expected_condition_ids)
+
+
 

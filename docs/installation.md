@@ -61,16 +61,19 @@ If all the tests are successful you should get a similar output:
 platform linux -- Python 3.12.8, pytest-8.3.5, pluggy-1.5.0
 rootdir: /home/mzdravkov/nanocompore
 configfile: pyproject.toml
-plugins: jaxtyping-0.2.38
-collected 30 items
+plugins: cov-6.1.1, xdist-3.6.1, jaxtyping-0.2.38
+collected 51 items
 
-tests/test_common.py .                        [  3%]
-tests/test_comparisons.py .......             [ 26%]
-tests/test_config.py ...................      [ 90%]
-tests/test_eventalign_collapse.py .           [ 93%]
-tests/test_preprocessing.py .                 [ 96%]
-tests/test_uncalled4.py .                     [100%]
+tests/test_common.py .                                         [  1%]
+tests/test_comparisons.py ...........                          [ 23%]
+tests/test_config.py ..................                        [ 58%]
+tests/test_eventalign_collapse.py ...                          [ 64%]
+tests/test_main.py .                                           [ 66%]
+tests/test_postprocessing.py .......                           [ 80%]
+tests/test_preprocessing.py .                                  [ 82%]
+tests/test_run.py .......                                      [ 96%]
+tests/test_uncalled4.py ..                                     [100%]
 
-====================== 30 passed, 6 warnings in 12.65s ==============
+===================== 51 passed, 7 warnings in 18.98s =================
 ```
 

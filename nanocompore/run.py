@@ -337,14 +337,20 @@ class Worker(multiprocessing.Process):
         # Config object, because _config is used
         # by Process.
         self._conf = config
-        self._db_manager = ResultsDB(self._conf, init_db=False)
-        self._fasta_fh = Fasta(self._conf.get_fasta_ref())
-        self._comparator = TranscriptComparator(config=self._conf, worker=self)
         self._kit = self._conf.get_kit()
         self.log("info", f"Starting on pid {os.getpid()}.")
 
 
     def run(self):
+        # We run a second post __init__
+        # setup method in order to ensure
+        # that it is executed within the
+        # worker's process and not on the
+        # parent process. This allows us
+        # to use spawn() to create the worker
+        # process and not only fork().
+        self.setup()
+
         # When Python grows the heap to find space
         # for memory allocations, after the objects
         # are deleted and freed, the memory may not
@@ -577,6 +583,23 @@ class Worker(multiprocessing.Process):
         return (tensor, samples, conditions, positions)
 
 
+    def setup(self):
+        """
+        Setup the worker.
+
+        This is used to add non-serializable properties
+        to the instance.
+
+        This is separate from __init__ to ensure
+        that it is executed in the child process.
+        This allows using both fork() and spawn()
+        to create a worker process.
+        """
+        self._db_manager = ResultsDB(self._conf, init_db=False)
+        self._fasta_fh = Fasta(self._conf.get_fasta_ref())
+        self._comparator = TranscriptComparator(config=self._conf, worker=self)
+
+
     def _read_data(
         self,
         transcript: Transcript
@@ -606,47 +629,19 @@ class Worker(multiprocessing.Process):
 
 
 class Uncalled4Worker(Worker):
-    def __init__(self,
-                 worker_id,
-                 task_queue,
-                 db_lock,
-                 sync_lock,
-                 num_finished,
-                 device,
-                 config):
+    def setup(self):
         """
-        Initialize an Uncalled4 worker. It will use
-        BAM files produced with Uncalled4's align
-        subcommand for its input data.
+        Setup the GenericWorker.
 
-        The worker will continuously take tasks (transcripts)
-        from the task queue, process them and write the results
-        to the database. Will quit when the task queue is empty.
+        This is used to add non-serializable properties
+        to the instance.
 
-        Parameters
-        ----------
-        worker_id : int
-            Id of the worker
-        task_queue : multiprocesing.JoinableQueue
-            Queue with tasks for processing.
-        db_lock : multiprocesing.Lock
-            Lock to prevent parallel writing to the SQLite DB.
-        sync_lock : multiprocesing.Lock
-            Lock for synchronisation.
-        num_finished : multiprocesing.managers.SyncManager
-            Number of processed transcripts.
-        device : str
-            Which device to use for computation (e.g. cpu or gpu).
-        config : nanocompore.Config
-            The configuration object.
+        This is separate from __init__ to ensure
+        that it is executed in the child process.
+        This allows using both fork() and spawn()
+        to create a worker process.
         """
-        super().__init__(worker_id,
-                         task_queue,
-                         db_lock,
-                         sync_lock,
-                         num_finished,
-                         device,
-                         config)
+        super().setup()
         data_def = self._conf.get_sample_condition_bam_data()
         self._bams = {sample: pysam.AlignmentFile(bam, 'rb')
                       for sample, _, bam in data_def}
@@ -712,46 +707,19 @@ class Uncalled4Worker(Worker):
 
 
 class GenericWorker(Worker):
-    def __init__(self,
-                 worker_id,
-                 task_queue,
-                 db_lock,
-                 sync_lock,
-                 num_finished,
-                 device,
-                 config):
+    def setup(self):
         """
-        Initialize a generic worker. It will use SQLite databases
-        for its input data.
+        Setup the GenericWorker.
 
-        The worker will continuously take tasks (transcripts)
-        from the task queue, process them and write the results
-        to the database. Will quit when the task queue is empty.
+        This is used to add non-serializable properties
+        to the instance.
 
-        Parameters
-        ----------
-        worker_id : int
-            Id of the worker
-        task_queue : multiprocesing.JoinableQueue
-            Queue with tasks for processing.
-        db_lock : multiprocesing.Lock
-            Lock to prevent parallel writing to the SQLite DB.
-        sync_lock : multiprocesing.Lock
-            Lock for synchronisation.
-        num_finished : multiprocesing.managers.SyncManager
-            Number of processed transcripts.
-        device : str
-            Which device to use for computation (e.g. cpu or gpu).
-        config : nanocompore.Config
-            The configuration object.
+        This is separate from __init__ to ensure
+        that it is executed in the child process.
+        This allows using both fork and spawn to
+        create a worker process.
         """
-        super().__init__(worker_id,
-                         task_queue,
-                         db_lock,
-                         sync_lock,
-                         num_finished,
-                         device,
-                         config)
+        super().setup()
         data_def = self._conf.get_sample_condition_db_data()
         self._dbs = {sample: sqlite3.connect(db, check_same_thread=False)
                      for sample, _, db in data_def}
