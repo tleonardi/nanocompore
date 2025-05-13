@@ -11,10 +11,10 @@ The results TSV is found in the output directory, typically named as "out_nanoco
 | Column         | Description                                                                                                                                                                                      | Example           |
 | -----------    | -------------                                                                                                                                                                                    | --------          |
 | **pos**        | Starting position on the transcript's reference sequence of the k-mer for which the row reports results. Indexing is 0-based, meaning that the first nucleotide on the transcript is position 0. | 42                |
-| **chr**        | Chromosome id. This will be set only if a bed file is provided using the `bed` parameter in the configuration.                                                                                   | chr1              |
-| **genomicPos** | The position on the chromosome corresponding to the position on the transcript. This is only set when `bed` file is provided.                                                                    | 1324576           |
+| **chr**        | Chromosome id. This will be set only if a GTF file is provided using the `gtf` parameter in the configuration.                                                                                   | chr1              |
+| **genomicPos** | The position on the chromosome corresponding to the position on the transcript. This is only set when `gtf` file is provided.                                                                    | 1324576           |
 | **ref_id**     | Reference name of the transcript.                                                                                                                                                                | ENST00000676788.1 |
-| **strand**     | Genomic strand. This is set only when `bed` file is provided.                                                                                                                                    | +                 |
+| **strand**     | Genomic strand. This is set only when `gtf` file is provided.                                                                                                                                    | +                 |
 | **ref_kmer**   | The k-mer sequence as found in the reference.                                                                                                                                                    | GCTACGT           |
 
 ### Gaussian-Mixture Models (GMM) output columns
@@ -35,7 +35,7 @@ It's recommended that both the q-value and the `GMM_LOR` values are used when fi
 
 ## Shift statistics TSV
 
-The shift statistics TSV gives summary statistics at the position level for the signal measurements (currenty intensity and dwell time) for the two conditions. It includes the following columns:
+The shift statistics TSV gives summary statistics (mean, median, standard deviation) at the position level for the signal measurements (current intensity and dwell time) for the two conditions. The data will always be gathered during the analysis and saved to the database, but it will be exported to a TSV file only when `export_shift_stats: True` is added to the configuration. The TSV will includes the following columns:
 
 
 | Column                  | Description                                                                                                                                                                                      | Example           |
@@ -46,10 +46,14 @@ The shift statistics TSV gives summary statistics at the position level for the 
 | **c2_mean_intensity**   | Mean value for the current intensity at the position for condition 2.                                                                                                                            | 81.91             |
 | **c1_median_intensity** | Median value for the current intensity at the position for condition 1.                                                                                                                          | 78.21             |
 | **c2_median_intensity** | Median value for the current intensity at the position for condition 2.                                                                                                                          | 80.21             |
+| **c1_sd_intensity**     | Standard deviation for the current intensity at the position for condition 1.                                                                                                                    | 1.21              |
+| **c2_sd_intensity**     | Standard deviation for the current intensity at the position for condition 2.                                                                                                                    | 2.21              |
 | **c1_mean_dwell**       | Mean value for the dwell time at the position for condition 1.                                                                                                                                   | 0.31              |
 | **c2_mean_dwell**       | Mean value for the dwell time at the position for condition 2.                                                                                                                                   | 0.23              |
 | **c1_median_dwell**     | Median value for the dwell time at the position for condition 1.                                                                                                                                 | 0.29              |
 | **c2_median_dwell**     | Median value for the dwell time at the position for condition 2.                                                                                                                                 | 0.33              |
+| **c1_sd_dwell**         | Standard deviation for the dwell time at the position for condition 1.                                                                                                                           | 0.19              |
+| **c2_sd_dwell**         | Standard deviation for the dwell time at the position for condition 2.                                                                                                                           | 0.23              |
 
 ## Result database
 

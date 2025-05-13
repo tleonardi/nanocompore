@@ -9,12 +9,9 @@ import traceback
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import as_completed
-from concurrent.futures import wait
-from contextlib import closing
 from multiprocessing.managers import SyncManager
 
 import numpy as np
-import numpy.typing as npt
 import pysam
 import torch
 
@@ -22,9 +19,6 @@ from jaxtyping import Float, Int
 from loguru import logger
 from pyfaidx import Fasta
 
-from nanocompore.common import Counter
-from nanocompore.common import READ_ID_TYPE
-from nanocompore.common import SAMPLE_ID_TYPE
 from nanocompore.common import INTENSITY_POS
 from nanocompore.common import DWELL_POS
 from nanocompore.common import MOTOR_DWELL_POS
@@ -37,7 +31,6 @@ from nanocompore.common import get_references_from_bam
 from nanocompore.common import get_pos_kmer
 from nanocompore.common import log_init_state
 from nanocompore.comparisons import TranscriptComparator
-from nanocompore.comparisons import retry
 from nanocompore.config import Config
 from nanocompore.database import ResultsDB
 from nanocompore.database import PreprocessingDB
@@ -179,7 +172,7 @@ class RunCmd(object):
                             else:
                                 workers_to_remove.append(worker_id)
                     else:
-                        logger.error("ERROR: A worker encountered an error "
+                        logger.error(f"ERROR: Worker {worker_id} encountered an error "
                                      f"(exitcode: {worker.exitcode}). "
                                      "Will terminate all other workers and stop.")
                         for child in multiprocessing.active_children():

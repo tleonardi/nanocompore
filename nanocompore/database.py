@@ -4,6 +4,7 @@ import json
 
 from contextlib import closing
 from pathlib import Path
+from typing import Iterator, Union
 
 import pandas as pd
 import numpy as np
@@ -158,6 +159,23 @@ class ResultsDB():
             self._create_tables()
 
 
+    def get_results(self,
+                    columns: Union[list[str], None]=None,
+                    chunksize: Union[int, None]=None) -> Union[pd.DataFrame, Iterator[pd.DataFrame]]:
+        if not columns:
+            cols = '*'
+        else:
+            cols = ','.join(columns)
+        with closing(sqlite3.connect(self.db_path)) as conn:
+            query = f"""
+            SELECT {cols}
+            FROM kmer_results res
+            JOIN transcripts t ON t.id = res.transcript_id
+            """
+            for chunk in pd.read_sql(query, conn, chunksize=chunksize):
+                yield chunk
+
+
     def get_all_results(self):
         with closing(sqlite3.connect(self.db_path)) as conn:
             query = """
@@ -175,7 +193,25 @@ class ResultsDB():
             return [row[0] for row in cursor.execute(query).fetchall()]
 
 
-    def get_cols_for_ref(self, cols: list[str], ref: str) -> pd.DataFrame:
+    def get_result_column_names(self) -> list[str]:
+        with closing(sqlite3.connect(self.db_path)) as conn,\
+             closing(conn.cursor()) as cursor:
+            res = cursor.execute('SELECT * FROM kmer_results LIMIT 1')
+            return [description[0] for description in res.description]
+
+
+    def get_columns(self, cols: list[str]) -> pd.DataFrame:
+        col_list = ', '.join(cols)
+        with closing(sqlite3.connect(self.db_path)) as conn:
+            query = f"""
+            SELECT {col_list}
+            FROM kmer_results res
+            JOIN transcripts t ON t.id = res.transcript_id
+            """
+            return pd.read_sql(query, conn)
+
+
+    def get_columns_for_ref(self, cols: list[str], ref: str) -> pd.DataFrame:
         """
         Returns the data for the given reference, selecting
         only the listed columns.

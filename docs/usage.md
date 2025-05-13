@@ -32,18 +32,18 @@ data:
   # note that all labels should be unique.
   condition1:
     sample1:
-      bam: "/path/to/file.bam"
+      bam: "/path/to/uncalled4.bam"
       db: "/path/to/collapsed_eventalign.sqlite"
     sample2:
-      bam: "/path/to/file.bam"
+      bam: "/path/to/uncalled4.bam"
       db: "/path/to/collapsed_eventalign.sqlite"
     # you can list as many samples as you want
   condition2:
     sample3:
-      bam: "/path/to/file.bam"
+      bam: "/path/to/uncalled4.bam"
       db: "/path/to/collapsed_eventalign.sqlite"
     sample4:
-      bam: "/path/to/file.bam"
+      bam: "/path/to/uncalled4.bam"
       db: "/path/to/collapsed_eventalign.sqlite"
 
 # Which of the two conditions is the one that's
@@ -64,6 +64,30 @@ resquiggler: 'eventalign'
 The `data` field should list all samples, preprocessed with the same resquiggler. The `fasta` parameter should be set to the transcriptome reference (a FASTA file) that was used for the alignment of the reads.
 
 Below, the file will list various optional parameters that the user can tweak. The most important ones are discussed below.
+
+#### Output configuration
+
+Nanocompore stores all results obtaned during the analysis in an SQLite database. After the analysis is done it will perform a postprocessing step in which it will do multiple-test correction (by default using the Benjamini-Hochberg method) and export the test results to an easy to read TSV file. One can request additional information to be exported using the configuration. The most important parameters are:
+
+##### Map the results to genomic coordinates
+
+The results produced by Nanocompore will contain only transcriptomic coordinates by default (i.e. the transcript reference name and the position along the transcript). Nanocompore can optionally perform the mapping to genomic coordinates. To do this, simply add the following to the configuration:
+
+```yaml
+gtf: 'path/to/annotation.gtf'
+```
+
+Where the annotation should be compatible with the reference FASTA that is used, i.e. it should provide information for all references in the FASTA.
+
+As a result, the columns `chr`, `strand`, and `genomicPos` in the results TSV file will be populated. Note that the `genomicPos` would use a 0-based indexing (the first base on the chromosome has index 0).
+
+##### Shift statistics
+
+The shift statistics TSV gives summary statistics (mean, median, standard deviation) at the position level for the signal measurements (current intensity and dwell time) for the two conditions (see [Outputs](/output)). To enable the exporting of this file just add the folling to the configuration:
+
+```yaml
+export_shift_stats: True
+```
 
 #### Performance tuning
 

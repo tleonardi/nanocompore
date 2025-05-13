@@ -2,12 +2,12 @@ import os
 
 import numpy as np
 import pandas as pd
+import polars as pl
 
-from bedparse import bedline
 from loguru import logger
 from statsmodels.stats.multitest import multipletests
+from gtfparse import read_gtf
 
-from nanocompore.common import NanocomporeError
 from nanocompore.common import decode_kmer
 from nanocompore.database import ResultsDB
 
@@ -17,7 +17,6 @@ class Postprocessor():
         self._outpath = config.get_outpath()
         self._prefix = config.get_outprefix()
         self._result_exists_strategy = config.get_result_exists_strategy()
-        self._bed_fn = config.get_bed()
         self._correction_method = config.get_correction_method()
         self._config = config
         self._db = ResultsDB(config, init_db=False)
@@ -27,96 +26,144 @@ class Postprocessor():
         logger.info("Creating database indices.")
         self._db.index_database()
 
-        logger.info("Gathering all the data for reporting.")
-        data = self._db.get_all_results()
-
-        # Make sure counts are integer
-        data = data.astype({col: 'int'
-                            for col in data.columns
-                            if col.endswith('_mod') or col.endswith('_unmod')})
-
-        logger.info("Adding genomic positions to data.")
-        data = self._add_genomic_positions(data)
-
-        logger.info("Decoding kmers.")
-        kmer_len = self._config.get_kit().len
-        data['kmer'] = [decode_kmer(code, kmer_len) for code in data['kmer']]
-
-        logger.info(f'Correcting p-values using "{self._correction_method}"')
-        data = self._correct_pvalues(data, method=self._correction_method)
+        all_columns = self._db.get_result_column_names()
 
         logger.info("Writing the test results to a file.")
-        tests, shift_stats = self._get_stats_tests(data)
-        self._write_results_tsv(data, tests)
+        # The test_result_columns are all columns from the database
+        # that need to be added to the result TSV.
+        test_result_columns = self._get_test_result_columns(all_columns)
+        self._export_results_tsv(test_result_columns)
 
         if self._config.get_export_shift_stats():
             logger.info("Writing the shift stats to a file.")
-            self._write_results_shift_stats(data, shift_stats)
+            shift_stats_columns = self._get_shift_stats_columns()
+            self._export_shift_stats(shift_stats_columns)
         else:
             logger.info("Exporting shift statistics to a TSV is disabled. "
                         "However, you can still find them in the result database.")
 
-        if self._bed_fn:
-            data.sort_values(['chr', 'strand', 'name', 'genomicPos'], inplace=True)
-            logger.info("Writing the results to a bed file.")
-            self._write_bed(data)
+        # if self._bed_fn:
+        #     data.sort_values(['chr', 'strand', 'name', 'genomicPos'], inplace=True)
+        #     logger.info("Writing the results to a bed file.")
+        #     self._write_bed(data)
 
 
-    def _write_results_tsv(self, data, stats_tests):
-        #writes the results of all the statistical tests to a tsv file
+    def _export_results_tsv(self, test_result_columns, chunksize=1_000_000):
         out_tsv = os.path.join(self._outpath, f"{self._prefix}nanocompore_results.tsv")
-        logger.debug(f"Starting to write results to {out_tsv}")
-        columns_to_save = ['pos', 'chr', 'genomicPos', 'name', 'strand', 'kmer']
-        aliases = ['pos', 'chr', 'genomicPos', 'ref_id', 'strand', 'ref_kmer']
-        columns_to_save.extend(stats_tests)
-        aliases.extend(stats_tests)
-        data.to_csv(out_tsv, sep='\t', columns=columns_to_save, header=aliases, index=False)
+        kmer_len = self._config.get_kit().len
+
+        map_genomic_positions = bool(self._config.get_gtf())
+        if map_genomic_positions:
+            transcript_positions = self._get_transcript_positions(self._config.get_gtf())
+            genomic_positions = np.vectorize(transcript_positions.get)
+
+        # In order to do the multiple test correction we need
+        # all p-values. However, we'd like to avoid loading
+        # all data in memory. Hence, we read only the p-value
+        # columns from the database and then the rest of the
+        # results are processed in batches. I.e. we read each
+        # batch, add the corresponding p-values and q-values
+        # and write the append the batch to the results TSV.
+
+        # We read the p-value columns we in memory and get add
+        # the corrected q-values to them.
+        pval_columns = [c for c in test_result_columns if 'pvalue' in c]
+        p_values = self._db.get_columns(pval_columns)
+        pq_values = self._correct_pvalues(p_values, method=self._correction_method)
+
+        # The remaining columns will be loaded in batches from the db and written
+        # to the output TSV.
+        non_pqval_cols = [c for c in test_result_columns if 'pvalue' not in c]
+
+        renamings = {'name': 'ref_id', 'kmer': 'ref_kmer'}
+
+        base_columns = ['pos', 'name', 'kmer']
+
+        # Since we have the p-values in memory,
+        # we only want to get the base columns and
+        # the non-p-value test result columns.
+        select_columns = base_columns + non_pqval_cols
+        test_columns = list(pq_values.columns) + non_pqval_cols
+
+        output_columns = ['pos', 'chr', 'genomicPos', 'ref_id', 'strand', 'ref_kmer'] + test_columns
+
+        completed_rows = 0
+        for chunk in self._db.get_results(select_columns, chunksize=chunksize):
+            nrows = chunk.shape[0]
+
+            chunk['genomicPos'] = 'NA'
+            chunk['chr'] = 'NA'
+            chunk['strand'] = 'NA'
+
+            # Make sure counts are integer
+            chunk = chunk.astype({col: 'int'
+                                  for col in chunk.columns
+                                  if col.endswith('_mod') or col.endswith('_unmod')})
+
+            chunk['kmer'] = [decode_kmer(code, kmer_len) for code in chunk['kmer']]
+
+            chunk.rename(columns=renamings, inplace=True)
+            qvals_chunk = pq_values[completed_rows:completed_rows+nrows].reset_index(drop=True)
+            chunk = pd.concat([chunk, qvals_chunk], axis=1)
+
+            if map_genomic_positions:
+                genomic_data = genomic_positions(chunk.ref_id.str.split('|').str[0])
+                coords_getter = np.vectorize(
+                        lambda tx, pos: (tx['seqname'],
+                                         tx['strand'],
+                                         tx['exons'](pos)))
+                chrom, strand, gpos = coords_getter(genomic_data, chunk.pos)
+                chunk['chr'] = chrom
+                chunk['strand'] = strand
+                chunk['genomicPos'] = gpos
+
+            mode = 'w' if completed_rows == 0 else 'a'
+            header = completed_rows == 0
+            chunk.to_csv(out_tsv, sep='\t', columns=output_columns, index=False, header=header, mode=mode)
+
+            completed_rows += nrows
 
 
-    def _write_results_shift_stats(self, data, shift_stats):
-        """
-        Writes the shift statistics to a tsv file.
-        """
+    def _export_shift_stats(self, shift_stats_columns, chunksize=1_000_000):
         shift_stats_tsv = os.path.join(self._outpath, f"{self._prefix}nanocompore_shift_stats.tsv")
-        logger.debug(f"Starting to write results to {shift_stats_tsv}")
-        columns_to_save = ['name', 'pos']
-        aliases = ['ref_id', 'pos']
-        columns_to_save.extend(shift_stats)
-        aliases.extend(shift_stats)
-        data.to_csv(shift_stats_tsv, sep='\t', columns=columns_to_save, header=aliases, index=False)
+        base_columns = ['name', 'pos']
+        renamings = {'name': 'ref_id'}
+        select_columns = base_columns + shift_stats_columns
+        for i, chunk in enumerate(self._db.get_results(select_columns, chunksize=chunksize)):
+            chunk.rename(columns=renamings, inplace=True)
+            chunk = chunk.round(decimals=4)
+            mode = 'w' if i == 0 else 'a'
+            header = i == 0
+            chunk.to_csv(shift_stats_tsv, sep='\t', index=False, header=header, mode=mode)
 
 
-    def _add_genomic_positions(self, data, convert='', assembly=''):
-        if self._bed_fn:
-            bed_annot = {}
-            try:
-                with open(self._bed_fn) as tsvfile:
-                    for line in tsvfile:
-                        record_name = line.split('\t')[3]
-                        bed_annot[record_name] = bedline(line.split('\t'))
+    def _get_transcript_positions(self, gtf_path):
+        gtf = read_gtf(gtf_path, features=['exon'])
+        gtf = gtf.select('transcript_id',
+                         'seqname',
+                         'strand',
+                         pl.struct('start', 'end').alias('exons'))\
+                 .group_by('transcript_id', 'seqname', 'strand')\
+                 .agg('exons')\
+                 .to_pandas()\
+                 .set_index('transcript_id')\
+                 .to_dict('index')
+        for transcript in gtf.values():
+            transcript['exons'] = self._get_genomic_mapper(transcript['exons'],
+                                                           transcript['strand'])
+        return gtf
 
-            except Exception:
-                raise NanocomporeError("Can't open BED file")
 
-
-            data['genomicPos'] = pd.Series(dtype='int')
-            data['chr'] = pd.Series(dtype='str')
-            data['strand'] = pd.Series(dtype='str')
-            for i, row in data.iterrows():
-                transcript = row['name'].split('|')[0]
-                annotation = bed_annot[transcript]
-                genomic_pos = annotation.tx2genome(row['pos'], stranded=True)
-                data.loc[i, 'genomicPos'] = int(genomic_pos)
-                data.loc[i, 'chr'] = annotation.chr
-                data.loc[i, 'strand'] = annotation.strand
-            logger.debug("Added genomic positions to the data")
+    def _get_genomic_mapper(self, exons, strand):
+        if strand == '+':
+            positions = np.concatenate([np.arange(e['start'], e['end']+1) for e in exons])
         else:
-            data['genomicPos'] = 'NA'
-            data['chr'] = 'NA'
-            data['strand'] = 'NA'
-            logger.debug("No bed file was provided, genomic positions are not used and 'NA' will be used instead")
-
-        return data
+            positions = np.concatenate([np.arange(e['end'], e['start']-1, -1) for e in exons])
+        # GTF files use 1-based indexing.
+        # Hence, we subtract one to convert to 0-based indices.
+        positions -= 1
+        return np.vectorize(dict(zip(range(len(positions)),
+                                     positions)).get)
 
 
     def _write_bed(self, data):
@@ -154,32 +201,22 @@ class Postprocessor():
                                      x))
 
 
-    def _sort_shift_stat_headers(self, strings):
+    def _get_test_result_columns(self, columns):
+        keywords = ['pvalue', 'qvalue', 'LOR', 'GMM', 'logit', 'auto_test', '_mod', '_unmod']
+        selected =  [col
+                     for col in columns
+                     if any(kw in col for kw in keywords)]
+        return self._sort_headers_list(selected)
+
+
+    def _get_shift_stats_columns(self):
         conditions = ['c1', 'c2']
         stats = ['mean', 'median', 'sd']
         values = ['intensity', 'dwell']
-        target = []
-        for v in values:
-            for s in stats:
-                for c in conditions:
-                    target.append(f"{c}_{s}_{v}")
-
-        target_set = set(target)
-        strings = [s for s in strings if s in target_set]
-        strings.sort(key=lambda x: target.index(x) if x in target else len(target))
-        return strings
-
-
-    def _get_stats_tests(self, data):
-        tests = []
-        shift_stats = []
-        for header in data.columns:
-            keywords = ['pvalue', 'qvalue', 'LOR', 'GMM', 'logit', 'auto_test', '_mod', '_unmod']
-            if any([kw in header for kw in keywords]):
-                tests.append(header)
-            elif any([kw in header for kw in ['c1', 'c2']]):
-                shift_stats.append(header)
-        return self._sort_headers_list(tests), self._sort_shift_stat_headers(shift_stats)
+        return [f"{c}_{s}_{v}"
+                for v in values
+                for s in stats
+                for c in conditions]
 
 
     def _correct_pvalues(self, df, method='fdr_bh'):
@@ -191,13 +228,18 @@ class Postprocessor():
                 # Correct the p-values using the Benjamini-Hochberg method.
                 # We'll ignore NaNs when performing the correction.
                 logger.debug(f"Starting to correct pvalues for {column} with {method}")
-                corrected_pvals = self._multipletests_filter_nan(pvals, method)
+                qvals = self._multipletests_filter_nan(pvals, method)
 
                 # Replace the original p-values with the corrected p-values in the dataframe
+                # df[column] = corrected_pvals
                 corrected_column = column.replace("pvalue", "qvalue")
-                df[corrected_column] = corrected_pvals
+                # df.insert(i+1, corrected_column, qvals)
+                # corrected_df.rename(columns={column: corrected_column}, inplace=True)
+                df[corrected_column] = qvals
 
                 logger.debug(f"pvalues for {column} have been corrected using {method}")
+
+        df.sort_index(axis=1, inplace=True)
         return df
 
 

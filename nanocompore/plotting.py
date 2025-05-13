@@ -91,7 +91,7 @@ def plot_pvalues(config: Config,
             raise KeyError(f"Test {test} not supported.")
         for col in TEST_PVALUE_COLUMNS[test]:
             cols.append(col)
-    pvals = db.get_cols_for_ref(cols + ['kmer'], reference)
+    pvals = db.get_columns_for_ref(cols + ['kmer'], reference)
     pvals = pd.melt(pvals,
                     id_vars=['pos', 'kmer'],
                     value_vars=[c for c in pvals.columns if c != 'pos'],

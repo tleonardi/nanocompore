@@ -15,7 +15,6 @@ dependencies = [
     "pandas<3.0,>=2.2",
     "statsmodels<1.0,>=0.14",
     "scikit-learn<2.0,>=1.4",
-    "bedparse<1.0,>=0.2",
     "pyyaml<5.4,>=5",
     "loguru<1.0,>=0.5",
     "pod5<1.0.0,>=0.3.6",
@@ -25,6 +24,7 @@ dependencies = [
     "pynvml<13.0.0,>=12.0.0",
     "jaxtyping>=0.2.38",
     "gmm-gpu>=0.2.4",
+    "gtfparse>=2.5.0",
 ]
 name = "nanocompore"
 version = "1.0.4"

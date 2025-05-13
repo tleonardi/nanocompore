@@ -116,7 +116,7 @@ CONFIG_SCHEMA = Schema(And({
     'resquiggler': Or('uncalled4', 'eventalign', 'remora'),
     'kit': Or(*[v.name for v in Kit]),
     Optional('devices'): validate_device,
-    Optional('bed'): And(lambda f: open(f, 'r'), error='Invalid bed file'),
+    Optional('gtf'): And(lambda f: open(f, 'r'), error='Invalid GTF file'),
     Optional('min_coverage'): And(int, lambda n: n >= 0, error='min_coverage must be >= 0'),
     Optional('downsample_high_coverage'): And(int, lambda n: n >= 0, error='downsample_high_coverage must be >= 0'),
     Optional('min_ref_length'): And(int, lambda n: n >= 0, error='min_ref_length must be >= 0'),
@@ -243,11 +243,11 @@ class Config:
         return self._config['fasta']
 
 
-    def get_bed(self):
+    def get_gtf(self):
         """
-        BED file with annotation of transcriptome used for mapping.
+        GTF file with annotation of transcriptome used for mapping.
         """
-        return self._config.get('bed')
+        return self._config.get('gtf')
 
 
     def get_min_coverage(self):

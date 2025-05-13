@@ -16,32 +16,6 @@ With [conda](https://conda.io/projects/conda/en/latest/user-guide/install/index.
 conda create -n nanocompore python=3.12
 ```
 
-## Dependencies
-
-Nanocompore relies on a the following robustly maintained third party python libraries:
-
-* numpy<2.0
-* scipy<2.0,>=1.15
-* tqdm<5,>=4
-* pyfaidx<1.0,>=0.8
-* matplotlib<4.0,>=3.10
-* seaborn<1.0,>=0.13
-* pandas<3.0,>=2.2
-* statsmodels<1.0,>=0.14
-* scikit-learn<2.0,>=1.4
-* bedparse<1.0,>=0.2
-* pyyaml<5.4,>=5
-* loguru<1.0,>=0.5
-* pod5<1.0.0,>=0.3.6
-* pysam<1.0.0,>=0.22.0
-* ont-remora==3.3
-* schema<1.0.0,>=0.7.5
-* pynvml<13.0.0,>=12.0.0
-* gmm-gpu<1.0.0,>=0.2.1
-* jaxtyping>=0.2.38
-
-The correct versions of packages are installed together with the software when using pip.
-
 ## Option 1: Direct installation with pip from PyPi or conda (recommended)
 
 ```bash

@@ -83,8 +83,8 @@ class TranscriptComparator:
 
         self._worker.log("trace", "Start shift stats")
         t = time.time()
-        retry(lambda: self._add_shift_stats(results, data, conditions, device),
-              exception=torch.OutOfMemoryError)
+        self.retry(lambda: self._add_shift_stats(results, data, conditions, device),
+                   exception=torch.OutOfMemoryError)
         if device.startswith('cuda'):
             torch.cuda.empty_cache()
             torch.cuda.reset_peak_memory_stats()
@@ -353,11 +353,11 @@ class TranscriptComparator:
                       dtype=self._dtype)
             gmm.fit(test_data)
             return gmm
-        gmm1 = retry(lambda: fit_model(1), exception=torch.OutOfMemoryError)
+        gmm1 = self.retry(lambda: fit_model(1), exception=torch.OutOfMemoryError)
         bic1 = gmm1.bic(test_data)
         del gmm1
         gc.collect()
-        gmm2 = retry(lambda: fit_model(2), exception=torch.OutOfMemoryError)
+        gmm2 = self.retry(lambda: fit_model(2), exception=torch.OutOfMemoryError)
 
         self._worker.log("info", f"GMM fitting time: {time.time() - s}")
         pred = gmm2.predict(test_data, force_cpu_result=False)
@@ -410,12 +410,12 @@ class TranscriptComparator:
         cond0_data = torch.where(cond0_mask, data, np.nan)
         stats[0]['mean'] = cond0_data.nanmean(1).cpu()
         stats[0]['median'] = cond0_data.nanmedian(1).values.cpu()
-        stats[0]['std'] = nanstd(cond0_data, 1).cpu()
+        stats[0]['sd'] = nanstd(cond0_data, 1).cpu()
 
         cond1_data = torch.where(~cond0_mask, data, np.nan)
         stats[1]['mean'] = cond1_data.nanmean(1).cpu()
         stats[1]['median'] = cond1_data.nanmedian(1).values.cpu()
-        stats[1]['std'] = nanstd(cond1_data, 1).cpu()
+        stats[1]['sd'] = nanstd(cond1_data, 1).cpu()
 
         dims = {
                 'intensity': INTENSITY,
@@ -425,7 +425,7 @@ class TranscriptComparator:
             dims['motor_dwell'] = MOTOR
 
         for cond in [0, 1]:
-            for stat in ['mean', 'median', 'std']:
+            for stat in ['mean', 'median', 'sd']:
                 for dim, dim_index in dims.items():
                     label = f"c{cond+1}_{stat}_{dim}"
                     results[label] = stats[cond][stat][:, dim_index]
@@ -510,23 +510,23 @@ class TranscriptComparator:
         return cluster_counts
 
 
+    def retry(self, fn, delay=5, backoff=5, max_attempts=3, exception=Exception):
+        attempts = 0
+        while attempts < max_attempts - 1:
+            try:
+                return fn()
+            except exception as e:
+                attempts += 1
+                self._worker.log("warning", f"Got error {e} on attempt {attempts}/{max_attempts}")
+                time.sleep(delay)
+                delay += backoff
+        else:
+            return fn()
+
+
 def nanstd(X, dim):
     nonnans = (~X.isnan()).sum(dim)
     return (((X - X.nanmean(dim).unsqueeze(1)) ** 2).nansum(dim) / nonnans) ** 0.5
-
-
-def retry(fn, delay=5, backoff=5, max_attempts=3, exception=Exception):
-    attempts = 0
-    while attempts < max_attempts - 1:
-        try:
-            return fn()
-        except exception as e:
-            attempts += 1
-            self._worker.log("warning", f"Got error {e} on attempt {attempts}/{max_attempts}")
-            time.sleep(delay)
-            delay += backoff
-    else:
-        return fn()
 
 
 def cross_corr_matrix(pvalues, context=2):

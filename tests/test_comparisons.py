@@ -58,7 +58,7 @@ def test_add_shift_stats():
     assert get_float(results['c2_mean_dwell'][0]) == 0.15
     assert get_float(results['c2_mean_dwell'][1]) == 0.25
 
-    assert get_float(results['c1_std_intensity'][1]) == 0.1
+    assert get_float(results['c1_sd_intensity'][1]) == 0.1
 
 
 def test_add_shift_stats_with_motor_dwell():
@@ -107,7 +107,7 @@ def test_add_shift_stats_with_motor_dwell():
     assert get_float(results['c2_mean_motor_dwell'][0]) == 0.65
     assert get_float(results['c2_mean_motor_dwell'][1]) == 0.6
 
-    assert get_float(results['c1_std_intensity'][1]) == 0.1
+    assert get_float(results['c1_sd_intensity'][1]) == 0.1
 
 
 def test_nonparametric_test_KS():
