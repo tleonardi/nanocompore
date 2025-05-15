@@ -81,7 +81,7 @@ class Postprocessor():
 
         output_columns = ['pos', 'chr', 'genomicPos', 'ref_id', 'strand', 'ref_kmer'] + test_columns
 
-        logger.info("Writing the test results to a file.")
+        logger.info(f"Writing the test results to: {out_tsv}")
 
         completed_rows = 0
         for chunk in self._db.get_results(select_columns, chunksize=chunksize):

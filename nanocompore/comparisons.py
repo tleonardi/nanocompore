@@ -359,7 +359,7 @@ class TranscriptComparator:
         gc.collect()
         gmm2 = self.retry(lambda: fit_model(2), exception=torch.OutOfMemoryError)
 
-        self._worker.log("info", f"GMM fitting time: {time.time() - s}")
+        self._worker.log("debug", f"GMM fitting time: {time.time() - s}")
         pred = gmm2.predict(test_data, force_cpu_result=False)
         pred = torch.where(test_data[:, :, 0].isnan(), np.nan, pred)
 

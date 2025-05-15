@@ -9,7 +9,7 @@ import traceback
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import as_completed
-from multiprocessing.managers import SyncManager
+from pprint import pformat
 
 import numpy as np
 import pysam
@@ -78,6 +78,7 @@ class RunCmd(object):
         to export TSVs with the output.
         """
         logger.info("Starting data processing")
+        logger.info(f"The input configuration is:\n{pformat(self._config._config)}")
 
         if self._config.get_progress():
             print("Getting the list of transcripts for processing...")
@@ -192,6 +193,7 @@ class RunCmd(object):
         postprocessor = Postprocessor(self._config)
         postprocessor()
 
+        logger.info(f"Done.")
         if self._config.get_progress():
             print("Done.")
 
@@ -227,7 +229,6 @@ class RunCmd(object):
         filtered_refs = {ref_id
                          for ref_id, (cond0_count, cond1_count) in references.items()
                          if cond0_count >= min_coverage and cond1_count >= min_coverage}
-        logger.info(f"Found {len(references)} references.")
         return {TranscriptRow(ref_id, i)
                 for ref_id, i in zip(filtered_refs,
                                      range(initial_index,
@@ -371,7 +372,7 @@ class Worker(multiprocessing.Process):
         # and let the main orchestrator process
         # spawn a new worker when it detects the
         # termination.
-        for i in range(MAX_PROC_ITERATIONS):
+        for _ in range(MAX_PROC_ITERATIONS):
             # It's weird that we have to use a lock here,
             # but for some reason calling get in parallel from
             # multiple processes can cause a queue.Empty
@@ -380,7 +381,7 @@ class Worker(multiprocessing.Process):
             with self._sync_lock:
                 try:
                     self.log("info",
-                             f"getting a task from a queue with size {self._task_queue.qsize()}")
+                             f"Getting a task from a queue with size {self._task_queue.qsize()}")
                     msg = self._task_queue.get(block=False)
                 except queue.Empty:
                     self.log("info", "Cannot find more tasks in the queue and will terminate.")
@@ -449,8 +450,6 @@ class Worker(multiprocessing.Process):
                 self.log("info",
                          f"Returning {transcript_ref.ref_id} to the queue for processing it "
                          "later because it failed with an OutOfMemory")
-                logger.info(f"Worker {self._id} returns {transcript_ref.ref_id} to " + \
-                             "the queue for later processing because it failed with OutOfMemory.")
                 with self._sync_lock:
                     self._task_queue.put((task, retries + 1))
             except Exception as e:

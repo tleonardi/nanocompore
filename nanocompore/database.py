@@ -266,6 +266,7 @@ class ResultsDB():
         with closing(sqlite3.connect(self.db_path)) as conn,\
              closing(conn.cursor()) as cursor:
             cursor.execute(INSERT_TRANSCRIPTS_QUERY, (transcript.id, transcript.name))
+            conn.commit()
 
 
     def index_database(self):
