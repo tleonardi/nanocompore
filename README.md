@@ -20,26 +20,10 @@ Nanocompore compares 2 ONT nanopore direct RNA sequencing datasets from differen
 
 [![Nanocompore](docs/pictures/worflow.png)](http://nanocompore.rna.rocks)
 
-## Companion repositories
-
-* [NanoCompore_pipeline](https://github.com/tleonardi/nanocompore_pipeline): Nextflow pipeline to preprocess data for NanoCompore
-* [Nanocompore_analysis](https://github.com/tleonardi/nanocompore_paper_analyses): Analyses performed with Nanocompore for the BioRxiv preprint
-* [NanopolishComp](https://github.com/tleonardi/NanopolishComp): Collapse Nanopolish eventalign output per kmer, required before running NanoCompore
-
 ## Main authors
 
-* Tommaso Leonardi - tom {at} tleo.io
+* Mihail Zdravkov - mail {at} mzdravkov.com
+* Logan Mulroney - lmulrone {at} soe.ucsc.edu
 * Adrien Leger - aleg {at} ebi.ac.uk
-
-
-## Troubleshooting
-
-
-### Missing libcufft.so
-
-If you're getting error like `OSError: libcufft.so.11: cannot open shared object file: No such file or directory` it may be because your system doesn't have an NVidia GPU. A possible workaround is to use the CPU version of PyTorch:
-
-```bash
-$ pip3 install torch  --extra-index-url https://download.pytorch.org/whl/cpu
-```
+* Tommaso Leonardi - tom {at} tleo.io
 

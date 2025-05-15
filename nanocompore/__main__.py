@@ -50,7 +50,7 @@ def main(args=None):
                                       formatter_class=argparse.RawDescriptionHelpFormatter,
                                       description=textwrap.dedent("Parse eventalign data to process and store it to an intermediary efficient database for later analysis."))
     parser_sc.add_argument('--ref', '-r', help="Transcriptome fasta reference.", required=True)
-    parser_sc.add_argument('--input', '-i', help="Path to input eventalign file. If not provided, the input is read from stdin (useful for piping nanopolish/f5c eventalign directly).", required=True)
+    parser_sc.add_argument('--input', '-i', help="Path to input eventalign file. If not provided, the input is read from stdin (useful for piping nanopolish/f5c eventalign directly).")
     parser_sc.add_argument('--output', '-o', help="Path to output SQLite database.", required=True)
     parser_sc.add_argument('--nthreads', '-n', help="Number of parallel processes to use for processing.", nargs='?', type=int, const=2, default=2)
     parser_sc.add_argument('--tmp', '-t', help="Directory where tmp files would be created (default: current directory).", nargs='?', type=str, const='.', default='.')

@@ -28,7 +28,6 @@ class Postprocessor():
 
         all_columns = self._db.get_result_column_names()
 
-        logger.info("Writing the test results to a file.")
         # The test_result_columns are all columns from the database
         # that need to be added to the result TSV.
         test_result_columns = self._get_test_result_columns(all_columns)
@@ -41,11 +40,6 @@ class Postprocessor():
         else:
             logger.info("Exporting shift statistics to a TSV is disabled. "
                         "However, you can still find them in the result database.")
-
-        # if self._bed_fn:
-        #     data.sort_values(['chr', 'strand', 'name', 'genomicPos'], inplace=True)
-        #     logger.info("Writing the results to a bed file.")
-        #     self._write_bed(data)
 
 
     def _export_results_tsv(self, test_result_columns, chunksize=1_000_000):
@@ -86,6 +80,8 @@ class Postprocessor():
         test_columns = list(pq_values.columns) + non_pqval_cols
 
         output_columns = ['pos', 'chr', 'genomicPos', 'ref_id', 'strand', 'ref_kmer'] + test_columns
+
+        logger.info("Writing the test results to a file.")
 
         completed_rows = 0
         for chunk in self._db.get_results(select_columns, chunksize=chunksize):
@@ -164,34 +160,6 @@ class Postprocessor():
         positions -= 1
         return np.vectorize(dict(zip(range(len(positions)),
                                      positions)).get)
-
-
-    def _write_bed(self, data):
-        kit = self._config.get_kit()
-        # The interval calculation is a bit tricky, so here's an example:
-        # Suppose we use RNA002 with kmer = 5 and center position (most infulential base)
-        # at the 4th base.
-        # If genomicPos is 3 (that's the fourth base, because it's a 0-based index).
-        # chromosome positions: 0 1 2 3 4 5
-        #                             ^
-        #                    this is the kmer center
-        # We want to obtain the interval [0, 5), because BED files use
-        # left-inclusive, right-exclusive intervals.
-        # So the proper calculation would be:
-        # start_pos = genomicPos - center + 1 = 3 - 4  + 1 = 0
-        # end_pos = genomicPos + kmer_len - center + 1 = 3 + 5 - 4 + 1 = 5
-        data['start_pos'] = data['genomicPos'] - kit.center + 1
-        data['end_pos'] = data['genomicPos'] + kit.len - kit.center + 1
-        for test in data.columns:
-            if 'qvalue' in test:
-                out_bed = os.path.join(self._outpath, f"{self._prefix}sig_sites_{test}.bed")
-                logger.debug(f"Starting to write results to {out_bed}\n")
-                columns_to_save = ['chr', 'start_pos', 'end_pos', 'name', test, 'strand']
-                data.to_csv(out_bed,
-                            sep='\t',
-                            columns=columns_to_save,
-                            header=False,
-                            index=False)
 
 
     def _sort_headers_list(self, headers):
