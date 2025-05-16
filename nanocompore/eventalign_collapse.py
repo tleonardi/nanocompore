@@ -217,6 +217,7 @@ class EventalignCollapser:
 
         prev_read = None
         prev_pos = None
+        kmer_data = None
         while True:
             line = file.readline()
             if file.tell() > fend or not line:
@@ -235,6 +236,17 @@ class EventalignCollapser:
             model_kmer = cols[9]
 
             if read != prev_read:
+                # If we have a previous kmer, we can finalize it
+                # and calculate the median to store only the result
+                # and freeing the memory used for all the sampled
+                # measurements.
+                if kmer_data:
+                    # Note: the choice of using statistics' median
+                    # instead of numpy's is not arbitrary. It seems
+                    # that statistics.median is faster for small
+                    # arrays, which is the expected case here.
+                    kmer_data.median_intensity = statistics.median(kmer_data.measurements)
+                    del kmer_data.measurements
                 kmer_data = Kmer(pos,
                                  event_measurements,
                                  event_dwell,
@@ -244,6 +256,9 @@ class EventalignCollapser:
                 prev_read = read
                 prev_pos = pos
             elif pos != prev_pos:
+                if kmer_data:
+                    kmer_data.median_intensity = statistics.median(kmer_data.measurements)
+                    del kmer_data.measurements
                 kmer_data = Kmer(pos,
                                  event_measurements,
                                  event_dwell,
@@ -258,6 +273,9 @@ class EventalignCollapser:
                 kmer_data.dwell += event_dwell
                 if kmer_data.valid:
                     kmer_data.valid = kmer == model_kmer
+        if kmer_data:
+            kmer_data.median_intensity = statistics.median(kmer_data.measurements)
+            del kmer_data.measurements
 
         return data
 
@@ -369,15 +387,7 @@ class EventalignCollapser:
             read_ids.append(read_id)
             for kmer_data in read_data:
                 pos = kmer_data.pos
-                # Note: the choice of using statistics' median
-                # instead of numpy's is not arbitrary. It seems
-                # that statistics.median is faster for small
-                # arrays, which is the expected case here.
-                median = statistics.median(kmer_data.measurements)
-                intensity[row, pos] = median
-                # We don't use sd for now
-                # mad = statistics.median(np.abs(np.array(kmer_data.measurements) - median))
-                # sd[row, pos] = mad
+                intensity[row, pos] = kmer_data.median_intensity
                 dwell[row, pos] = kmer_data.dwell
                 valid[row, pos] = kmer_data.valid
                 starts[row] = min(starts[row], pos)

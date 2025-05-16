@@ -99,11 +99,10 @@ def test_read_data():
 
     # Test that the two events for the position
     # are collapsed:
-    # The first sample from the first event
-    assert kmers[0].measurements[0] == 120.907
-    # The last sample from the second event
-    assert kmers[0].measurements[-1] == 98.3254
     assert kmers[0].dwell == 0.00498 + 0.00332
+    # The median intensity should be the median
+    # of all sample values from the two events.
+    assert kmers[0].median_intensity == 117.218
     # The first event is valid, but the second
     # is not, so the collapsed kmer should be
     # invalid as well.
