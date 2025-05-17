@@ -1,5 +1,7 @@
 [project]
 authors = [
+    {name = "Mihail Zdravkov", email = "mail@mzdravkov.com"},
+    {name = "Logan Mulroney", email = "lmulrone@soe.ucsc.edu"},
     {name = "Tommaso Leonardi", email = "tom@itm6.xyz"},
     {name = "Adrien Leger", email = "aleg@ebi.ac.uk"},
 ]
@@ -27,8 +29,8 @@ dependencies = [
     "gtfparse>=2.5.0",
 ]
 name = "nanocompore"
-version = "1.0.4"
-description = "Software package that identifies raw signal changes between two conditions from https://github.com/jts/nanopolish resquiggled dRNA-Seq data."
+version = "2.0.0"
+description = "Software package that identifies raw signal changes between two conditions from dRNA-Seq data."
 readme = "README.md"
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -59,12 +61,12 @@ dev = [
     "pytest-xdist>=3.6.1",
 ]
 
-[tool.pdm.build]
-includes = [
-    "nanocompore/models/rna002_5mer_levels_v1.txt",
-    "nanocompore/models/rna004_9mer_levels_v1.txt",
-]
 [build-system]
-requires = ["pdm-backend"]
-build-backend = "pdm.backend"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
+[tool.hatch.build.targets.sdist]
+include = [
+  "nanocompore/**",
+  "/tests",
+]

@@ -1,6 +1,19 @@
 # Changelog
 
 
+## v2.0.0
+
+This is major release that represents an almost complete redesign and rewrite of the tool. The more noteworthy changes include:
+- Completely new user interface.
+- Support for the RNA004 sequencing chemistry.
+- Major improvements in performance.
+- GPU support.
+- Support for multiple signal-to-reference aligners (resquigglers): Nanopolish/f5c eventalign, Uncalled4, and Remora.
+- Reduced disk space usage.
+- Automatic test selection strategy.
+- We add the ability to use the dwell time of a nearby position as an additional dimension in the GMM test. This can be used to capture changes in the molecule translocation speed produced by interactions between a modification and the motor protein.
+
+
 ## v1.0.4
 
 ### Fixed

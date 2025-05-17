@@ -1,11 +1,10 @@
-import numpy as np
-import numpy.typing as npt
-import pandas as pd
-import pod5
-import pysam
 from typing import Optional
 
-from jaxtyping import Float, Int
+import numpy as np
+import pod5
+import pysam
+
+from jaxtyping import Float
 from loguru import logger
 from pkg_resources import resource_filename
 from remora import io, refine_signal_map, RemoraError
@@ -37,14 +36,14 @@ class Remora:
         ----------
         kit : Optional[Kit]
             The sequencing kit used. By default will use RNA004.
-            
+
         max_reads : Optional[int]
             Maximum number of reads to resquiggle.
             By default will use no more than 5000.
-            
+
         pod5_path : str
             The path to the pod5 file with the signal data.
-            
+
         bam_path : str
             The path to the aligned bam file.
         """
@@ -99,9 +98,9 @@ class Remora:
         ----------
         ref_id : str
             Reference ID of the transcript.
-        ref_seq : 
+        ref_seq :
             Reference sequence of the transcript.
-        
+
         Returns
         -------
         tuple[Float[np.ndarray, "reads positions"],

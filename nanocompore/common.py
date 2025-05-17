@@ -1,20 +1,13 @@
-# -*- coding: utf-8 -*-
-
 import datetime
 import inspect
+import multiprocessing as mp
 import os
 import sys
 import time
-import multiprocessing as mp
 
-from collections import Counter
 from collections import OrderedDict
-from collections import defaultdict
 from collections import namedtuple
-from concurrent.futures import ThreadPoolExecutor
-from concurrent.futures import as_completed
 from enum import Enum
-from typing import NewType
 
 import numpy as np
 import pysam
