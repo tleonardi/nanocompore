@@ -161,11 +161,6 @@ CONFIG_SCHEMA = Schema(And({
     Optional('motor_dwell_offset'): And(int, lambda n: n >= 0, error='motor_dwell_offset must be >= 0'),
     Optional('sequence_context'): And(int, lambda n: n >= 0 and n <= 4, error='sequence_context must be >= 0 and <= 4'),
     Optional('sequence_context_weights'): Or('uniform', 'harmonic'),
-    Optional('pvalue_threshold'): And(float, lambda n: n >= 0 and n <= 1, error='pvalue_threshold must be >= 0 and <= 1'),
-    Optional('logit'): bool,
-    Optional('anova'): bool,
-    Optional('bool'): bool,
-    Optional('allow_warnings'): bool,
     Optional('outpath'): str,
     Optional('outprefix'): str,
     Optional('result_exists_strategy'): Or("stop", "continue", "overwrite"),
@@ -204,10 +199,6 @@ DEFAULT_COMPARISON_METHODS = ['GMM', 'KS']
 DEFAULT_MOTOR_DWELL_OFFSET = 0
 DEFAULT_SEQUENCE_CONTEXT = 0
 DEFAULT_SEQUENCE_CONTEXT_WEIGHTS = 'uniform'
-DEFAULT_PVALUE_THRESHOLD = 0.05
-DEFAULT_LOGIT = True
-DEFAULT_ANOVA = False
-DEFAULT_ALLOW_WARNINGS = False
 DEFAULT_OUTPATH = 'nanocompore_output'
 DEFAULT_OUTPREFIX = 'out_'
 DEFAULT_RESULT_EXISTS_STRATEGY = 'stop'
@@ -215,8 +206,6 @@ DEFAULT_LOG_LEVEL = 'info'
 DEFAULT_PROGRESS = False
 DEFAULT_EXPORT_SHIFT_STATS = False
 DEFAULT_CORRECTION_METHOD = 'fdr_bh'
-DEFAULT_READ_LEVEL_DATA = False
-DEFAULT_READ_LEVEL_DATA_TRANSCRIPTS = []
 
 
 class Config:
@@ -343,34 +332,6 @@ class Config:
         return self._config.get('sequence_context_weights', DEFAULT_SEQUENCE_CONTEXT_WEIGHTS)
 
 
-    def get_pvalue_threshold(self):
-        """
-        Adjusted p-value threshold for reporting significant sites.
-        """
-        return self._config.get('pvalue_thr', DEFAULT_PVALUE_THRESHOLD)
-
-
-    def get_logit(self):
-        """
-        Use logistic regression testing downstream of GMM method.
-        """
-        return self._config.get('logit', DEFAULT_LOGIT)
-
-
-    def get_anova(self):
-        """
-        Use Anova test downstream of GMM method.
-        """
-        return self._config.get('anova', DEFAULT_ANOVA)
-
-
-    def get_allow_warnings(self):
-        """
-        If True runtime warnings during the ANOVA tests don't raise an error.
-        """
-        return self._config.get('allow_warnings', DEFAULT_ALLOW_WARNINGS)
-
-
     def get_outpath(self):
         """
         Path to the output folder.
@@ -424,25 +385,6 @@ class Config:
         Get the multiple test correction method.
         """
         return self._config.get('correction_method', DEFAULT_CORRECTION_METHOD)
-
-
-    def get_read_level_data(self):
-        """
-        Save read level data to database.
-        (That means the intensity/dwell-time measurements
-        for every position of every read will be stored.)
-        Warning: This can take up a lot of space.
-        """
-        return self._config.get('read_level_data', DEFAULT_READ_LEVEL_DATA)
-
-
-    def get_read_level_data_transcripts(self):
-        """
-        If read_level_data is True, only save read level data for these transcripts.
-        The transcript ids must match the RNAME field from the bam file.
-        Note: empty list means all transcripts
-        """
-        return self._config.get('read_level_data_transcripts', DEFAULT_READ_LEVEL_DATA_TRANSCRIPTS)
 
 
     def get_sample_labels(self):

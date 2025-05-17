@@ -88,16 +88,6 @@ class TestConfig:
         assert "sequence_context must be >= 0 and <= 4" == str(exception_info.value)
 
 
-    def test_incorrect_pvalue_threshold(self):
-        yaml = copy.deepcopy(BASIC_CONFIG)
-        yaml['pvalue_threshold'] = 5
-
-        with pytest.raises(schema.SchemaError) as exception_info:
-            config = Config(yaml)
-
-        assert "pvalue_threshold must be >= 0 and <= 1" == str(exception_info.value)
-
-
     def test_unsupported_correction_method(self):
         yaml = copy.deepcopy(BASIC_CONFIG)
         yaml['correction_method'] = 'bonferroni'
