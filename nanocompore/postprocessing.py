@@ -60,10 +60,18 @@ class Postprocessor():
         # and write the append the batch to the results TSV.
 
         # We read the p-value columns we in memory and get add
-        # the corrected q-values to them.
+        # the corrected q-values to them. We also get the
+        # auto_test column if auto test was used, because we
+        # need it in order to do the multiple test correction
+        # independently for the different tests.
         pval_columns = [c for c in test_result_columns if 'pvalue' in c]
         p_values = self._db.get_columns(pval_columns)
-        pq_values = self._correct_pvalues(p_values, method=self._correction_method)
+        auto_test = None
+        if 'auto_pvalue' in test_result_columns:
+            auto_test = self._db.get_columns(['auto_test'])['auto_test']
+        pq_values = self._correct_pvalues(p_values,
+                                          method=self._correction_method,
+                                          auto_test=auto_test)
 
         # The remaining columns will be loaded in batches from the db and written
         # to the output TSV.
@@ -187,22 +195,44 @@ class Postprocessor():
                 for c in conditions]
 
 
-    def _correct_pvalues(self, df, method='fdr_bh'):
+    def _correct_pvalues(self, df, method='fdr_bh', auto_test=None):
         for column in df.columns:
-            if 'pvalue' in column:
-                # Get the p-values from the column
+            if column == 'auto_pvalue' and method == 'fdr_bh':
+                pvals = np.array(df[column].values, dtype=float)
+                all_qvals = np.full(pvals.shape, np.nan, dtype=float)
+
+                logger.debug(f"Starting to correct pvalues for {column} with {method}")
+                # We need to correct the p-values for a total of N
+                # tests. However, those p-values were obtained by
+                # performing different tests and are not directly
+                # comparable. Using the standard Benjamini-Hochberg
+                # will introduce bias against tests that are less
+                # sensitive by pushing their p-values to the bottom
+                # of the ranking and then applying more severe penalties
+                # for them. As a simple workaround, we perform the
+                # correction separately (thus ordering different
+                # tests independently) and then we multiply by
+                # a correction coefficient to compensate for the
+                # fact that the correction was done for less than
+                # N tests.
+                for test_type in auto_test.unique():
+                    test_mask = auto_test == test_type
+                    # We'll ignore NaNs when performing the correction.
+                    qvals = self._multipletests_filter_nan(pvals[test_mask], method)
+                    if len(qvals) > 0:
+                        qvals *= len(pvals) / len(qvals)
+                    all_qvals[test_mask] = qvals
+                df['auto_qvalue'] = all_qvals
+                logger.debug(f"pvalues for {column} have been corrected using {method}")
+            elif 'pvalue' in column:
                 pvals = np.array(df[column].values, dtype=float)
 
-                # Correct the p-values using the Benjamini-Hochberg method.
                 # We'll ignore NaNs when performing the correction.
                 logger.debug(f"Starting to correct pvalues for {column} with {method}")
                 qvals = self._multipletests_filter_nan(pvals, method)
 
                 # Replace the original p-values with the corrected p-values in the dataframe
-                # df[column] = corrected_pvals
                 corrected_column = column.replace("pvalue", "qvalue")
-                # df.insert(i+1, corrected_column, qvals)
-                # corrected_df.rename(columns={column: corrected_column}, inplace=True)
                 df[corrected_column] = qvals
 
                 logger.debug(f"pvalues for {column} have been corrected using {method}")

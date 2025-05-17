@@ -95,6 +95,30 @@ def validate_uncalled4_data(config):
     return True
 
 
+def validate_auto_test_multiple_test_correcton(config):
+    """
+    Validate that either Benjamini-Hochberg or Bonferroni
+    is used for correcting for multiple tests when we use
+    the auto test. We haven't implemented support for other
+    methods.
+
+    Parameters
+    ----------
+    config : dict
+        The configuration object.
+
+    Returns
+    -------
+        bool
+    """
+    tests = config.get('comparison_methods', DEFAULT_COMPARISON_METHODS)
+    if 'auto' in tests or 'AUTO' in tests:
+        correction_method = config.get('correction_method',
+                                       DEFAULT_CORRECTION_METHOD)
+        return correction_method in ('fdr_bh', 'bonferroni')
+    return True
+
+
 def depleted_condition_exists(config):
     return config['depleted_condition'] in config['data']
 
@@ -163,7 +187,10 @@ CONFIG_SCHEMA = Schema(And({
               'by Uncalled4.'),
     And(depleted_condition_exists,
         error="The condition set in 'depleted_condition' is not " + \
-              "defined in 'data'.")))
+              "defined in 'data'."),
+    And(validate_auto_test_multiple_test_correcton,
+        error="If the auto test is used in 'comparison_methods' then 'correction_method' "
+              "should be either 'fhr_bh' (for Benjamini-Hochberg) or 'bonferroni'.")))
 
 
 DEFAULT_KIT = 'RNA002'

@@ -120,7 +120,7 @@ class TranscriptComparator:
         auto_test_mask = None
         has_auto = 'auto' in self._config.get_comparison_methods()
         if has_auto:
-            auto_test_mask = self._auto_test_mask(conditions)
+            auto_test_mask = self._auto_test_mask(data)
         test_masks = self._get_test_masks(auto_test_mask, n_positions)
 
         for test, mask in test_masks.items():
@@ -160,19 +160,9 @@ class TranscriptComparator:
         return masks
 
 
-    def _auto_test_mask(self, conditions):
-        depleted_reads = (conditions == 0).nansum()
-        non_depleted_reads = (conditions == 1).nansum()
-        return np.array([self._resolve_auto_test(counts)
-                         for counts in zip(depleted_reads, non_depleted_reads)])
-
-
-    def _resolve_auto_test(self, condition_counts):
-        min_coverage = min(condition_counts)
-        if min_coverage < 256:
-            return 'KS'
-        else:
-            return 'GMM'
+    def _auto_test_mask(self, data):
+        cov = (~data[:, :, INTENSITY].isnan()).cpu().sum(1).numpy()
+        return np.where(cov < 500, 'KS', 'GMM')
 
 
     def _auto_test_pvalue(self, test):
