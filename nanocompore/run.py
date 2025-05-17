@@ -229,6 +229,25 @@ class RunCmd(object):
         filtered_refs = {ref_id
                          for ref_id, (cond0_count, cond1_count) in references.items()
                          if cond0_count >= min_coverage and cond1_count >= min_coverage}
+
+        # If selected_refs is set, we read the file
+        # and keep only the references found within it.
+        if self._config.get_selected_refs():
+            with open(self._config.get_selected_refs()) as f:
+                selected_refs = {ref.strip() for ref in f.readlines()}
+                filtered_refs = {ref
+                                 for ref in filtered_refs
+                                 if ref in selected_refs}
+
+        # If ignored_refs is set, we read the file
+        # and discard the references found within it.
+        if self._config.get_ignored_refs():
+            with open(self._config.get_ignored_refs()) as f:
+                ignored_refs = {ref.strip() for ref in f.readlines()}
+                filtered_refs = {ref
+                                 for ref in filtered_refs
+                                 if ref not in ignored_refs}
+
         return {TranscriptRow(ref_id, i)
                 for ref_id, i in zip(filtered_refs,
                                      range(initial_index,

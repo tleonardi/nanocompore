@@ -104,6 +104,14 @@ resquiggler: 'eventalign'
 # kmers (NNNNN) or kmers that differ from the reference kmer.
 #max_invalid_kmers_freq: 0.1
 
+# Path to a text file containing one reference name per line.
+# Only transcripts found in the file will be analysed.
+#selected_refs: "path/to/file.txt"
+
+# Path to a text file containing one reference name per line.
+# Transcripts found in the file will not be analysed.
+#ignored_refs: "path/to/file.txt"
+
 # Minimum length of a reference transcript to include it in the analysis.
 #min_ref_length: 100
 

@@ -145,6 +145,8 @@ CONFIG_SCHEMA = Schema(And({
     Optional('downsample_high_coverage'): And(int, lambda n: n >= 0, error='downsample_high_coverage must be >= 0'),
     Optional('min_ref_length'): And(int, lambda n: n >= 0, error='min_ref_length must be >= 0'),
     Optional('max_invalid_kmers_freq'): And(float, lambda n: n >= 0, error='max_invalid_kmers_freq must be in the [0, 1] range'),
+    Optional('selected_refs'): And(lambda f: open(f, 'r'), error='Invalid references file.'),
+    Optional('ignored_refs'): And(lambda f: open(f, 'r'), error='Invalid references file.'),
     Optional('comparison_methods'): And(['GMM',
                                          'GOF',
                                          'KS',
@@ -292,6 +294,22 @@ class Config:
         Maximum allowed ratio of invalid kmers in the read.
         """
         return self._config.get('max_invalid_kmers_freq', DEFAULT_MAX_INVALID_KMERS_FREQ)
+
+
+    def get_selected_refs(self):
+        """
+        Text file with one reference per line.
+        Only references found in the file will be analysed.
+        """
+        return self._config.get('selected_refs')
+
+
+    def get_ignored_refs(self):
+        """
+        Text file with one reference per line.
+        References found within the file will not be analysed.
+        """
+        return self._config.get('ignored_refs')
 
 
     def get_comparison_methods(self):

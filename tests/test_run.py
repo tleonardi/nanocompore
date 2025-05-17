@@ -308,4 +308,63 @@ def test_read_data_eventalign():
     assert np.array_equal(conditions, expected_condition_ids)
 
 
+def test_get_transcripts_for_processing_insufficient_coverage():
+    config = Config(BASIC_EVENTALIGN_CONFIG)
+    run_cmd = RunCmd(config)
+
+    refs = run_cmd._get_transcripts_for_processing()
+
+    assert isinstance(refs, set)
+    assert len(refs) == 0
+
+
+def test_get_transcripts_for_processing_sufficient_coverage():
+    config_yaml = copy.deepcopy(BASIC_CONFIG)
+    config_yaml['min_coverage'] = 2
+    config = Config(config_yaml)
+    run_cmd = RunCmd(config)
+
+    refs = run_cmd._get_transcripts_for_processing()
+    refs = {ref.ref_id for ref in refs}
+
+    assert isinstance(refs, set)
+    assert len(refs) == 2
+    assert refs == {'ENST00000674681.1|ENSG00000075624.17|OTTHUMG00000023268|-|ACTB-219|ACTB|2554|protein_coding|',
+                    'ENST00000642480.2|ENSG00000075624.17|OTTHUMG00000023268|OTTHUMT00000495153.1|ACTB-213|ACTB|2021|protein_coding|'}
+
+
+def test_get_transcripts_for_processing_selected_refs(tmpdir):
+    p = tmpdir.join("selected_refs.txt")
+    p.write("ENST00000674681.1|ENSG00000075624.17|OTTHUMG00000023268|-|ACTB-219|ACTB|2554|protein_coding|\n")
+
+    config_yaml = copy.deepcopy(BASIC_CONFIG)
+    config_yaml['min_coverage'] = 2
+    config_yaml['selected_refs'] = str(p)
+    config = Config(config_yaml)
+    run_cmd = RunCmd(config)
+
+    refs = run_cmd._get_transcripts_for_processing()
+    refs = {ref.ref_id for ref in refs}
+
+    assert isinstance(refs, set)
+    assert len(refs) == 1
+    assert refs == {'ENST00000674681.1|ENSG00000075624.17|OTTHUMG00000023268|-|ACTB-219|ACTB|2554|protein_coding|'}
+
+
+def test_get_transcripts_for_processing_ignored_refs(tmpdir):
+    p = tmpdir.join("ignored_refs.txt")
+    p.write("ENST00000674681.1|ENSG00000075624.17|OTTHUMG00000023268|-|ACTB-219|ACTB|2554|protein_coding|\n")
+
+    config_yaml = copy.deepcopy(BASIC_CONFIG)
+    config_yaml['min_coverage'] = 2
+    config_yaml['ignored_refs'] = str(p)
+    config = Config(config_yaml)
+    run_cmd = RunCmd(config)
+
+    refs = run_cmd._get_transcripts_for_processing()
+    refs = {ref.ref_id for ref in refs}
+
+    assert isinstance(refs, set)
+    assert len(refs) == 1
+    assert refs == {'ENST00000642480.2|ENSG00000075624.17|OTTHUMG00000023268|OTTHUMT00000495153.1|ACTB-213|ACTB|2021|protein_coding|'}
 

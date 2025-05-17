@@ -128,6 +128,9 @@ result_exists_strategy: "continue"
 ```
 If you set the parameter to "continue", Nanocompore will try to reuse the database that was created in the previous run and won't repeat the analysis for any transcripts that have already been analysed and written to the database.
 
+#### Other parameters
+
+For a full list of parameters and a description of their function, inspect a template configuration created by the `nanocompore template` command.
 
 ### Run the analysis
 
