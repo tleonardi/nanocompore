@@ -39,7 +39,7 @@ nav:
 
 # Theme customization
 theme:
-    name: 'material'
+    name: material
     highlightjs: true
     font: false
 
