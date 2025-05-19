@@ -1,0 +1,1815 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Compare nanopore signal to find modifications">
+      
+      
+        <meta name="author" content="Adrien Leger & Tommaso Leonardi">
+      
+      
+        <link rel="canonical" href="http://nanocompore.rna.rocks/data_api/">
+      
+      
+        <link rel="prev" href="../plotting/">
+      
+      
+        <link rel="next" href="../plotting_api/">
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.14">
+    
+    
+      
+        <title>Data API - Nanocompore</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.342714a4.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+    
+    
+      <link rel="stylesheet" href="../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#data-api" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Nanocompore" class="md-header__button md-logo" aria-label="Nanocompore" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Nanocompore
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Data API
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/tleonardi/nanocompore" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.7.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M439.55 236.05 244 40.45a28.87 28.87 0 0 0-40.81 0l-40.66 40.63 51.52 51.52c27.06-9.14 52.68 16.77 43.39 43.68l49.66 49.66c34.23-11.8 61.18 31 35.47 56.69-26.49 26.49-70.21-2.87-56-37.34L240.22 199v121.85c25.3 12.54 22.26 41.85 9.08 55a34.34 34.34 0 0 1-48.55 0c-17.57-17.6-11.07-46.91 11.25-56v-123c-20.8-8.51-24.6-30.74-18.64-45L142.57 101 8.45 235.14a28.86 28.86 0 0 0 0 40.81l195.61 195.6a28.86 28.86 0 0 0 40.8 0l194.69-194.69a28.86 28.86 0 0 0 0-40.81"/></svg>
+  </div>
+  <div class="md-source__repository">
+    tleonardi/nanocompore
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Nanocompore" class="md-nav__button md-logo" aria-label="Nanocompore" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Nanocompore
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/tleonardi/nanocompore" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.7.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M439.55 236.05 244 40.45a28.87 28.87 0 0 0-40.81 0l-40.66 40.63 51.52 51.52c27.06-9.14 52.68 16.77 43.39 43.68l49.66 49.66c34.23-11.8 61.18 31 35.47 56.69-26.49 26.49-70.21-2.87-56-37.34L240.22 199v121.85c25.3 12.54 22.26 41.85 9.08 55a34.34 34.34 0 0 1-48.55 0c-17.57-17.6-11.07-46.91 11.25-56v-123c-20.8-8.51-24.6-30.74-18.64-45L142.57 101 8.45 235.14a28.86 28.86 0 0 0 0 40.81l195.61 195.6a28.86 28.86 0 0 0 40.8 0l194.69-194.69a28.86 28.86 0 0 0 0-40.81"/></svg>
+  </div>
+  <div class="md-source__repository">
+    tleonardi/nanocompore
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Home
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Installation instructions
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../data_preparation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Data preparation
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Usage
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            Usage
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../usage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Running Nanocompore
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../output/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Outputs
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../plotting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Plotting
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    Data API
+    
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    Data API
+    
+  </span>
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      Reference
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#nanocompore.api" class="md-nav__link">
+    <span class="md-ellipsis">
+      api
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#nanocompore.api.get_metadata" class="md-nav__link">
+    <span class="md-ellipsis">
+      get_metadata
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#nanocompore.api.get_pos" class="md-nav__link">
+    <span class="md-ellipsis">
+      get_pos
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#nanocompore.api.get_reads" class="md-nav__link">
+    <span class="md-ellipsis">
+      get_reads
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#nanocompore.api.get_references" class="md-nav__link">
+    <span class="md-ellipsis">
+      get_references
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#nanocompore.api.load_config" class="md-nav__link">
+    <span class="md-ellipsis">
+      load_config
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../plotting_api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Plotting API
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Troubleshooting
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../alternative/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Alternative and complementary packages
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../citing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Citing
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Contributing
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../code_of_conduct/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Code of conduct
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../licence/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Licence
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Changelog
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      Reference
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#nanocompore.api" class="md-nav__link">
+    <span class="md-ellipsis">
+      api
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#nanocompore.api.get_metadata" class="md-nav__link">
+    <span class="md-ellipsis">
+      get_metadata
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#nanocompore.api.get_pos" class="md-nav__link">
+    <span class="md-ellipsis">
+      get_pos
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#nanocompore.api.get_reads" class="md-nav__link">
+    <span class="md-ellipsis">
+      get_reads
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#nanocompore.api.get_references" class="md-nav__link">
+    <span class="md-ellipsis">
+      get_references
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#nanocompore.api.load_config" class="md-nav__link">
+    <span class="md-ellipsis">
+      load_config
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="data-api">Data API</h1>
+<p>The Data API provides functionality to easily read the preprocessed signal data that Nanocompore uses for the analysis. This can be used for custom plotting or other purposes. In general, you just need to load the configuration file used for the analysis via the <code>load_config</code> function and then you can query the data with <code>get_references</code>, <code>get_reads</code>, and <code>get_pos</code>.</p>
+<p>For example:</p>
+<div class="highlight"><pre><span></span><code><span class="o">&gt;&gt;&gt;</span> <span class="kn">from</span><span class="w"> </span><span class="nn">nanocompore.api</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_config</span><span class="p">,</span> <span class="n">get_pos</span>
+
+<span class="c1"># Load the YAML configuration file to a Config object.</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="n">config</span> <span class="o">=</span> <span class="n">load_config</span><span class="p">(</span><span class="s1">&#39;analysis.yaml&#39;</span><span class="p">)</span>
+
+<span class="c1"># Get the signal data for a given position:</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="n">ref_id</span> <span class="o">=</span> <span class="s1">&#39;ENST00000464651.1|ENSG00000166136.16|OTTHUMG00000019346.4|OTTHUMT00000051221.1|NDUFB8-204|NDUFB8|390|retained_intron|&#39;</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="n">get_pos</span><span class="p">(</span><span class="n">config</span><span class="p">,</span> <span class="n">ref_id</span><span class="p">,</span> <span class="mi">243</span><span class="p">)</span>
+    <span class="n">condition</span> <span class="n">sample</span>                                  <span class="n">read</span>  <span class="n">intensity</span>  <span class="n">dwell</span>
+<span class="mi">0</span>          <span class="n">WT</span>   <span class="n">WT_2</span>  <span class="n">a6f3e188</span><span class="o">-</span><span class="mi">6288</span><span class="o">-</span><span class="mi">4215</span><span class="o">-</span><span class="n">acdc</span><span class="o">-</span><span class="n">fe28beba411f</span>    <span class="o">-</span><span class="mf">1624.0</span>   <span class="mf">27.0</span>
+<span class="mi">1</span>          <span class="n">WT</span>   <span class="n">WT_2</span>  <span class="mi">09923</span><span class="n">db6</span><span class="o">-</span><span class="n">eccc</span><span class="o">-</span><span class="mi">497</span><span class="n">f</span><span class="o">-</span><span class="mi">8621</span><span class="o">-</span><span class="mi">8</span><span class="n">adeea9b1bfb</span>     <span class="mf">4072.0</span>   <span class="mf">20.0</span>
+<span class="mi">2</span>          <span class="n">WT</span>   <span class="n">WT_2</span>  <span class="n">f65926cc</span><span class="o">-</span><span class="n">bf13</span><span class="o">-</span><span class="mi">4396</span><span class="o">-</span><span class="n">ba92</span><span class="o">-</span><span class="mi">7</span><span class="n">f2f690b71d9</span>    <span class="o">-</span><span class="mf">2571.0</span>    <span class="mf">5.0</span>
+<span class="mi">3</span>          <span class="n">WT</span>   <span class="n">WT_2</span>  <span class="n">aebabd0a</span><span class="o">-</span><span class="mi">5260</span><span class="o">-</span><span class="mi">41</span><span class="n">c4</span><span class="o">-</span><span class="n">b38b</span><span class="o">-</span><span class="mi">1</span><span class="n">ebb117dc0fb</span>      <span class="mf">586.0</span>   <span class="mf">16.0</span>
+<span class="mi">4</span>          <span class="n">WT</span>   <span class="n">WT_2</span>  <span class="mf">994256e9</span><span class="o">-</span><span class="n">afab</span><span class="o">-</span><span class="mi">4</span><span class="n">b54</span><span class="o">-</span><span class="mi">94</span><span class="n">ff</span><span class="o">-</span><span class="n">cc37ae4cbe08</span>     <span class="mf">5229.0</span>   <span class="mf">16.0</span>
+<span class="o">..</span>        <span class="o">...</span>    <span class="o">...</span>                                   <span class="o">...</span>        <span class="o">...</span>    <span class="o">...</span>
+<span class="mi">383</span>        <span class="n">WT</span>   <span class="n">WT_1</span>  <span class="mi">79</span><span class="n">df3c74</span><span class="o">-</span><span class="n">a4c6</span><span class="o">-</span><span class="mi">4335</span><span class="o">-</span><span class="mi">93</span><span class="n">c5</span><span class="o">-</span><span class="n">a0ca7e3aec78</span>    <span class="o">-</span><span class="mf">1067.0</span>   <span class="mf">25.0</span>
+<span class="mi">384</span>        <span class="n">WT</span>   <span class="n">WT_1</span>  <span class="n">f7dad9c6</span><span class="o">-</span><span class="n">d3d9</span><span class="o">-</span><span class="mi">4501</span><span class="o">-</span><span class="mi">85</span><span class="n">fb</span><span class="o">-</span><span class="mi">6</span><span class="n">c6246a03719</span>    <span class="o">-</span><span class="mf">2225.0</span>   <span class="mf">56.0</span>
+<span class="mi">385</span>        <span class="n">WT</span>   <span class="n">WT_1</span>  <span class="mi">8653</span><span class="n">efdc</span><span class="o">-</span><span class="mi">943</span><span class="n">f</span><span class="o">-</span><span class="mi">48</span><span class="n">f8</span><span class="o">-</span><span class="n">b6f1</span><span class="o">-</span><span class="mi">174</span><span class="n">cc4bb1ad5</span>     <span class="mf">2837.0</span>   <span class="mf">12.0</span>
+<span class="mi">386</span>        <span class="n">WT</span>   <span class="n">WT_1</span>  <span class="n">fdf524f0</span><span class="o">-</span><span class="mi">5</span><span class="n">bb5</span><span class="o">-</span><span class="mi">45</span><span class="n">fc</span><span class="o">-</span><span class="n">a783</span><span class="o">-</span><span class="mf">7e3</span><span class="n">a592eb149</span>      <span class="mf">462.0</span>   <span class="mf">30.0</span>
+<span class="mi">387</span>        <span class="n">WT</span>   <span class="n">WT_1</span>  <span class="n">b05c004e</span><span class="o">-</span><span class="mi">5</span><span class="n">f58</span><span class="o">-</span><span class="mi">4</span><span class="n">bfa</span><span class="o">-</span><span class="mi">896</span><span class="n">b</span><span class="o">-</span><span class="n">ce28b4225ab2</span>     <span class="o">-</span><span class="mf">469.0</span>   <span class="mf">27.0</span>
+
+<span class="p">[</span><span class="mi">388</span> <span class="n">rows</span> <span class="n">x</span> <span class="mi">5</span> <span class="n">columns</span><span class="p">]</span>
+</code></pre></div>
+<h2 id="reference">Reference</h2>
+
+
+<div class="doc doc-object doc-module">
+
+
+
+<a id="nanocompore.api"></a>
+    <div class="doc doc-contents first">
+
+
+
+
+
+
+
+
+
+  <div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+<h2 id="nanocompore.api.get_metadata" class="doc doc-heading">
+            <code class=" language-python"><span class="n">get_metadata</span><span class="p">(</span><span class="n">db</span><span class="p">)</span></code>
+
+</h2>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Returns the metadata from the given SQLite database.</p>
+<p>The metadata contains information such as input files,
+resquiggler used, and data types for the binary encoded fields.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>db</code>
+            </td>
+            <td>
+                  <code><span title="str">str</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Path to the SQLite database produced by the preprocessing
+command of Nanocompore.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="dict">dict</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Dictionary containing the metadata</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+            <details class="quote">
+              <summary>Source code in <code>nanocompore/api.py</code></summary>
+              <div class="codehilite"><table class="codehilitetable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">584</span>
+<span class="normal">585</span>
+<span class="normal">586</span>
+<span class="normal">587</span>
+<span class="normal">588</span>
+<span class="normal">589</span>
+<span class="normal">590</span>
+<span class="normal">591</span>
+<span class="normal">592</span>
+<span class="normal">593</span>
+<span class="normal">594</span>
+<span class="normal">595</span>
+<span class="normal">596</span>
+<span class="normal">597</span>
+<span class="normal">598</span>
+<span class="normal">599</span>
+<span class="normal">600</span>
+<span class="normal">601</span>
+<span class="normal">602</span>
+<span class="normal">603</span>
+<span class="normal">604</span>
+<span class="normal">605</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">get_metadata</span><span class="p">(</span><span class="n">db</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Returns the metadata from the given SQLite database.</span>
+
+<span class="sd">    The metadata contains information such as input files,</span>
+<span class="sd">    resquiggler used, and data types for the binary encoded fields.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    db : str</span>
+<span class="sd">        Path to the SQLite database produced by the preprocessing</span>
+<span class="sd">        command of Nanocompore.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    dict</span>
+<span class="sd">        Dictionary containing the metadata</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">with</span> <span class="n">closing</span><span class="p">(</span><span class="n">sqlite3</span><span class="o">.</span><span class="n">connect</span><span class="p">(</span><span class="n">db</span><span class="p">))</span> <span class="k">as</span> <span class="n">conn</span><span class="p">,</span>\
+         <span class="n">closing</span><span class="p">(</span><span class="n">conn</span><span class="o">.</span><span class="n">cursor</span><span class="p">())</span> <span class="k">as</span> <span class="n">cursor</span><span class="p">:</span>
+        <span class="n">query</span> <span class="o">=</span> <span class="s2">&quot;SELECT key, value FROM metadata&quot;</span>
+        <span class="k">return</span> <span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">v</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">query</span><span class="p">)</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()}</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h2 id="nanocompore.api.get_pos" class="doc doc-heading">
+            <code class=" language-python"><span class="n">get_pos</span><span class="p">(</span><span class="n">config</span><span class="p">,</span> <span class="n">reference_id</span><span class="p">,</span> <span class="n">pos</span><span class="p">)</span></code>
+
+</h2>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Get the data for a given position for all samples.
+Note that position is a 0-based index of the first
+nucleotide of a k-mer.</p>
+<p>Returns the signal data for a specific position
+of the given reference transcript from all reads.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>config</code>
+            </td>
+            <td>
+                  <code><span title="nanocompore.config.Config">Config</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Path to a Nanocompore configuration file.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>reference_id</code>
+            </td>
+            <td>
+                  <code><span title="str">str</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>ID for a reference sequence (transcript).</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>pos</code>
+            </td>
+            <td>
+                  <code><span title="int">int</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Position on the transcript for which to get data. A 0-based
+index is assumed.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="pandas.DataFrame">DataFrame</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Where the DataFrame contains the following columns:</p>
+<ul>
+<li>condition  condition label (as defined in the configuration)</li>
+<li>sample     sample label (as defined in the configuration)</li>
+<li>read:      id of the read (qname)</li>
+<li>intensity: current intensity</li>
+<li>dwell:     dwell time for the kmer</li>
+</ul>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<p><span class="doc-section-title">Examples:</span></p>
+    <div class="codehilite"><pre><span></span><code><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">nanocompore.api</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_config</span><span class="p">,</span> <span class="n">get_pos</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">config</span> <span class="o">=</span> <span class="n">load_config</span><span class="p">(</span><span class="s1">&#39;analysis.yaml&#39;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">get_pos</span><span class="p">(</span><span class="n">config</span><span class="p">,</span> <span class="s1">&#39;ENST00000674681.1|ENSG00000075624.17|OTTHUMG00000023268|-|ACTB-219|ACTB|2554|protein_coding|&#39;</span><span class="p">,</span> <span class="mi">532</span><span class="p">)</span>
+<span class="go">   condition sample                                  read  intensity  dwell</span>
+<span class="go">0         WT    WT1  a4395b0d-dd3b-48e3-8afb-4085374b1147     3800.0    7.0</span>
+<span class="go">1         WT    WT1  f9733448-6e6b-47ba-9501-01eda2f5ea26     4865.0  126.0</span>
+<span class="go">2         WT    WT1  6f5e3b2e-f27b-47ef-b3c6-2ab4fdefd20a     3272.0   42.0</span>
+<span class="go">3         WT    WT2  2da07406-70c2-40a1-835a-6a7a2c914d49     6241.0   44.0</span>
+<span class="go">4         WT    WT2  54fc1d38-5e3d-4d77-a717-2d41b4785af6     4047.0    9.0</span>
+<span class="go">5         WT    WT2  3cfa90d1-7dfb-4398-a224-c75a3ab99873     3709.0   70.0</span>
+<span class="go">6         KD    KD1  3f46f499-8ce4-4817-8177-8ad61b784f27     4807.0   57.0</span>
+<span class="go">7         KD    KD1  73d62df4-f04a-4207-a4bc-7b9739b3c3b2     4336.0  132.0</span>
+<span class="go">8         KD    KD1  b7bc9a36-318e-4be2-a90f-74a5aa6439bf     -861.0    7.0</span>
+<span class="go">9         KD    KD2  ac486e16-15be-47a8-902c-2cfa2887c534     2706.0   45.0</span>
+<span class="go">10        KD    KD2  797fd991-570e-42d4-8292-0a7557b192d7     5450.0   24.0</span>
+<span class="go">11        KD    KD2  4e1ad358-ec2b-40b4-8e9a-54db28a40551      206.0   47.0</span>
+</code></pre></div>
+
+
+            <details class="quote">
+              <summary>Source code in <code>nanocompore/api.py</code></summary>
+              <div class="codehilite"><table class="codehilitetable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">137</span>
+<span class="normal">138</span>
+<span class="normal">139</span>
+<span class="normal">140</span>
+<span class="normal">141</span>
+<span class="normal">142</span>
+<span class="normal">143</span>
+<span class="normal">144</span>
+<span class="normal">145</span>
+<span class="normal">146</span>
+<span class="normal">147</span>
+<span class="normal">148</span>
+<span class="normal">149</span>
+<span class="normal">150</span>
+<span class="normal">151</span>
+<span class="normal">152</span>
+<span class="normal">153</span>
+<span class="normal">154</span>
+<span class="normal">155</span>
+<span class="normal">156</span>
+<span class="normal">157</span>
+<span class="normal">158</span>
+<span class="normal">159</span>
+<span class="normal">160</span>
+<span class="normal">161</span>
+<span class="normal">162</span>
+<span class="normal">163</span>
+<span class="normal">164</span>
+<span class="normal">165</span>
+<span class="normal">166</span>
+<span class="normal">167</span>
+<span class="normal">168</span>
+<span class="normal">169</span>
+<span class="normal">170</span>
+<span class="normal">171</span>
+<span class="normal">172</span>
+<span class="normal">173</span>
+<span class="normal">174</span>
+<span class="normal">175</span>
+<span class="normal">176</span>
+<span class="normal">177</span>
+<span class="normal">178</span>
+<span class="normal">179</span>
+<span class="normal">180</span>
+<span class="normal">181</span>
+<span class="normal">182</span>
+<span class="normal">183</span>
+<span class="normal">184</span>
+<span class="normal">185</span>
+<span class="normal">186</span>
+<span class="normal">187</span>
+<span class="normal">188</span>
+<span class="normal">189</span>
+<span class="normal">190</span>
+<span class="normal">191</span>
+<span class="normal">192</span>
+<span class="normal">193</span>
+<span class="normal">194</span>
+<span class="normal">195</span>
+<span class="normal">196</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">get_pos</span><span class="p">(</span><span class="n">config</span><span class="p">:</span> <span class="n">Config</span><span class="p">,</span> <span class="n">reference_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">pos</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get the data for a given position for all samples.</span>
+<span class="sd">    Note that position is a 0-based index of the first</span>
+<span class="sd">    nucleotide of a k-mer.</span>
+
+<span class="sd">    Returns the signal data for a specific position</span>
+<span class="sd">    of the given reference transcript from all reads.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    config : Config</span>
+<span class="sd">        Path to a Nanocompore configuration file.</span>
+<span class="sd">    reference_id : str</span>
+<span class="sd">        ID for a reference sequence (transcript).</span>
+<span class="sd">    pos : int</span>
+<span class="sd">        Position on the transcript for which to get data. A 0-based</span>
+<span class="sd">        index is assumed.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    pandas.DataFrame</span>
+<span class="sd">        Where the DataFrame contains the following columns:</span>
+
+<span class="sd">        - condition  condition label (as defined in the configuration)</span>
+<span class="sd">        - sample     sample label (as defined in the configuration)</span>
+<span class="sd">        - read:      id of the read (qname)</span>
+<span class="sd">        - intensity: current intensity</span>
+<span class="sd">        - dwell:     dwell time for the kmer</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    &gt;&gt;&gt; from nanocompore.api import load_config, get_pos</span>
+<span class="sd">    &gt;&gt;&gt; config = load_config(&#39;analysis.yaml&#39;)</span>
+<span class="sd">    &gt;&gt;&gt; get_pos(config, &#39;ENST00000674681.1|ENSG00000075624.17|OTTHUMG00000023268|-|ACTB-219|ACTB|2554|protein_coding|&#39;, 532)</span>
+<span class="sd">       condition sample                                  read  intensity  dwell</span>
+<span class="sd">    0         WT    WT1  a4395b0d-dd3b-48e3-8afb-4085374b1147     3800.0    7.0</span>
+<span class="sd">    1         WT    WT1  f9733448-6e6b-47ba-9501-01eda2f5ea26     4865.0  126.0</span>
+<span class="sd">    2         WT    WT1  6f5e3b2e-f27b-47ef-b3c6-2ab4fdefd20a     3272.0   42.0</span>
+<span class="sd">    3         WT    WT2  2da07406-70c2-40a1-835a-6a7a2c914d49     6241.0   44.0</span>
+<span class="sd">    4         WT    WT2  54fc1d38-5e3d-4d77-a717-2d41b4785af6     4047.0    9.0</span>
+<span class="sd">    5         WT    WT2  3cfa90d1-7dfb-4398-a224-c75a3ab99873     3709.0   70.0</span>
+<span class="sd">    6         KD    KD1  3f46f499-8ce4-4817-8177-8ad61b784f27     4807.0   57.0</span>
+<span class="sd">    7         KD    KD1  73d62df4-f04a-4207-a4bc-7b9739b3c3b2     4336.0  132.0</span>
+<span class="sd">    8         KD    KD1  b7bc9a36-318e-4be2-a90f-74a5aa6439bf     -861.0    7.0</span>
+<span class="sd">    9         KD    KD2  ac486e16-15be-47a8-902c-2cfa2887c534     2706.0   45.0</span>
+<span class="sd">    10        KD    KD2  797fd991-570e-42d4-8292-0a7557b192d7     5450.0   24.0</span>
+<span class="sd">    11        KD    KD2  4e1ad358-ec2b-40b4-8e9a-54db28a40551      206.0   47.0</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">data_files</span> <span class="o">=</span> <span class="n">_get_data_files</span><span class="p">(</span><span class="n">config</span><span class="p">)</span>
+    <span class="n">sample_mapper</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vectorize</span><span class="p">(</span><span class="nb">dict</span><span class="p">(</span><span class="nb">enumerate</span><span class="p">(</span><span class="n">data_files</span><span class="p">))</span><span class="o">.</span><span class="n">get</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">config</span><span class="o">.</span><span class="n">get_resquiggler</span><span class="p">()</span> <span class="o">==</span> <span class="n">UNCALLED4</span><span class="p">:</span>
+        <span class="n">kit</span> <span class="o">=</span> <span class="n">config</span><span class="o">.</span><span class="n">get_kit</span><span class="p">()</span>
+        <span class="n">df</span> <span class="o">=</span> <span class="n">_get_bam_pos</span><span class="p">(</span><span class="n">data_files</span><span class="o">.</span><span class="n">values</span><span class="p">(),</span> <span class="n">reference_id</span><span class="p">,</span> <span class="n">pos</span><span class="p">,</span> <span class="n">kit</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">df</span> <span class="o">=</span> <span class="n">_get_db_pos</span><span class="p">(</span><span class="n">data_files</span><span class="o">.</span><span class="n">values</span><span class="p">(),</span> <span class="n">reference_id</span><span class="p">,</span> <span class="n">pos</span><span class="p">)</span>
+    <span class="n">df</span><span class="p">[</span><span class="s1">&#39;sample&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">sample_mapper</span><span class="p">(</span><span class="n">df</span><span class="p">[</span><span class="s1">&#39;sample&#39;</span><span class="p">])</span>
+    <span class="n">condition_mapper</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vectorize</span><span class="p">(</span><span class="n">config</span><span class="o">.</span><span class="n">sample_to_condition</span><span class="p">()</span><span class="o">.</span><span class="n">get</span><span class="p">)</span>
+    <span class="n">df</span><span class="p">[</span><span class="s1">&#39;condition&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">condition_mapper</span><span class="p">(</span><span class="n">df</span><span class="p">[</span><span class="s1">&#39;sample&#39;</span><span class="p">])</span>
+    <span class="k">return</span> <span class="n">df</span><span class="o">.</span><span class="n">loc</span><span class="p">[:,</span> <span class="p">[</span><span class="s1">&#39;condition&#39;</span><span class="p">,</span> <span class="s1">&#39;sample&#39;</span><span class="p">,</span> <span class="s1">&#39;read&#39;</span><span class="p">,</span> <span class="s1">&#39;intensity&#39;</span><span class="p">,</span> <span class="s1">&#39;dwell&#39;</span><span class="p">]]</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h2 id="nanocompore.api.get_reads" class="doc doc-heading">
+            <code class=" language-python"><span class="n">get_reads</span><span class="p">(</span><span class="n">config</span><span class="p">,</span> <span class="n">reference_id</span><span class="p">,</span> <span class="n">selected_reads</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span></code>
+
+</h2>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Get the data for all reads mapping to the given reference.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>config</code>
+            </td>
+            <td>
+                  <code><span title="nanocompore.config.Config">Config</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Path to a Nanocompore configuration file.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>reference_id</code>
+            </td>
+            <td>
+                  <code><span title="str">str</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>ID for a reference sequence (transcript).</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>selected_reads</code>
+            </td>
+            <td>
+                  <code><span title="typing.Optional">Optional</span>[<span title="list">list</span>[<span title="str">str</span>]]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Optional list of UUIDs of the reads for which to get data.
+By default it's set to None and returns all reads.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code>tuple[Float[np.ndarray, [&#34;reads positions variables&#34;]],</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>list[str],
+  list[str],
+  list[str]]</p>
+<p>A tuple with (signal_data, reads, samples, conditions)</p>
+<ul>
+<li>signal_data is a 3D array with shape (reads, positions, variables).
+  In the variables dimension 0=intensity, 1=dwell time.</li>
+<li>reads is a list of read ids (qname).</li>
+<li>samples is a list of the sample labels (as defined in the config).</li>
+<li>conditions is a list of the condition labels (as defined in the config).</li>
+</ul>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<p><span class="doc-section-title">Raises:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="KeyError">KeyError</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>If the reference_id is not found in the data sources.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<p><span class="doc-section-title">Examples:</span></p>
+    <div class="codehilite"><pre><span></span><code><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">nanocompore.api</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_config</span><span class="p">,</span> <span class="n">get_references</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">config</span> <span class="o">=</span> <span class="n">load_config</span><span class="p">(</span><span class="s1">&#39;analysis.yaml&#39;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">get_reads</span><span class="p">(</span><span class="n">config</span><span class="p">,</span> <span class="s1">&#39;ENST00000674681.1|ENSG00000075624.17|OTTHUMG00000023268|-|ACTB-219|ACTB|2554|protein_coding|&#39;</span><span class="p">)</span>
+</code></pre></div>
+
+
+            <details class="quote">
+              <summary>Source code in <code>nanocompore/api.py</code></summary>
+              <div class="codehilite"><table class="codehilitetable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 72</span>
+<span class="normal"> 73</span>
+<span class="normal"> 74</span>
+<span class="normal"> 75</span>
+<span class="normal"> 76</span>
+<span class="normal"> 77</span>
+<span class="normal"> 78</span>
+<span class="normal"> 79</span>
+<span class="normal"> 80</span>
+<span class="normal"> 81</span>
+<span class="normal"> 82</span>
+<span class="normal"> 83</span>
+<span class="normal"> 84</span>
+<span class="normal"> 85</span>
+<span class="normal"> 86</span>
+<span class="normal"> 87</span>
+<span class="normal"> 88</span>
+<span class="normal"> 89</span>
+<span class="normal"> 90</span>
+<span class="normal"> 91</span>
+<span class="normal"> 92</span>
+<span class="normal"> 93</span>
+<span class="normal"> 94</span>
+<span class="normal"> 95</span>
+<span class="normal"> 96</span>
+<span class="normal"> 97</span>
+<span class="normal"> 98</span>
+<span class="normal"> 99</span>
+<span class="normal">100</span>
+<span class="normal">101</span>
+<span class="normal">102</span>
+<span class="normal">103</span>
+<span class="normal">104</span>
+<span class="normal">105</span>
+<span class="normal">106</span>
+<span class="normal">107</span>
+<span class="normal">108</span>
+<span class="normal">109</span>
+<span class="normal">110</span>
+<span class="normal">111</span>
+<span class="normal">112</span>
+<span class="normal">113</span>
+<span class="normal">114</span>
+<span class="normal">115</span>
+<span class="normal">116</span>
+<span class="normal">117</span>
+<span class="normal">118</span>
+<span class="normal">119</span>
+<span class="normal">120</span>
+<span class="normal">121</span>
+<span class="normal">122</span>
+<span class="normal">123</span>
+<span class="normal">124</span>
+<span class="normal">125</span>
+<span class="normal">126</span>
+<span class="normal">127</span>
+<span class="normal">128</span>
+<span class="normal">129</span>
+<span class="normal">130</span>
+<span class="normal">131</span>
+<span class="normal">132</span>
+<span class="normal">133</span>
+<span class="normal">134</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">get_reads</span><span class="p">(</span>
+        <span class="n">config</span><span class="p">:</span> <span class="n">Config</span><span class="p">,</span>
+        <span class="n">reference_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+        <span class="n">selected_reads</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]]</span><span class="o">=</span><span class="kc">None</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">Float</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="s2">&quot;reads positions variables&quot;</span><span class="p">],</span>
+               <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+               <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+               <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get the data for all reads mapping to the given reference.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    config : Config</span>
+<span class="sd">        Path to a Nanocompore configuration file.</span>
+<span class="sd">    reference_id : str</span>
+<span class="sd">        ID for a reference sequence (transcript).</span>
+<span class="sd">    selected_reads : Optional[list[str]]</span>
+<span class="sd">        Optional list of UUIDs of the reads for which to get data.</span>
+<span class="sd">        By default it&#39;s set to None and returns all reads.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    tuple[Float[np.ndarray, [&quot;reads positions variables&quot;]],</span>
+<span class="sd">          list[str],</span>
+<span class="sd">          list[str],</span>
+<span class="sd">          list[str]]</span>
+
+<span class="sd">        A tuple with (signal_data, reads, samples, conditions)</span>
+
+<span class="sd">        - signal_data is a 3D array with shape (reads, positions, variables).</span>
+<span class="sd">          In the variables dimension 0=intensity, 1=dwell time.</span>
+<span class="sd">        - reads is a list of read ids (qname).</span>
+<span class="sd">        - samples is a list of the sample labels (as defined in the config).</span>
+<span class="sd">        - conditions is a list of the condition labels (as defined in the config).</span>
+
+<span class="sd">    Raises</span>
+<span class="sd">    ------</span>
+<span class="sd">    KeyError</span>
+<span class="sd">        If the reference_id is not found in the data sources.</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    &gt;&gt;&gt; from nanocompore.api import load_config, get_references</span>
+<span class="sd">    &gt;&gt;&gt; config = load_config(&#39;analysis.yaml&#39;)</span>
+<span class="sd">    &gt;&gt;&gt; get_reads(config, &#39;ENST00000674681.1|ENSG00000075624.17|OTTHUMG00000023268|-|ACTB-219|ACTB|2554|protein_coding|&#39;)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">data_files</span> <span class="o">=</span> <span class="n">_get_data_files</span><span class="p">(</span><span class="n">config</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">config</span><span class="o">.</span><span class="n">get_resquiggler</span><span class="p">()</span> <span class="o">==</span> <span class="n">UNCALLED4</span><span class="p">:</span>
+        <span class="n">kit</span> <span class="o">=</span> <span class="n">config</span><span class="o">.</span><span class="n">get_kit</span><span class="p">()</span>
+        <span class="n">data</span><span class="p">,</span> <span class="n">reads</span><span class="p">,</span> <span class="n">samples</span> <span class="o">=</span> <span class="n">_get_bam_reads</span><span class="p">(</span><span class="n">data_files</span><span class="o">.</span><span class="n">values</span><span class="p">(),</span>
+                                              <span class="n">reference_id</span><span class="p">,</span>
+                                              <span class="n">kit</span><span class="p">,</span>
+                                              <span class="n">selected_reads</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">data</span><span class="p">,</span> <span class="n">reads</span><span class="p">,</span> <span class="n">samples</span> <span class="o">=</span> <span class="n">_get_db_reads</span><span class="p">(</span><span class="n">data_files</span><span class="o">.</span><span class="n">values</span><span class="p">(),</span>
+                                             <span class="n">reference_id</span><span class="p">,</span>
+                                             <span class="n">selected_reads</span><span class="p">)</span>
+    <span class="n">sample_mapper</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vectorize</span><span class="p">(</span><span class="nb">dict</span><span class="p">(</span><span class="nb">enumerate</span><span class="p">(</span><span class="n">data_files</span><span class="p">))</span><span class="o">.</span><span class="n">get</span><span class="p">)</span>
+    <span class="n">samples</span> <span class="o">=</span> <span class="n">sample_mapper</span><span class="p">(</span><span class="n">samples</span><span class="p">)</span>
+    <span class="n">condition_mapper</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vectorize</span><span class="p">(</span><span class="n">config</span><span class="o">.</span><span class="n">sample_to_condition</span><span class="p">()</span><span class="o">.</span><span class="n">get</span><span class="p">)</span>
+    <span class="n">conditions</span> <span class="o">=</span> <span class="n">condition_mapper</span><span class="p">(</span><span class="n">samples</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">data</span><span class="p">,</span> <span class="n">reads</span><span class="p">,</span> <span class="n">samples</span><span class="o">.</span><span class="n">tolist</span><span class="p">(),</span> <span class="n">conditions</span><span class="o">.</span><span class="n">tolist</span><span class="p">()</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h2 id="nanocompore.api.get_references" class="doc doc-heading">
+            <code class=" language-python"><span class="n">get_references</span><span class="p">(</span><span class="n">config</span><span class="p">,</span> <span class="n">has_data</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span></code>
+
+</h2>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Returns a list of all references found in the
+list of samples defined in the configuration.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>config</code>
+            </td>
+            <td>
+                  <code><span title="nanocompore.config.Config">Config</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Path to a Nanocompore configuration file.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>has_data</code>
+            </td>
+            <td>
+                  <code><span title="bool">bool</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>If True (default) will return only references
+for which there are mapped reads.</p>
+              </div>
+            </td>
+            <td>
+                  <code>True</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="list">list</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>List of transcript reference id strings.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<p><span class="doc-section-title">Examples:</span></p>
+    <div class="codehilite"><pre><span></span><code><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">nanocompore.api</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_config</span><span class="p">,</span> <span class="n">get_references</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">config</span> <span class="o">=</span> <span class="n">load_config</span><span class="p">(</span><span class="s1">&#39;analysis.yaml&#39;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">get_references</span><span class="p">(</span><span class="n">config</span><span class="p">)</span>
+<span class="go">[&#39;ENST00000674681.1|ENSG00000075624.17|OTTHUMG00000023268|-|ACTB-219|ACTB|2554|protein_coding|&#39;, &#39;ENST00000642480.2|ENSG00000075624.17|OTTHUMG00000023268|OTTHUMT00000495153.1|ACTB-213|ACTB|2021|protein_coding|&#39;]</span>
+</code></pre></div>
+
+
+            <details class="quote">
+              <summary>Source code in <code>nanocompore/api.py</code></summary>
+              <div class="codehilite"><table class="codehilitetable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">40</span>
+<span class="normal">41</span>
+<span class="normal">42</span>
+<span class="normal">43</span>
+<span class="normal">44</span>
+<span class="normal">45</span>
+<span class="normal">46</span>
+<span class="normal">47</span>
+<span class="normal">48</span>
+<span class="normal">49</span>
+<span class="normal">50</span>
+<span class="normal">51</span>
+<span class="normal">52</span>
+<span class="normal">53</span>
+<span class="normal">54</span>
+<span class="normal">55</span>
+<span class="normal">56</span>
+<span class="normal">57</span>
+<span class="normal">58</span>
+<span class="normal">59</span>
+<span class="normal">60</span>
+<span class="normal">61</span>
+<span class="normal">62</span>
+<span class="normal">63</span>
+<span class="normal">64</span>
+<span class="normal">65</span>
+<span class="normal">66</span>
+<span class="normal">67</span>
+<span class="normal">68</span>
+<span class="normal">69</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">get_references</span><span class="p">(</span><span class="n">config</span><span class="p">:</span> <span class="n">Config</span><span class="p">,</span> <span class="n">has_data</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Returns a list of all references found in the</span>
+<span class="sd">    list of samples defined in the configuration.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    config : Config</span>
+<span class="sd">        Path to a Nanocompore configuration file.</span>
+<span class="sd">    has_data : bool, default=True</span>
+<span class="sd">        If True (default) will return only references</span>
+<span class="sd">        for which there are mapped reads.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    list</span>
+<span class="sd">        List of transcript reference id strings.</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    &gt;&gt;&gt; from nanocompore.api import load_config, get_references</span>
+<span class="sd">    &gt;&gt;&gt; config = load_config(&#39;analysis.yaml&#39;)</span>
+<span class="sd">    &gt;&gt;&gt; get_references(config)</span>
+<span class="sd">    [&#39;ENST00000674681.1|ENSG00000075624.17|OTTHUMG00000023268|-|ACTB-219|ACTB|2554|protein_coding|&#39;, &#39;ENST00000642480.2|ENSG00000075624.17|OTTHUMG00000023268|OTTHUMT00000495153.1|ACTB-213|ACTB|2021|protein_coding|&#39;]</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">data_files</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">_get_data_files</span><span class="p">(</span><span class="n">config</span><span class="p">)</span><span class="o">.</span><span class="n">values</span><span class="p">())</span>
+    <span class="k">if</span> <span class="n">config</span><span class="o">.</span><span class="n">get_resquiggler</span><span class="p">()</span> <span class="o">==</span> <span class="n">UNCALLED4</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">_get_bam_references</span><span class="p">(</span><span class="n">data_files</span><span class="p">,</span> <span class="n">has_data</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">_get_db_references</span><span class="p">(</span><span class="n">data_files</span><span class="p">,</span> <span class="n">has_data</span><span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h2 id="nanocompore.api.load_config" class="doc doc-heading">
+            <code class=" language-python"><span class="n">load_config</span><span class="p">(</span><span class="n">config_path</span><span class="p">)</span></code>
+
+</h2>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Load a configuration file.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>config_path</code>
+            </td>
+            <td>
+                  <code><span title="str">str</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Path to the Nanocompore configuration file.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="nanocompore.config.Config">Config</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>A configuration object.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+            <details class="quote">
+              <summary>Source code in <code>nanocompore/api.py</code></summary>
+              <div class="codehilite"><table class="codehilitetable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">22</span>
+<span class="normal">23</span>
+<span class="normal">24</span>
+<span class="normal">25</span>
+<span class="normal">26</span>
+<span class="normal">27</span>
+<span class="normal">28</span>
+<span class="normal">29</span>
+<span class="normal">30</span>
+<span class="normal">31</span>
+<span class="normal">32</span>
+<span class="normal">33</span>
+<span class="normal">34</span>
+<span class="normal">35</span>
+<span class="normal">36</span>
+<span class="normal">37</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">load_config</span><span class="p">(</span><span class="n">config_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Config</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Load a configuration file.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    config_path : str</span>
+<span class="sd">        Path to the Nanocompore configuration file.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    Config</span>
+<span class="sd">        A configuration object.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">config_path</span><span class="p">,</span> <span class="s1">&#39;rb&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">Config</span><span class="p">(</span><span class="n">yaml</span><span class="o">.</span><span class="n">safe_load</span><span class="p">(</span><span class="n">f</span><span class="p">))</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Copyright &copy; 2019 Adrien Leger & Tommaso Leonardi
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      <script id="__config" type="application/json">{"base": "..", "features": [], "search": "../assets/javascripts/workers/search.d50fe291.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.13a4f30d.min.js"></script>
+      
+    
+  </body>
+</html>

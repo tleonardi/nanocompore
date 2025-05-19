@@ -1,73 +1,63 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
-     <loc>http://nanocompore.rna.rocks/</loc>
-     <lastmod>2021-01-15</lastmod>
-     <changefreq>daily</changefreq>
+         <loc>http://nanocompore.rna.rocks/</loc>
+         <lastmod>2025-05-19</lastmod>
     </url>
     <url>
-     <loc>http://nanocompore.rna.rocks/installation/</loc>
-     <lastmod>2021-01-15</lastmod>
-     <changefreq>daily</changefreq>
+         <loc>http://nanocompore.rna.rocks/alternative/</loc>
+         <lastmod>2025-05-19</lastmod>
     </url>
     <url>
-     <loc>http://nanocompore.rna.rocks/data_preparation/</loc>
-     <lastmod>2021-01-15</lastmod>
-     <changefreq>daily</changefreq>
+         <loc>http://nanocompore.rna.rocks/changelog/</loc>
+         <lastmod>2025-05-19</lastmod>
     </url>
     <url>
-     <loc>http://nanocompore.rna.rocks/usage/</loc>
-     <lastmod>2021-01-15</lastmod>
-     <changefreq>daily</changefreq>
+         <loc>http://nanocompore.rna.rocks/citing/</loc>
+         <lastmod>2025-05-19</lastmod>
     </url>
     <url>
-     <loc>http://nanocompore.rna.rocks/demo/Eventalign_collapse_usage/</loc>
-     <lastmod>2021-01-15</lastmod>
-     <changefreq>daily</changefreq>
+         <loc>http://nanocompore.rna.rocks/code_of_conduct/</loc>
+         <lastmod>2025-05-19</lastmod>
     </url>
     <url>
-     <loc>http://nanocompore.rna.rocks/demo/SampComp_usage/</loc>
-     <lastmod>2021-01-15</lastmod>
-     <changefreq>daily</changefreq>
+         <loc>http://nanocompore.rna.rocks/contributing/</loc>
+         <lastmod>2025-05-19</lastmod>
     </url>
     <url>
-     <loc>http://nanocompore.rna.rocks/demo/SampCompDB_usage/</loc>
-     <lastmod>2021-01-15</lastmod>
-     <changefreq>daily</changefreq>
+         <loc>http://nanocompore.rna.rocks/data_api/</loc>
+         <lastmod>2025-05-19</lastmod>
     </url>
     <url>
-     <loc>http://nanocompore.rna.rocks/demo/SimReads_usage/</loc>
-     <lastmod>2021-01-15</lastmod>
-     <changefreq>daily</changefreq>
+         <loc>http://nanocompore.rna.rocks/data_preparation/</loc>
+         <lastmod>2025-05-19</lastmod>
     </url>
     <url>
-     <loc>http://nanocompore.rna.rocks/alternative/</loc>
-     <lastmod>2021-01-15</lastmod>
-     <changefreq>daily</changefreq>
+         <loc>http://nanocompore.rna.rocks/installation/</loc>
+         <lastmod>2025-05-19</lastmod>
     </url>
     <url>
-     <loc>http://nanocompore.rna.rocks/citing/</loc>
-     <lastmod>2021-01-15</lastmod>
-     <changefreq>daily</changefreq>
+         <loc>http://nanocompore.rna.rocks/licence/</loc>
+         <lastmod>2025-05-19</lastmod>
     </url>
     <url>
-     <loc>http://nanocompore.rna.rocks/contributing/</loc>
-     <lastmod>2021-01-15</lastmod>
-     <changefreq>daily</changefreq>
+         <loc>http://nanocompore.rna.rocks/output/</loc>
+         <lastmod>2025-05-19</lastmod>
     </url>
     <url>
-     <loc>http://nanocompore.rna.rocks/code_of_conduct/</loc>
-     <lastmod>2021-01-15</lastmod>
-     <changefreq>daily</changefreq>
+         <loc>http://nanocompore.rna.rocks/plotting/</loc>
+         <lastmod>2025-05-19</lastmod>
     </url>
     <url>
-     <loc>http://nanocompore.rna.rocks/licence/</loc>
-     <lastmod>2021-01-15</lastmod>
-     <changefreq>daily</changefreq>
+         <loc>http://nanocompore.rna.rocks/plotting_api/</loc>
+         <lastmod>2025-05-19</lastmod>
     </url>
     <url>
-     <loc>http://nanocompore.rna.rocks/changelog/</loc>
-     <lastmod>2021-01-15</lastmod>
-     <changefreq>daily</changefreq>
+         <loc>http://nanocompore.rna.rocks/troubleshooting/</loc>
+         <lastmod>2025-05-19</lastmod>
+    </url>
+    <url>
+         <loc>http://nanocompore.rna.rocks/usage/</loc>
+         <lastmod>2025-05-19</lastmod>
     </url>
 </urlset>
