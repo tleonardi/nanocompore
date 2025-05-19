@@ -1,264 +1,464 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
-#~~~~~~~~~~~~~~IMPORTS~~~~~~~~~~~~~~#
-
-# Standard library imports
 import argparse
-from collections import *
-import textwrap
 import os
+import shutil
+import textwrap
+import yaml
+import sys
 
-# Third party
 from loguru import logger
 
-# Local imports
 from nanocompore import __version__ as package_version
-from nanocompore import __name__ as package_name
 from nanocompore import __description__ as package_description
-from nanocompore.SampComp import SampComp
-from nanocompore.SimReads import SimReads
-from nanocompore.Eventalign_collapse import Eventalign_collapse
-from nanocompore.common import *
+from nanocompore.common import Kit
+from nanocompore.common import NanocomporeError
+from nanocompore.common import mkdir
+from nanocompore.config import Config
+from nanocompore.eventalign_collapse import EventalignCollapser
+from nanocompore.preprocessing import RemoraPreprocessor
+from nanocompore import plotting
+from nanocompore.run import RunCmd
 
-#~~~~~~~~~~~~~~MAIN PARSER ENTRY POINT~~~~~~~~~~~~~~#
 
 def main(args=None):
     # General parser
     parser = argparse.ArgumentParser(description=package_description, formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument('--version', '-v', action='version', version='v'+package_version)
+
+    subparser_description = textwrap.dedent(f"""
+            nanocompore implements the following subcommands
+            \t● {'template':<20} : Initialize a new input configuration file using the default template.
+            \t● {'eventalign_collapse':<20} : Parse eventalign data to process and store it to an intermediary
+                                           efficient SQLite database for later analysis.
+            \t● {'remora_resquiggle':<20} : Use Remora to resquiggle a sample and create an intermediary
+                                           efficient SQLite database for later analysis.
+            \t● {'run':<20} : Compare 2 samples and find significant signal differences.
+            \t● {'plot':<20} : Generate plots.""")
     subparsers = parser.add_subparsers(dest='subcommand',
-        description=textwrap.dedent("""
-            nanocompore implements the following subcommands\n
-            \t* eventalign_collapse : Collapse the nanopolish eventalign output at kmers level and compute kmer level statistics\n
-            \t* sampcomp : Compare 2 samples and find significant signal differences\n
-            \t* simreads : Simulate reads as a NanopolishComp like file from a fasta file and an inbuild model"""))
-    subparsers.required = True
+                                       required=True,
+                                       description=subparser_description)
 
     # Sampcomp subparser
-    parser_sc = subparsers.add_parser('sampcomp', formatter_class=argparse.RawDescriptionHelpFormatter,
-        description=textwrap.dedent("""
-            Compare 2 samples and find significant signal differences\n
-            * Minimal example with file_list arguments\n
-                nanocompore sampcomp -1 f1.tsv,f2.tsv -2 f3.tsv,f4.tsv -f ref.fa -o results
-            * Minimal example with sample YAML file\n
-                nanocompore sampcomp -y samples.yaml -f ref -o results"""))
-    parser_sc.set_defaults(func=sampcomp_main)
-    parser_sc_sample_yaml = parser_sc.add_argument_group('YAML sample files', description="Option allowing to describe sample files in a YAML file")
-    parser_sc_sample_yaml.add_argument("--sample_yaml", "-y", default=None, type=str, metavar="sample_yaml",
-        help="YAML file containing the sample file labels. See formatting in documentation. (required if --file_list1 and --file_list2 not given)")
-    parser_sc_sample_args = parser_sc.add_argument_group('Arguments sample files', description="Option allowing to describe sample files directly as command line arguments")
-    parser_sc_sample_args.add_argument("--file_list1", "-1", default=None, type=str, metavar="/path/to/Condition1_rep1,/path/to/Condition1_rep2",
-        help="Comma separated list of NanopolishComp files for label 1. (required if --sample_yaml not given)")
-    parser_sc_sample_args.add_argument("--file_list2", "-2", default=None, type=str, metavar="/path/to/Condition2_rep1,/path/to/Condition2_rep2",
-        help="Comma separated list of NanopolishComp files for label 2. (required if --sample_yaml not given)")
-    parser_sc_sample_args.add_argument("--label1", type=str, metavar="Condition1", default="Condition1",
-        help="Label for files in --file_list1 (default: %(default)s)")
-    parser_sc_sample_args.add_argument("--label2", type=str, metavar="Condition2", default="Condition2",
-        help="Label for files in --file_list2 (default: %(default)s)")
-    parser_sc_io = parser_sc.add_argument_group('Input options')
-    parser_sc_io.add_argument("--fasta", "-f", type=str, required=True,
-        help="Fasta file used for mapping (required)")
-    parser_sc_io.add_argument("--bed", type=str, default=None,
-        help="BED file with annotation of transcriptome used for mapping (optional)")
-    parser_sc_filtering = parser_sc.add_argument_group('Transcript filtering options')
-    parser_sc_filtering.add_argument("--max_invalid_kmers_freq", type=float, default=0.1,
-        help="Max fequency of invalid kmers (default: %(default)s)")
-    parser_sc_filtering.add_argument("--min_coverage", type=int, default=30,
-        help="Minimum coverage required in each condition to do the comparison (default: %(default)s)")
-    parser_sc_filtering.add_argument("--downsample_high_coverage", type=int, default=5000,
-        help="Transcripts with high coverage will be downsampled (default: %(default)s)")
-    parser_sc_filtering.add_argument("--min_ref_length", type=int, default=100,
-        help="Minimum length of a reference transcript to include it in the analysis (default: %(default)s)")
-    parser_sc_testing = parser_sc.add_argument_group('Statistical testing options')
-    parser_sc_testing.add_argument("--comparison_methods", type=str, default="GMM,KS",
-        help="Comma separated list of comparison methods. Valid methods are: GMM,KS,TT,MW. (default: %(default)s)")
-    parser_sc_testing.add_argument("--sequence_context", type=int, default=0, choices=range(0,5),
-        help="Sequence context for combining p-values (default: %(default)s)")
-    parser_sc_testing.add_argument("--sequence_context_weights", type=str, default="uniform", choices=["uniform", "harmonic"],
-        help="Type of weights to use for combining p-values")
-    parser_sc_testing.add_argument("--pvalue_thr", type=float, default=0.05,
-        help="Adjusted p-value threshold for reporting significant sites (default: %(default)s)")
-    parser_sc_testing.add_argument("--logit", action='store_true',
-        help="Use logistic regression testing downstream of GMM method. This is a legacy option and is now the deault.")
-    parser_sc_testing.add_argument("--anova", action='store_true',
-        help="Use Anova test downstream of GMM method (default: %(default)s)")
-    parser_sc_testing.add_argument("--allow_warnings", action='store_true', default=False,
-        help="If True runtime warnings during the ANOVA tests don't raise an error (default: %(default)s)")
-    parser_sc_misc = parser_sc.add_argument_group('Other options')
-    parser_sc_misc.add_argument("--nthreads", "-t", type=int, default=3,
-        help="Number of threads (default: %(default)s)")
+    parser_sc = subparsers.add_parser('run',
+                                      formatter_class=argparse.RawDescriptionHelpFormatter,
+                                      description=textwrap.dedent("Compare 2 samples and find significant signal differences."))
+    parser_sc.add_argument('config', type=str)
+    parser_sc.set_defaults(func=sampcomp_subcommand)
 
-    # simreads subparser
-    parser_sr = subparsers.add_parser('simreads', formatter_class=argparse.RawDescriptionHelpFormatter,
-        description=textwrap.dedent("""
-            Simulate reads as a NanopolishComp like file from a fasta file and an inbuild model\n
-            * Minimal example without model alteration
-                nanocompore simreads -f ref.fa -o results -n 50\n
-            * Minimal example with alteration of model intensity loc parameter for 50% of the reads
-            nanocompore simreads -f ref.fa -o results -n 50 --intensity_mod 2 --mod_reads_freq 0.5 --mod_bases_freq 0.2"""))
-    parser_sr.set_defaults(func=simreads_main)
-    parser_sr_io = parser_sr.add_argument_group('Input options')
-    parser_sr_io.add_argument("--fasta", "-f", type=str, required=True,
-        help="Fasta file containing references to use to generate artificial reads")
-    parser_sr_modify = parser_sr.add_argument_group('Signal modification options')
-    parser_sr_modify.add_argument("--intensity_mod", type=float, default=0,
-        help="Fraction of intensity distribution SD by which to modify the intensity distribution loc value (default: %(default)s)")
-    parser_sr_modify.add_argument("--dwell_mod", type=float, default=0,
-        help="Fraction of dwell time distribution SD by which to modify the intensity distribution loc value (default: %(default)s)")
-    parser_sr_modify.add_argument("--mod_reads_freq", type=float, default=0,
-        help="Frequency of reads to modify (default: %(default)s)")
-    parser_sr_modify.add_argument("--mod_bases_freq", type=float, default=0.25,
-        help="Frequency of bases to modify in each read (if possible) (default: %(default)s)")
-    parser_sr_modify.add_argument("--mod_bases_type", type=str, default="A", choices=["A","T","C","G"],
-        help="Base for which to modify the signal (default: %(default)s)")
-    parser_sr_modify.add_argument("--mod_extend_context", type=int, default=2,
-        help="number of adjacent base affected by the signal modification following an harmonic series (default: %(default)s)")
-    parser_sr_modify.add_argument("--min_mod_dist", type=int, default=6,
-        help="Minimal distance between 2 bases to modify (default: %(default)s)")
-    parser_sr_misc = parser_sr.add_argument_group('Other options')
-    parser_sr_misc.add_argument("--run_type", type=str, default="RNA", choices=["RNA", "DNA"],
-        help="Define the run type model to import (default: %(default)s)")
-    parser_sr_misc.add_argument("--nreads_per_ref", "-n", type=int, default=100,
-        help="Number of reads to generate per references (default: %(default)s)")
-    parser_sr_misc.add_argument("--pos_rand_seed", type=int, default=42 ,
-        help="Define a seed for randon position picking to get a deterministic behaviour (default: %(default)s)")
-    parser_sr_misc.add_argument("--not_bound", action='store_true', default=False,
-        help="Do not bind the values generated by the distributions to the observed min and max observed values from the model file (default: %(default)s)")
+    # preprocess eventalign_collapse
+    parser_sc = subparsers.add_parser('eventalign_collapse',
+                                      formatter_class=argparse.RawDescriptionHelpFormatter,
+                                      description=textwrap.dedent("Parse eventalign data to process and store it to an intermediary efficient database for later analysis."))
+    parser_sc.add_argument('--ref', '-r', help="Transcriptome fasta reference.", required=True)
+    parser_sc.add_argument('--input', '-i', help="Path to input eventalign file. If not provided, the input is read from stdin (useful for piping nanopolish/f5c eventalign directly).")
+    parser_sc.add_argument('--output', '-o', help="Path to output SQLite database.", required=True)
+    parser_sc.add_argument('--nthreads', '-n', help="Number of parallel processes to use for processing.", nargs='?', type=int, const=2, default=2)
+    parser_sc.add_argument('--tmp', '-t', help="Directory where tmp files would be created (default: current directory).", nargs='?', type=str, const='.', default='.')
+    parser_sc.set_defaults(func=eventalign_collapse_subcommand)
 
-    # Eventalign_collapse subparser
-    parser_ec = subparsers.add_parser("eventalign_collapse", formatter_class=argparse.RawDescriptionHelpFormatter,
-        description=textwrap.dedent("""
-        Collapse the nanopolish eventalign output at kmers level and compute kmer level statistics
-        * Minimal example
-            nanocompore eventalign_collapse -i nanopolish_eventalign.tsv -outprefix out\n"""))
-    parser_ec.set_defaults(func=eventalign_collapse_main)
-    parser_ec_io = parser_ec.add_argument_group("Input options")
-    parser_ec_io.add_argument("--eventalign", "-i", default=0,
-        help="Path to a nanopolish eventalign tsv output file, or a list of file, or a regex (can be gzipped). It can be ommited if piped to standard input (default: piped to stdin)")
-    parser_ec_rp = parser_ec.add_argument_group("Run parameters options")
-    parser_ec_rp.add_argument("--n_lines", "-l", default=None , type=int ,
-        help = "Number of lines to parse.(default: no limits")
-    parser_ec_misc = parser_ec.add_argument_group("Other options")
-    parser_ec_misc.add_argument("--nthreads", "-t", default=3, type=int,
-        help="Total number of threads. 2 threads are reserved for the reader and the writer (default: %(default)s)")
+    # preprocess remora_resquiggle
+    parser_sc = subparsers.add_parser('remora_resquiggle',
+                                      formatter_class=argparse.RawDescriptionHelpFormatter,
+                                      description=textwrap.dedent("Use Remora to resquiggle a sample and create an SQLite DB with the signal measurements."))
+    parser_sc.add_argument('--ref', '-r', help="Transcriptome fasta reference.", required=True)
+    parser_sc.add_argument('--pod5', '-p', help="Path to input pod5 file containing the raw signal data.", required=True)
+    parser_sc.add_argument('--bam', '-b', help="Path to input bam file containing the aligned reads.", required=True)
+    parser_sc.add_argument('--output', '-o', help="Path to output SQLite database.", required=True)
+    parser_sc.add_argument('--kit', '-k', help="Sequencing kit that was use (should be RNA002 or RNA004).", required=True)
+    parser_sc.add_argument('--max-reads', '-m', help="Maximum number of reads to resquiggle for a transcript (default: 5000).", nargs='?', type=int, const=5000, default=5000)
+    parser_sc.add_argument('--nthreads', '-n', help="Number of parallel processes to use for processing (default: 2).", nargs='?', type=int, const=2, default=2)
+    parser_sc.set_defaults(func=remora_resquiggle_subcommand)
 
-    # Add common options for all parsers
-    for sp in [parser_sc, parser_sr, parser_ec]:
-        sp_output = sp.add_argument_group("Output options")
-        sp_output.add_argument("--outpath", "-o", type=str, default="./",
-            help="Path to the output folder (default: %(default)s)")
-        sp_output.add_argument("--outprefix", "-p", type=str, default="out",
-            help="text outprefix for all the files generated (default: %(default)s)")
-        sp_output.add_argument("--overwrite", "-w", action='store_true', default=False,
-            help="Use --outpath even if it exists already (default: %(default)s)")
-        sp_verbosity = sp.add_argument_group("Verbosity options")
-        sp_verbosity.add_argument("--log_level", type=str, default="info", choices=["warning", "info", "debug", "trace"],
-            help="Set the log level (default: %(default)s)")
-        sp_verbosity.add_argument("--progress", default=False, action='store_true',
-            help="Display a progress bar during execution (default: %(default)s)")
+    # Init subparser
+    parser_init = subparsers.add_parser('template',
+                                        formatter_class=argparse.RawDescriptionHelpFormatter,
+                                        description=textwrap.dedent("Initialize a new input configuration file using the default template."))
+    parser_init.add_argument('--overwrite', '-o', action='store_true', help="Overwrite existing config file.")
+    parser_init.add_argument('path', type=str)
+    parser_init.set_defaults(func=init_subcommand)
 
-    # Parse agrs and
-    args = parser.parse_args()
+    parser_plot = subparsers.add_parser('plot',
+                                        formatter_class=argparse.RawDescriptionHelpFormatter,
+                                        description=textwrap.dedent("Plotting functionality."))
+    # plot_subparsers = parser_plot.add_subparsers(help='Plot type.')
+    plot_subparsers_description = textwrap.dedent(f"""
+            nanocompore plot implements the following subcommands
+            \t● {'pvalues':<10} : Plot the p-values for a reference region.
+            \t● {'signal':<10} : Plot the signal measurements for a region.
+                                 Note: this will plot the data from the input
+                                 files without applying any filtering performed
+                                 by Nanocompore.
+            \t● {'position':<10} : Plot the signal data for a specific position as
+                                 a 2D plot. Note: this will plot the data as it is
+                                 in the input files, without applying the filtering
+                                 performed by Nanocompore.
+            \t● {'gmm':<10} : Plot the GMM fitting for a position.
+                                 This replicates all data filtering and produces
+                                 identical GMM fitting to the one obtained by the
+                                 run command.
+            \t● {'coverage':<10} : Plot the read coverage over a reference region.
+                                 Note: this will plot the data as it is in the input
+                                 files, without applying the filtering performed
+                                 by Nanocompore.""")
+    plot_subparsers = parser_plot.add_subparsers(dest='subcommand',
+                                                 required=True,
+                                                 description=plot_subparsers_description)
 
-    # Check if output folder already exists
-    try:
-        mkdir(fn=args.outpath, exist_ok=args.overwrite)
-    except (NanocomporeError, FileExistsError) as E:
-        raise NanocomporeError("Could not create the output folder. Try using `--overwrite` option or use another directory")
+    parser_pvalues = plot_subparsers.add_parser("pvalues",
+                                                formatter_class=argparse.RawDescriptionHelpFormatter,
+                                                description=textwrap.dedent("Plot the p-values for a reference region."))
+    parser_pvalues.add_argument('--config', '-c', type=str, required=True, help="Path to the input configuration YAML file.")
+    parser_pvalues.add_argument('--output', '-o', type=str, required=True, help="Path and filename where the plot will be saved.")
+    parser_pvalues.add_argument('reference', type=str, help="Reference name, matching a name from the FASTA reference used in the config.")
+    parser_pvalues.add_argument('--start', type=int, help="0-based index on the reference.")
+    parser_pvalues.add_argument('--end', type=int, help="0-based index on the reference.")
+    parser_pvalues.add_argument('--threshold', type=float, help="Threshold p-value that will be drawn as a line.", default=0.01)
+    parser_pvalues.add_argument('--kind', type=str, help="Kind of plot to draw. Default: lineplot", choices=['lineplot', 'barplot'], default='lineplot')
+    parser_pvalues.add_argument('--figsize', type=str, help="Figure size. Default: 30,10", default='30,10')
+    parser_pvalues.add_argument('--tests', type=str, help="Which tests to plot. By default all executed tests are shown.", default=None)
+    parser_pvalues.add_argument('--palette', type=str, help="Color palette to use. Default: Dark2", default='Dark2')
+    parser_pvalues.set_defaults(func=plot_pvalues)
 
-    # Set logger
-    log_fn = os.path.join(args.outpath, args.outprefix+"_{}.log".format(vars(args)["subcommand"]))
-    set_logger(args.log_level, log_fn=log_fn)
+    parser_signal = plot_subparsers.add_parser("signal",
+                                               formatter_class=argparse.RawDescriptionHelpFormatter,
+                                               description=textwrap.dedent("Plot the signal measurements for a region."))
+    parser_signal.add_argument('--config', '-c', type=str, required=True, help="Path to the input configuration YAML file.")
+    parser_signal.add_argument('--output', '-o', type=str, required=True, help="Path and filename where the plot will be saved.")
+    parser_signal.add_argument('reference', type=str, help="Reference name, matching a name from the FASTA reference used in the config.")
+    parser_signal.add_argument('--start', type=int, help="0-based index on the reference.")
+    parser_signal.add_argument('--end', type=int, help="0-based index on the reference.")
+    parser_signal.add_argument('--kind', type=str, help="Kind of plot to draw. Default: violinplot", choices=['violinplot', 'swarmplot', 'boxenplot'], default='violinplot')
+    parser_signal.add_argument('--figsize', type=str, help="Figure size: WIDTH,HEIGHT. Default: 30,10", default='30,10')
+    parser_signal.add_argument('--split_samples', action='store_true', help="Split results by sample instead of by condition.")
+    parser_signal.add_argument('--markersize', type=int, help="Size of the points if swarmplot is used.", default=2)
+    parser_signal.add_argument('--palette', type=str, help="Color palette to use. Default: Dark2", default='Dark2')
+    parser_signal.set_defaults(func=plot_signal)
 
-    # Call relevant subfunction
+    parser_position = plot_subparsers.add_parser("position",
+                                                 formatter_class=argparse.RawDescriptionHelpFormatter,
+                                                 description=textwrap.dedent("Plot the signal data for a specific position as a 2D plot."))
+    parser_position.add_argument('--config', '-c', type=str, required=True, help="Path to the input configuration YAML file.")
+    parser_position.add_argument('--output', '-o', type=str, required=True, help="Path and filename where the plot will be saved.")
+    parser_position.add_argument('reference', type=str, help="Reference name, matching a name from the FASTA reference used in the config.")
+    parser_position.add_argument('position', type=int, help="Position to plot (0-based index).")
+    parser_position.add_argument('--figsize', type=str, help="Figure size: WIDTH,HEIGHT. Default: 10,10", default='10,10')
+    parser_position.add_argument('--point_size', type=int, help="Size of the data points", default=20)
+    parser_position.add_argument('--xlim', type=str, help="Set specific range for the x-axis: MIN,MAX. By default it will be inferred from the data")
+    parser_position.add_argument('--ylim', type=str, help="Set specific range for the x-axis: MIN,MAX. By default it will be inferred from the data")
+    parser_position.add_argument('--kde', action='store_true', help="Plot the KDE of the intensity/dwell bivarariate distributions in the two samples.")
+    parser_position.add_argument('--kde_levels', type=int, help="How many levels of the gaussian distributions to show", default=10)
+    parser_position.add_argument('--palette', type=str, help="Use a single palette to select both point and gmm colors.", default='Dark2')
+    parser_position.set_defaults(func=plot_position)
+
+    parser_gmm = plot_subparsers.add_parser("gmm",
+                                            formatter_class=argparse.RawDescriptionHelpFormatter,
+                                            description=textwrap.dedent("Plot the GMM fitting for a single position."))
+    parser_gmm.add_argument('--config', '-c', type=str, required=True, help="Path to the input configuration YAML file.")
+    parser_gmm.add_argument('--output', '-o', type=str, required=True, help="Path and filename where the plot will be saved.")
+    parser_gmm.add_argument('reference', type=str, help="Reference name, matching a name from the FASTA reference used in the config.")
+    parser_gmm.add_argument('position', type=int, help="Position to plot (0-based index).")
+    parser_gmm.add_argument('--figsize', type=str, help="Figure size: WIDTH,HEIGHT. Default: 10,10", default='10,10')
+    parser_gmm.add_argument('--point_size', type=int, help="Size of the data points", default=20)
+    parser_gmm.add_argument('--xlim', type=str, help="Set specific range for the x-axis: MIN,MAX. By default it will be inferred from the data")
+    parser_gmm.add_argument('--ylim', type=str, help="Set specific range for the x-axis: MIN,MAX. By default it will be inferred from the data")
+    parser_gmm.add_argument('--gmm_levels', type=int, help="How many levels of the gaussian distributions to show", default=4)
+    parser_gmm.add_argument('--palette', type=str, help="Use a single palette to select both point and gmm colors.", default='Dark2')
+    parser_gmm.add_argument('--point_palette', type=str, help="Which palette to use for plotting the points.")
+    parser_gmm.add_argument('--gmm_palette', type=str, help="Which palette to use for plotting the gaussian distributions.")
+    parser_gmm.set_defaults(func=plot_gmm)
+
+    parser_coverage = plot_subparsers.add_parser("coverage",
+                                                 formatter_class=argparse.RawDescriptionHelpFormatter,
+                                                 description=textwrap.dedent("Plot the read coverage for a region."))
+    parser_coverage.add_argument('--config', '-c', type=str, required=True, help="Path to the input configuration YAML file.")
+    parser_coverage.add_argument('--output', '-o', type=str, required=True, help="Path and filename where the plot will be saved.")
+    parser_coverage.add_argument('reference', type=str, help="Reference name, matching a name from the FASTA reference used in the config.")
+    parser_coverage.add_argument('--start', type=int, help="0-based index on the reference.")
+    parser_coverage.add_argument('--end', type=int, help="0-based index on the reference.")
+    parser_coverage.add_argument('--figsize', type=str, help="Figure size: WIDTH,HEIGHT. Default: 30,10", default='12,4')
+    parser_coverage.add_argument('--split_samples', action='store_true', help="Split results by sample instead of by condition.")
+    parser_coverage.add_argument('--palette', type=str, help="Use a single palette to select both point and gmm colors.", default='Dark2')
+    parser_coverage.set_defaults(func=plot_coverage)
+
+    if len(sys.argv) == 1:
+        # no argument passed
+        args = parser.parse_args(['--help'])
+    elif len(sys.argv) == 2 and sys.argv[1] == 'plot':
+        # plot called without arguments
+        args = parser.parse_args(['plot', '--help'])
+    else:
+        args = parser.parse_args()
+
+    # Call relevant subcommand function
     args.func(args)
+
 
 #~~~~~~~~~~~~~~SUBCOMMAND FUNCTIONS~~~~~~~~~~~~~~#
 
-def sampcomp_main(args):
-    """"""
-    logger.warning("Running SampComp")
 
-    # Load eventalign_fn_dict from a YAML file or assemble eventalign_fn_dict for the command line option
-    if args.sample_yaml:
-        eventalign_fn_dict = args.sample_yaml
-    elif args.file_list1 and args.file_list2:
-        eventalign_fn_dict = build_eventalign_fn_dict(args.file_list1, args.file_list2, args.label1, args.label2)
+def sampcomp_subcommand(args):
+    """
+    Runs the sample comparison subcommand.
+    """
+
+    # Read the input config file
+    with open(args.config, 'r') as f:
+        config_file = yaml.safe_load(f)
+
+    try:
+        config = Config(config_file)
+    except Exception as e:
+        msg = f"ERROR: {e}\n"
+        sys.stderr.write(msg)
+        exit(1)
+
+    # If we'll show a progress bar then we
+    # want to prevent the default loguru
+    # logging on stderr.
+    if config.get_progress:
+        logger.remove()
+
+    # Check if output folder already exists
+    try:
+        mkdir(fn=config.get_outpath(), exist_ok=config.get_result_exists_strategy() != 'stop')
+    except (NanocomporeError, FileExistsError) as E:
+        raise NanocomporeError("Could not create the output folder. Try using `overwrite: true` in the input configuration or use another directory")
+
+    setup_logger(config, "run.log")
+
+    run_cmd = RunCmd(config)
+    run_cmd()
+
+
+def eventalign_collapse_subcommand(args):
+    """
+    Parse eventalign data to process and store it
+    to an intermediary efficient database for later
+    analysis.
+    """
+    EventalignCollapser(args.input, args.ref, args.output, args.nthreads, args.tmp)()
+
+
+def remora_resquiggle_subcommand(args):
+    """
+    Resquiggle a sample with Remora.
+    """
+    kit = Kit[args.kit]
+    RemoraPreprocessor(args.ref,
+                       args.pod5,
+                       args.bam,
+                       args.output,
+                       kit,
+                       args.max_reads,
+                       args.nthreads)()
+
+
+def init_subcommand(args):
+    """
+    Initializes a new input configuration file using the default template.
+    """
+    template = os.path.join(os.path.dirname(__file__), 'template_config.yaml')
+    if os.path.isfile(args.path) and not args.overwrite:
+        raise NanocomporeError("Output file already exists. Use --overwrite to overwrite it.")
+    shutil.copyfile(template, args.path)
+
+
+def plot_pvalues(args: argparse.Namespace):
+    """
+    Plot pvalues along a reference region.
+
+    Parameters
+    ----------
+    args : argparse.Namespace
+        Command-line arguments
+    """
+    # Read the input config file
+    with open(args.config, 'r') as f:
+        config_file = yaml.safe_load(f)
+
+    try:
+        config = Config(config_file)
+    except Exception as e:
+        msg = f"ERROR: {e}\n"
+        sys.stderr.write(msg)
+        exit(1)
+
+    figsize = tuple(map(int, args.figsize.split(',')))
+    tests = args.tests.split(',') if args.tests else None
+
+    fig = plotting.plot_pvalues(config,
+                                args.reference,
+                                args.start,
+                                args.end,
+                                args.kind,
+                                args.threshold,
+                                figsize,
+                                tests,
+                                args.palette)
+    fig.savefig(args.output)
+
+
+def plot_signal(args: argparse.Namespace):
+    """
+    Plot the signal measurements along a reference region.
+
+    Parameters
+    ----------
+    args : argparse.Namespace
+        Command-line arguments
+    """
+    # Read the input config file
+    with open(args.config, 'r') as f:
+        config_file = yaml.safe_load(f)
+
+    try:
+        config = Config(config_file)
+    except Exception as e:
+        msg = f"ERROR: {e}\n"
+        sys.stderr.write(msg)
+        exit(1)
+
+    figsize = tuple(map(int, args.figsize.split(',')))
+
+    fig = plotting.plot_signal(config,
+                               args.reference,
+                               args.start,
+                               args.end,
+                               args.kind,
+                               figsize,
+                               args.split_samples,
+                               args.markersize,
+                               args.palette)
+    fig.savefig(args.output)
+
+
+def plot_position(args: argparse.Namespace):
+    """
+    Plot the signal measurements for a specific position.
+
+    Parameters
+    ----------
+    args : argparse.Namespace
+        Command-line arguments
+    """
+    # Read the input config file
+    with open(args.config, 'r') as f:
+        config_file = yaml.safe_load(f)
+
+    try:
+        config = Config(config_file)
+    except Exception as e:
+        msg = f"ERROR: {e}\n"
+        sys.stderr.write(msg)
+        exit(1)
+
+    figsize = tuple(map(int, args.figsize.split(',')))
+    xlim = None
+    if args.xlim is not None:
+        xlim = tuple(map(int, args.xlim.split(',')))
+    ylim = None
+    if args.ylim is not None:
+        ylim = tuple(map(int, args.ylim.split(',')))
+
+    fig = plotting.plot_position(config,
+                                 args.reference,
+                                 args.position,
+                                 figsize,
+                                 args.point_size,
+                                 xlim,
+                                 ylim,
+                                 args.kde,
+                                 args.kde_levels,
+                                 args.palette)
+    fig.savefig(args.output)
+
+def plot_gmm(args: argparse.Namespace):
+    """
+    Plot GMM for a position.
+
+    Parameters
+    ----------
+    args : argparse.Namespace
+        Command-line arguments
+    """
+    # Read the input config file
+    with open(args.config, 'r') as f:
+        config_file = yaml.safe_load(f)
+
+    try:
+        config = Config(config_file)
+    except Exception as e:
+        msg = f"ERROR: {e}\n"
+        sys.stderr.write(msg)
+        exit(1)
+
+    figsize = tuple(map(int, args.figsize.split(',')))
+    xlim = None
+    if args.xlim is not None:
+        xlim = tuple(map(int, args.xlim.split(',')))
+    ylim = None
+    if args.ylim is not None:
+        ylim = tuple(map(int, args.ylim.split(',')))
+
+    fig = plotting.plot_gmm(config,
+                            args.reference,
+                            args.position,
+                            figsize,
+                            args.point_size,
+                            xlim,
+                            ylim,
+                            args.gmm_levels,
+                            args.palette,
+                            args.point_palette,
+                            args.gmm_palette)
+    fig.savefig(args.output)
+
+
+def plot_coverage(args: argparse.Namespace):
+    """
+    Plot the read coverage for a region.
+
+    Parameters
+    ----------
+    args : argparse.Namespace
+        Command-line arguments
+    """
+    # Read the input config file
+    with open(args.config, 'r') as f:
+        config_file = yaml.safe_load(f)
+
+    try:
+        config = Config(config_file)
+    except Exception as e:
+        msg = f"ERROR: {e}\n"
+        sys.stderr.write(msg)
+        exit(1)
+
+    figsize = tuple(map(int, args.figsize.split(',')))
+
+    fig = plotting.plot_coverage(config,
+                                 args.reference,
+                                 args.start,
+                                 args.end,
+                                 figsize,
+                                 args.split_samples,
+                                 args.palette)
+    fig.savefig(args.output)
+
+
+def setup_logger(config, file_name):
+    if config.get_result_exists_strategy() == 'continue':
+        logger_mode = 'a'
     else:
-        raise NanocomporeError("Samples eventalign files have to be provided with either `--sample_yaml` or `--file_list1` and `--file_list2`")
+        logger_mode = 'w'
+    logger.add(os.path.join(config.get_outpath(),
+                            file_name),
+                mode=logger_mode,
+                level=config.get_log_level())
 
-    # Init SampComp
-    s = SampComp(
-        eventalign_fn_dict = eventalign_fn_dict,
-        max_invalid_kmers_freq = args.max_invalid_kmers_freq,
-        outpath = args.outpath,
-        outprefix = args.outprefix,
-        overwrite = args.overwrite,
-        fasta_fn = args.fasta,
-        bed_fn = args.bed,
-        nthreads = args.nthreads,
-        min_coverage = args.min_coverage,
-        min_ref_length = args.min_ref_length,
-        downsample_high_coverage = args.downsample_high_coverage,
-        comparison_methods = args.comparison_methods,
-        logit = True,
-        anova = args.anova,
-        allow_warnings = args.allow_warnings,
-        sequence_context = args.sequence_context,
-        sequence_context_weights = args.sequence_context_weights,
-        progress = args.progress)
-
-    # Run SampComp
-    db = s()
-
-    # Save all reports
-    logger.info("Saving results")
-    if(db):
-        db.save_all(pvalue_thr=args.pvalue_thr)
-
-def simreads_main(args):
-    """"""
-    logger.warning("Running SimReads")
-
-    # Run SimReads
-    SimReads(
-        fasta_fn = args.fasta,
-        outpath = args.outpath,
-        outprefix = args.outprefix,
-        overwrite = args.overwrite,
-        run_type = args.run_type,
-        nreads_per_ref = args.nreads_per_ref,
-        intensity_mod = args.intensity_mod,
-        dwell_mod = args.dwell_mod,
-        mod_reads_freq = args.mod_reads_freq,
-        mod_bases_freq = args.mod_bases_freq,
-        mod_bases_type = args.mod_bases_type,
-        mod_extend_context = args.mod_extend_context,
-        min_mod_dist = args.min_mod_dist,
-        pos_rand_seed = args.pos_rand_seed,
-        not_bound = args.not_bound,
-        progress = args.progress)
-
-def eventalign_collapse_main (args):
-    """"""
-    logger.warning("Running Eventalign_collapse")
-
-    # Init Eventalign_collapse
-    e = Eventalign_collapse (
-        eventalign_fn = args.eventalign,
-        outpath = args.outpath,
-        outprefix = args.outprefix,
-        overwrite = args.overwrite,
-        n_lines = args.n_lines,
-        nthreads = args.nthreads,
-        progress = args.progress)
-
-    # Run eventalign_collapse
-    e()
 
 #~~~~~~~~~~~~~~CLI ENTRYPOINT~~~~~~~~~~~~~~#
 
 if __name__ == "__main__":
-    # execute only if run as a script
     main()
+

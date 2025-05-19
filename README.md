@@ -20,13 +20,10 @@ Nanocompore compares 2 ONT nanopore direct RNA sequencing datasets from differen
 
 [![Nanocompore](docs/pictures/worflow.png)](http://nanocompore.rna.rocks)
 
-## Companion repositories
-
-* [NanoCompore_pipeline](https://github.com/tleonardi/nanocompore_pipeline): Nextflow pipeline to preprocess data for NanoCompore
-* [Nanocompore_analysis](https://github.com/tleonardi/nanocompore_paper_analyses): Analyses performed with Nanocompore for the BioRxiv preprint
-* [NanopolishComp](https://github.com/tleonardi/NanopolishComp): Collapse Nanopolish eventalign output per kmer, required before running NanoCompore
-
 ## Main authors
 
-* Tommaso Leonardi - tom {at} tleo.io
+* Mihail Zdravkov - mail {at} mzdravkov.com
+* Logan Mulroney - lmulrone {at} soe.ucsc.edu
 * Adrien Leger - aleg {at} ebi.ac.uk
+* Tommaso Leonardi - tom {at} tleo.io
+
