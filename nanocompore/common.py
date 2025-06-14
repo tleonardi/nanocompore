@@ -45,6 +45,9 @@ EVENTALIGN = 'eventalign'
 UNCALLED4 = 'uncalled4'
 REMORA = 'remora'
 
+HARD_ASSIGNMENT = 'hard'
+SOFT_ASSIGNMENT = 'soft'
+
 TranscriptRow = namedtuple('TranscriptRow', 'ref_id id')
 
 
