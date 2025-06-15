@@ -12,6 +12,7 @@ from concurrent.futures import as_completed
 from pprint import pformat
 
 import numpy as np
+import pandas as pd
 import pysam
 import torch
 
@@ -30,6 +31,7 @@ from nanocompore.common import get_reads_invalid_ratio
 from nanocompore.common import get_references_from_bam
 from nanocompore.common import get_pos_kmer
 from nanocompore.common import log_init_state
+from nanocompore.common import Str
 from nanocompore.comparisons import TranscriptComparator
 from nanocompore.config import Config
 from nanocompore.database import ResultsDB
@@ -421,7 +423,7 @@ class Worker(multiprocessing.Process):
             try:
 
                 start_time = time.time()
-                data, samples, conditions = self._read_data(transcript)
+                data, samples, conditions, reads = self._read_data(transcript)
                 self.log("debug",
                          f"Read data for transcript {transcript.name} in "
                          f"{time.time() - start_time}.")
@@ -439,10 +441,10 @@ class Worker(multiprocessing.Process):
                 min_cov = self._conf.get_min_coverage()
                 data, positions = self._filter_low_cov_positions(data, positions, conditions, min_cov)
                 max_reads = self._conf.get_downsample_high_coverage()
-                data, samples, conditions = self._downsample(
-                        data, samples, conditions, max_reads)
+                data, samples, conditions, reads = self._downsample(
+                        data, samples, conditions, reads, max_reads)
 
-                transcript, results = self._comparator.compare_transcript(
+                transcript, results, read_results = self._comparator.compare_transcript(
                         transcript,
                         data,
                         samples,
@@ -461,9 +463,17 @@ class Worker(multiprocessing.Process):
                 seq = transcript.seq
                 kmers = results.pos.apply(lambda pos: get_pos_kmer(pos, seq, self._kit))
                 results['kmer'] = kmers.apply(encode_kmer)
+                read_results = read_results.numpy()
+                full_read_results = np.full((len(seq), read_results.shape[1]), np.nan)
+                full_read_results[positions, :] = read_results
+                del read_results
                 with self._db_lock:
                     self.log("info", f"Saving the results for {transcript.name}.")
-                    self._db_manager.save_test_results(transcript, results)
+                    read_results = pd.DataFrame(
+                            {'read': reads,
+                             'mod_probs': [full_read_results[:, r].tobytes()
+                                           for r in range(full_read_results.shape[1])]})
+                    self._db_manager.save_test_results(transcript, results, read_results)
             except torch.OutOfMemoryError:
                 task = TranscriptRow(transcript.name, transcript.id)
                 self.log("info",
@@ -515,7 +525,7 @@ class Worker(multiprocessing.Process):
         return data[valid_positions], positions[valid_positions]
 
 
-    def _downsample(self, data, samples, conditions, max_reads):
+    def _downsample(self, data, samples, conditions, reads, max_reads):
         if data.shape[1] > max_reads:
             read_valid_positions = (~data.isnan().any(2)).sum(0)
             read_order = read_valid_positions.argsort(descending=True)
@@ -526,7 +536,8 @@ class Worker(multiprocessing.Process):
             data = data[:, selected, :]
             samples = samples[selected]
             conditions = conditions[selected]
-        return data, samples, conditions
+            reads = reads[selected]
+        return data, samples, conditions, reads
 
 
     def _prepare_data(self,
@@ -598,7 +609,7 @@ class Worker(multiprocessing.Process):
                                  dtype=torch.int16,
                                  device=self._device)[valid_positions]
 
-        return (tensor, samples, conditions, positions)
+        return tensor, samples, conditions, positions
 
 
     def setup(self):
@@ -623,7 +634,8 @@ class Worker(multiprocessing.Process):
         transcript: Transcript
     ) -> tuple[Float[np.ndarray, "positions reads vars"],
                Float[np.ndarray, "reads"],
-               Float[np.ndarray, "reads"]]:
+               Float[np.ndarray, "reads"],
+               Str[np.ndarray, "reads"]]:
         """
         Get read data for the given transcript.
 
@@ -636,11 +648,13 @@ class Worker(multiprocessing.Process):
         -------
         tuple[Float[np.ndarray, "positions reads vars"],
               Float[np.ndarray, "reads"],
-              Float[np.ndarray, "reads"]]
+              Float[np.ndarray, "reads"],
+              Str[np.ndarray, "reads"]]
             Tuple with (measurements tensor, sample ids, condition ids).
-            - measurements tensor: shape (Positions, Reads, Vars)
-            - sample ids: 1D array with int ids of the samples
+            - measurements tensor: shape (Positions, Reads, Vars).
+            - sample ids: 1D array with int ids of the samples.
             - condition ids: 1D array with int ids of the conditinos (0 or 1).
+            - read ids: 1D array of read ids.
         """
         raise NotImplementedError("This method should be overriden by specific " + \
                                   "worker process implementations.")
@@ -670,7 +684,8 @@ class Uncalled4Worker(Worker):
         transcript: Transcript
     ) -> tuple[Float[np.ndarray, "positions reads vars"],
                Float[np.ndarray, "reads"],
-               Float[np.ndarray, "reads"]]:
+               Float[np.ndarray, "reads"],
+               Str[np.ndarray, "reads"]]:
         """
         Get read data for the given transcript.
 
@@ -683,11 +698,13 @@ class Uncalled4Worker(Worker):
         -------
         tuple[Float[np.ndarray, "positions reads vars"],
               Float[np.ndarray, "reads"],
-              Float[np.ndarray, "reads"]]
+              Float[np.ndarray, "reads"],
+              Str[np.ndarray, "reads"]]
             Tuple with (measurements tensor, sample ids, condition ids).
-            - measurements tensor: shape (Positions, Reads, Vars)
-            - sample ids: 1D array with int ids of the samples
+            - measurements tensor: shape (Positions, Reads, Vars).
+            - sample ids: 1D array with int ids of the samples.
             - condition ids: 1D array with int ids of the conditinos (0 or 1).
+            - read ids: 1D array of read ids.
         """
         uncalled4 = Uncalled4(transcript.name,
                               len(transcript.seq),
@@ -698,6 +715,7 @@ class Uncalled4Worker(Worker):
         order = np.argsort(reads)
         data = data[:, order, :]
         samples = samples[order]
+        reads = reads[order]
 
         # convert sample labels to sample int ids
         sample_id_mapper = np.vectorize(self._conf.get_sample_ids().get)
@@ -715,7 +733,7 @@ class Uncalled4Worker(Worker):
                  f"Filtering uncalled4 reads in read_data: "
                  f"valid {valid_reads.sum()} out of {valid_reads.shape[0]}")
 
-        return data[:, valid_reads], sample_ids[valid_reads], condition_ids[valid_reads]
+        return data[:, valid_reads], sample_ids[valid_reads], condition_ids[valid_reads], reads[valid_reads]
 
 
     def close(self):
@@ -748,7 +766,8 @@ class GenericWorker(Worker):
         transcript: Transcript
     ) -> tuple[Float[np.ndarray, "positions reads vars"],
                Float[np.ndarray, "reads"],
-               Float[np.ndarray, "reads"]]:
+               Float[np.ndarray, "reads"],
+               Str[np.ndarray, "reads"]]:
         """
         Get read data for the given transcript.
 
@@ -761,12 +780,15 @@ class GenericWorker(Worker):
         -------
         tuple[Float[np.ndarray, "positions reads vars"],
               Float[np.ndarray, "reads"],
-              Float[np.ndarray, "reads"]]
+              Float[np.ndarray, "reads"],
+              Str[np.ndarray, "reads"]]
             Tuple with (measurements tensor, sample ids, condition ids).
-            - measurements tensor: shape (Positions, Reads, Vars)
-            - sample ids: 1D array with int ids of the samples
+            - measurements tensor: shape (Positions, Reads, Vars).
+            - sample ids: 1D array with int ids of the samples.
             - condition ids: 1D array with int ids of the conditinos (0 or 1).
+            - read ids: 1D arry of read ids
         """
+        reads = {}
         intensities = {}
         dwells = {}
         sample_counts = {}
@@ -791,18 +813,22 @@ class GenericWorker(Worker):
                 sample_counts[sample] = len(signal_data)
                 if len(signal_data) == 0:
                     continue
+                reads[sample] = [read for read, _, _ in signal_data]
                 # intensity will have shape (Reads, Positions)
                 intensity = np.array([np.frombuffer(intensity, dtype=MEASUREMENTS_TYPE)
-                                      for intensity, _ in signal_data])
+                                      for _, intensity, _ in signal_data])
                 intensities[sample] = intensity
                 # dwell will have shape (Reads, Positions)
                 dwell = np.array([np.frombuffer(dwell, dtype=MEASUREMENTS_TYPE)
-                                  for _, dwell in signal_data])
+                                  for _, _, dwell in signal_data])
                 dwells[sample] = dwell
 
         if all([c == 0 for c in sample_counts.values()]):
-            return np.empty((0, 0, 0)), np.array([]), np.array([])
+            return np.empty((0, 0, 0)), np.array([]), np.array([]), np.array([])
 
+        ordered_reads = [reads[s]
+                         for s in self._conf.get_sample_labels()
+                         if s in reads]
         ordered_intensities = [intensities[s]
                                for s in self._conf.get_sample_labels()
                                if s in intensities]
@@ -825,7 +851,9 @@ class GenericWorker(Worker):
                                                 cond_label_to_id[samp_to_cond[samp]])
                                         for samp in self._conf.get_sample_ids().keys()])
 
-        return tensor, sample_ids, condition_ids
+        read_ids = np.concatenate(ordered_reads)
+
+        return tensor, sample_ids, condition_ids, read_ids
 
 
     def close(self):

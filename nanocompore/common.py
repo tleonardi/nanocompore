@@ -4,6 +4,7 @@ import multiprocessing as mp
 import os
 import sys
 import time
+import re
 
 from collections import OrderedDict
 from collections import namedtuple
@@ -12,7 +13,7 @@ from enum import Enum
 import numpy as np
 import pysam
 
-from jaxtyping import Float
+from jaxtyping import Float, AbstractDtype
 from loguru import logger
 from pyfaidx import Fasta
 
@@ -327,4 +328,8 @@ def get_reads_invalid_ratio(intensity: Float[np.ndarray, "positions reads"]):
         invalid_ratio = (length - len(valid_positions))/length
         ratios[n] = invalid_ratio
     return ratios
+
+
+class Str(AbstractDtype):
+    dtypes = re.compile("<U[0-9]+")
 
