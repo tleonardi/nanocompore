@@ -463,14 +463,20 @@ class Worker(multiprocessing.Process):
                 seq = transcript.seq
                 kmers = results.pos.apply(lambda pos: get_pos_kmer(pos, seq, self._kit))
                 results['kmer'] = kmers.apply(encode_kmer)
-                read_results = read_results.numpy()
-                full_read_results = np.full((len(seq), read_results.shape[1]), np.nan)
-                full_read_results[positions, :] = read_results
+                read_results = read_results.cpu().numpy()
+                read_results  = np.nan_to_num((read_results.round(decimals=2) * 100), nan=-1).astype(np.int8)
+                full_read_results = np.full((len(seq), read_results.shape[1]), -1, dtype=np.int8)
+                full_read_results[positions.cpu(), :] = read_results
+                sample_labels = self._conf.get_sample_labels()
+                sample_id_to_label = dict(zip(range(len(sample_labels)), sample_labels))
+                sample_id_to_label = np.vectorize(sample_id_to_label.get)
                 del read_results
                 with self._db_lock:
                     self.log("info", f"Saving the results for {transcript.name}.")
                     read_results = pd.DataFrame(
-                            {'read': reads,
+                            {'transcript_id': transcript.id,
+                             'read': reads,
+                             'sample': sample_id_to_label(samples.cpu().numpy()),
                              'mod_probs': [full_read_results[:, r].tobytes()
                                            for r in range(full_read_results.shape[1])]})
                     self._db_manager.save_test_results(transcript, results, read_results)

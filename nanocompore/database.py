@@ -37,9 +37,24 @@ CREATE TABLE IF NOT EXISTS kmer_results (
 );
 """
 
+CREATE_READ_RESULTS_TABLE = """
+CREATE TABLE IF NOT EXISTS read_results (
+    transcript_id INTEGER NOT NULL,
+    read TEXT NOT NULL,
+    sample TEXT NOT NULL,
+    mod_probs BLOB,
+    FOREIGN KEY (transcript_id) REFERENCES transcripts(id)
+);
+"""
+
 CREATE_KMER_RESULTS_TRANSCRIPT_ID_INDEX = """
 CREATE INDEX IF NOT EXISTS kmer_results_transcript_id_index
     ON kmer_results(transcript_id);
+"""
+
+CREATE_READ_RESULTS_TRANSCRIPT_ID_INDEX = """
+CREATE INDEX IF NOT EXISTS read_results_transcript_id_index
+    ON read_results(transcript_id);
 """
 
 CREATE_TRANSCRIPTS_NAME_INDEX = """
@@ -263,11 +278,13 @@ class ResultsDB():
                                 conn,
                                 if_exists='append',
                                 index=False,
+                                chunksize=1024,
                                 method='multi')
             read_results.to_sql('read_results',
                                 conn,
                                 if_exists='append',
                                 index=False,
+                                chunksize=1024,
                                 method='multi')
             conn.commit()
 
@@ -284,6 +301,7 @@ class ResultsDB():
              closing(conn.cursor()) as cursor:
             cursor.execute(CREATE_TRANSCRIPTS_NAME_INDEX)
             cursor.execute(CREATE_KMER_RESULTS_TRANSCRIPT_ID_INDEX)
+            cursor.execute(CREATE_READ_RESULTS_TRANSCRIPT_ID_INDEX)
 
 
     def _create_missing_columns(self, test_columns, cursor):
@@ -332,6 +350,7 @@ class ResultsDB():
              closing(conn.cursor()) as cursor:
             cursor.execute(CREATE_TRANSCRIPTS_RESULTS_TABLE)
             cursor.execute(CREATE_KMER_RESULTS_TABLE)
+            cursor.execute(CREATE_READ_RESULTS_TABLE)
 
 
 class PreprocessingDB:
