@@ -1,7 +1,7 @@
 import gc
 import time
 from collections import defaultdict
-from typing import Union
+from typing import Dict, Union
 
 import numpy as np
 import pandas as pd
@@ -14,6 +14,8 @@ from scipy.stats import mannwhitneyu, ttest_ind, chi2_contingency, chi2
 from scipy.stats.mstats import ks_twosamp
 
 from nanocompore.common import NanocomporeError
+from nanocompore.common import HARD_ASSIGNMENT
+from nanocompore.common import SOFT_ASSIGNMENT
 from nanocompore.gof_tests import gof_test_multirep
 from nanocompore.gof_tests import gof_test_singlerep
 from nanocompore.transcript import Transcript
@@ -350,8 +352,10 @@ class TranscriptComparator:
         gmm2 = self.retry(lambda: fit_model(2), exception=torch.OutOfMemoryError)
 
         self._worker.log("debug", f"GMM fitting time: {time.time() - s}")
-        pred = gmm2.predict(test_data, force_cpu_result=False)
-        pred = torch.where(test_data[:, :, 0].isnan(), np.nan, pred)
+        cluster_probs = gmm2.predict_proba(test_data, force_cpu_result=False)
+        pred = torch.where(cluster_probs.isnan().any(2),
+                           np.nan,
+                           cluster_probs.argmax(2))
 
         bic2 = gmm2.bic(test_data)
         del gmm2
@@ -360,8 +364,16 @@ class TranscriptComparator:
             torch.cuda.empty_cache()
             torch.cuda.reset_peak_memory_stats()
 
-        contingencies = get_contigency_matrices(conditions, pred).to(device=device)
-        counts = self._get_cluster_counts(contingencies, samples, conditions, pred)
+        contingencies = get_contingency_matrices(conditions, pred).to(device=device)
+        if self._config.get_cluster_counts() == HARD_ASSIGNMENT:
+            counts = self._get_cluster_counts(contingencies, samples, pred)
+        elif self._config.get_cluster_counts() == SOFT_ASSIGNMENT:
+            soft_contingencies = get_soft_contingency_matrices(
+                    conditions, cluster_probs).to(device=device)
+            counts = self._get_soft_cluster_counts(
+                    soft_contingencies, samples, cluster_probs)
+        else:
+            counts = {}
         # We add 1 to all cells in all contingency
         # matrices to make sure we don't encounter
         # a devision by zero.
@@ -462,7 +474,115 @@ class TranscriptComparator:
         return combined_pvals[indices]
 
 
-    def _get_cluster_counts(self, contingency, samples, conditions, predictions):
+    def _get_cluster_counts(
+            self,
+            contingency: Float[torch.Tensor, "positions 2 2"],
+            samples: Int[torch.Tensor, "reads"],
+            predictions: Int[torch.Tensor, "positions reads"]
+        ) -> Dict[str, Int[np.ndarray, "positions"]]:
+        """
+        Get a dictionary with the hard counts for each sample.
+
+        Parameters
+        ----------
+        contingency : Float[torch.Tensor, "positions 2 2"]
+            contingency matrices
+        samples : Int[torch.Tensor, "reads"]
+            sample ids of the reads
+        predictions : Int[torch.Tensor, "positions reads"]
+            cluster predictions
+
+        Returns
+        -------
+        Dict[str, Int[np.ndarray, "positions"]]
+            Cluster counts for all samples.
+            The format is "{sample_label}_(un)mod" => Int[np.ndarray, "positions"]
+        """
+        B, N = predictions.shape
+        mod_clusters = self._get_mod_cluster(contingency)
+        mod_clusters = mod_clusters[:, None].expand((B, N))
+
+        # Iterate all samples and calculate the
+        # number of modified and non-modified reads.
+        cluster_counts = {}
+        for sample_label, sample in self._config.get_sample_ids().items():
+            sample_predictions = predictions[:, samples == sample]
+            sample_mod_clusters = mod_clusters[:, samples == sample]
+            sample_totals = torch.sum(~sample_predictions.isnan(), dim=1)
+            mod_counts = (sample_predictions == sample_mod_clusters).sum(dim=1)
+            unmod_counts = sample_totals - mod_counts
+            cluster_counts[f'{sample_label}_mod'] = mod_counts.cpu().numpy().astype(np.uint32)
+            cluster_counts[f'{sample_label}_unmod'] = unmod_counts.cpu().numpy().astype(np.uint32)
+
+        return cluster_counts
+
+
+    def _get_soft_cluster_counts(
+            self,
+            contingency: Float[torch.Tensor, "positions 2 2"],
+            samples: Int[torch.Tensor, "reads"],
+            cluster_probs: Int[torch.Tensor, "positions reads 2"]
+        ) -> Dict[str, Float[np.ndarray, "positions"]]:
+        """
+        Get a dictionary with the soft counts for each sample.
+
+        Parameters
+        ----------
+        contingency : Float[torch.Tensor, "positions 2 2"]
+            contingency matrices
+        samples : Int[torch.Tensor, "reads"]
+            sample ids of the reads
+        cluster_probs: Int[torch.Tensor, "positions reads 2"]
+            cluster probabilities
+
+        Returns
+        -------
+        Dict[str, Int[np.ndarray, "positions"]]
+            Cluster soft counts for all samples.
+            The format is "{sample_label}_(un)mod" => Int[np.ndarray, "positions"]
+        """
+        B, N, _ = cluster_probs.shape
+        mod_clusters = self._get_mod_cluster(contingency)
+        mod_clusters = mod_clusters[:, None, None].expand((B, N, 1))
+
+        mod_probs = torch.gather(cluster_probs, 2, mod_clusters).squeeze(2)
+        unmod_probs = torch.gather(cluster_probs, 2, 1-mod_clusters).squeeze(2)
+
+        # Iterate all samples and calculate the
+        # number of modified and non-modified reads.
+        cluster_counts = {}
+        for sample_label, sample in self._config.get_sample_ids().items():
+            mask = samples == sample
+            mod_counts = mod_probs[:, mask].nansum(1)
+            unmod_counts = unmod_probs[:, mask].nansum(1)
+            cluster_counts[f'{sample_label}_mod'] = mod_counts.cpu().numpy()
+            cluster_counts[f'{sample_label}_unmod'] = unmod_counts.cpu().numpy()
+
+        return cluster_counts
+
+
+    def _get_mod_cluster(
+            self,
+            contingency: Float[torch.Tensor, "positions 2 2"]
+        ) -> Int[torch.Tensor, "positions"]:
+        """
+        Return the inferred modified cluster id for every position.
+        The cluster to which the majority of the points from the
+        depleted condition have been assigned is assumed to be the
+        modified one.
+
+        Parameters
+        ----------
+        contingency : Float[torch.Tensor, "positions 2 2"]
+            contingency matrices
+
+        Returns
+        -------
+        Int[torch.Tensor, "positions"]
+            A 1D tensor with 0 or 1 indicating which
+            cluster id is inferred to be the modified one.
+
+        """
         depleted_cond = self._config.get_depleted_condition()
         depleted_cond_id = self._config.get_condition_ids()[depleted_cond]
 
@@ -482,22 +602,7 @@ class TranscriptComparator:
         # in the example contingency above the modified
         # cluster will be cluster 1.
         mod_clusters = freq_contingency[:, depleted_cond_id, :].argmin(1)
-        mod_clusters = mod_clusters.unsqueeze(1).expand_as(predictions)
-
-        # Iterate all samples and calculate the
-        # number of modified and non-modified reads.
-        cluster_counts = {}
-        for sample_label, sample in self._config.get_sample_ids().items():
-            sample_predictions = predictions[:, samples == sample]
-            sample_mod_clusters = mod_clusters[:, samples == sample]
-            sample_totals = torch.sum(~sample_predictions.isnan(), dim=1)
-            mod_counts = (sample_predictions == sample_mod_clusters).sum(dim=1)
-            unmod_counts = sample_totals - mod_counts
-            # unmod_count = (sample_predictions != sample_mod_clusters).sum().item()
-            cluster_counts[f'{sample_label}_mod'] = mod_counts.cpu().numpy().astype(np.uint32)
-            cluster_counts[f'{sample_label}_unmod'] = unmod_counts.cpu().numpy().astype(np.uint32)
-
-        return cluster_counts
+        return mod_clusters
 
 
     def retry(self, fn, delay=5, backoff=5, max_attempts=3, exception=Exception):
@@ -606,7 +711,10 @@ def calculate_lors(contingencies):
     return torch.round(torch.log(odds1/odds2), decimals=3)
 
 
-def get_contigency_matrices(conditions, predictions):
+def get_contingency_matrices(
+        conditions,
+        predictions
+    ) -> Float[torch.Tensor, "positions 2 2"]:
     num_positions = predictions.shape[0]
     contingencies = torch.zeros((num_positions, 2, 2))
     expanded_conditions = conditions.unsqueeze(0).expand_as(predictions)
@@ -618,5 +726,20 @@ def get_contigency_matrices(conditions, predictions):
                 predictions == pred_val
             ).sum(1)
         contingencies[:, cond_val, pred_val] = comb_count
+    return contingencies
+
+
+def get_soft_contingency_matrices(
+        conditions,
+        cluster_probs
+    ) -> Float[torch.Tensor, "positions 2 2"]:
+    num_positions = cluster_probs.shape[0]
+    contingencies = torch.zeros((num_positions, 2, 2))
+
+    for cond in [0, 1]:
+        mask = conditions == cond
+        prob_sums = cluster_probs[:, mask, :].nansum(1)
+        contingencies[:, cond, :] = prob_sums
+
     return contingencies
 

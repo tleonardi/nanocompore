@@ -8,7 +8,8 @@ import pandas as pd
 
 from nanocompore.comparisons import TranscriptComparator
 from nanocompore.comparisons import calculate_lors
-from nanocompore.comparisons import get_contigency_matrices
+from nanocompore.comparisons import get_contingency_matrices
+from nanocompore.comparisons import get_soft_contingency_matrices
 from nanocompore.config import Config
 from nanocompore.common import MOTOR_DWELL_POS
 
@@ -232,7 +233,7 @@ def test_get_contigency_matrices():
         # pos 1 contingency matrix
         [[3, 0],
          [0, 3]]])
-    assert torch.all(get_contigency_matrices(conditions, predictions) == expected)
+    assert torch.all(get_contingency_matrices(conditions, predictions) == expected)
 
 
 def test_get_contigency_matrices_with_gaps():
@@ -248,7 +249,59 @@ def test_get_contigency_matrices_with_gaps():
         # pos 1 contingency matrix
         [[3, 0],
          [0, 2]]])
-    assert torch.all(get_contigency_matrices(conditions, predictions) == expected)
+    assert torch.all(get_contingency_matrices(conditions, predictions) == expected)
+
+
+def test_get_soft_contigency_matrices():
+    # conditions has shape (reads,)
+    conditions = torch.tensor([0, 1, 0, 1, 0, 1])
+    # predictions has shape (positions, reads)
+    pred_proba = torch.tensor([[[0.9, 0.1],
+                                [0.85, 0.15],
+                                [0.95, 0.05],
+                                [0.05, 0.95],
+                                [0.01, 0.99],
+                                [0.02, 0.98]],
+                               [[0.8, 0.2],
+                                [0.05, 0.95],
+                                [0.9, 0.1],
+                                [0.0, 1.0],
+                                [1.0, 0.0],
+                                [0.0, 1.0]]])
+    expected = torch.tensor([
+        # pos 0 contengency matrix
+        [[1.86, 1.14],
+         [0.92, 2.08]],
+        # pos 1 contingency matrix
+        [[2.7, 0.3],
+         [0.05, 2.95]]])
+    assert torch.allclose(get_soft_contingency_matrices(conditions, pred_proba), expected)
+
+
+def test_get_soft_contigency_matrices_with_gaps():
+    # conditions has shape (reads,)
+    conditions = torch.tensor([0, 1, 0, 1, 0, 1])
+    # predictions has shape (positions, reads)
+    pred_proba = torch.tensor([[[0.9, 0.1],
+                                [0.85, 0.15],
+                                [0.95, 0.05],
+                                [np.nan, np.nan],
+                                [0.01, 0.99],
+                                [0.02, 0.98]],
+                               [[0.8, 0.2],
+                                [0.05, 0.95],
+                                [0.9, 0.1],
+                                [np.nan, np.nan],
+                                [1.0, 0.0],
+                                [0.0, 1.0]]])
+    expected = torch.tensor([
+        # pos 0 contengency matrix
+        [[1.86, 1.14],
+         [0.87, 1.13]],
+        # pos 1 contingency matrix
+        [[2.7, 0.3],
+         [0.05, 1.95]]])
+    assert torch.allclose(get_soft_contingency_matrices(conditions, pred_proba), expected)
 
 
 def test_get_cluster_counts():
@@ -266,11 +319,11 @@ def test_get_cluster_counts():
                                 [0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1],
                                 [1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0]])
 
-    contingency = get_contigency_matrices(conditions, predictions)
+    contingency = get_contingency_matrices(conditions, predictions)
 
     comparator = TranscriptComparator(config, MockWorker())
 
-    cluster_counts = comparator._get_cluster_counts(contingency, samples, conditions, predictions)
+    cluster_counts = comparator._get_cluster_counts(contingency, samples, predictions)
 
     assert np.all(cluster_counts['kd1_mod'] == np.array([0, 0, 0]))
     assert np.all(cluster_counts['kd2_mod'] == np.array([1, 0, 0]))
@@ -280,6 +333,67 @@ def test_get_cluster_counts():
     assert np.all(cluster_counts['kd2_unmod'] == np.array([2, 3, 3]))
     assert np.all(cluster_counts['wt1_unmod'] == np.array([1, 0, 0]))
     assert np.all(cluster_counts['wt2_unmod'] == np.array([1, 0, 0]))
+
+
+def test_get_soft_cluster_counts():
+    config = Config(BASIC_CONFIG)
+    # Condition 0 is the knockdown (depleted condition).
+    # E.g. for the first position:
+    # Most of the points for the non-depleted condition (1)
+    # are found in cluster 1, then we can guess that the
+    # modification cluster is 1.
+    # For the third, cluster 0 will be the modified one.
+    conditions = torch.tensor([0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1])
+    samples = torch.tensor([0, 0, 1, 1, 1, 2, 2, 3, 3, 3, 3])
+    # We have predictions for three positions.
+    pred_proba = torch.tensor([[[0.8, 0.2],
+                                [0.9, 0.1],
+                                [0.3, 0.7],
+                                [0.95, 0.05],
+                                [0.9, 0.1],
+                                [0.05, 0.95],
+                                [0.8, 0.2],
+                                [0.99, 0.01],
+                                [0.01, 0.99],
+                                [0, 1.0],
+                                [0, 1.0]],
+                               [[0.92, 0.08],
+                                [0.95, 0.05],
+                                [0.93, 0.07],
+                                [0.98, 0.02],
+                                [0.91, 0.09],
+                                [0.02, 0.98],
+                                [0.01, 0.99],
+                                [0.04, 0.96],
+                                [0.01, 0.99],
+                                [0.15, 0.85],
+                                [0.01, 0.99]],
+                               [[0.05, 0.95],
+                                [0.06, 0.94],
+                                [0.04, 0.96],
+                                [0.06, 0.94],
+                                [0.04, 0.96],
+                                [0.99, 0.01],
+                                [0.99, 0.01],
+                                [0.99, 0.01],
+                                [0.99, 0.01],
+                                [0.99, 0.01],
+                                [0.99, 0.01]]])
+
+    contingency = get_soft_contingency_matrices(conditions, pred_proba)
+
+    comparator = TranscriptComparator(config, MockWorker())
+
+    cluster_counts = comparator._get_soft_cluster_counts(contingency, samples, pred_proba)
+
+    assert np.allclose(cluster_counts['kd1_mod'], np.array([0.3, 0.13, 0.11]))
+    assert np.allclose(cluster_counts['kd2_mod'], np.array([0.85, 0.18, 0.14]))
+    assert np.allclose(cluster_counts['wt1_mod'], np.array([1.15, 1.97, 1.98]))
+    assert np.allclose(cluster_counts['wt2_mod'], np.array([3, 3.79, 3.96]))
+    assert np.allclose(cluster_counts['kd1_unmod'], np.array([1.7, 1.87, 1.89]))
+    assert np.allclose(cluster_counts['kd2_unmod'], np.array([2.15, 2.82, 2.86]))
+    assert np.allclose(cluster_counts['wt1_unmod'], np.array([0.85, 0.03, 0.02]))
+    assert np.allclose(cluster_counts['wt2_unmod'], np.array([1, 0.21, 0.04]))
 
 
 def test_gmm_test():

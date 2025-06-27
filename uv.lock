@@ -462,15 +462,15 @@ wheels = [
 
 [[package]]
 name = "gmm-gpu"
-version = "0.2.5"
+version = "0.2.8"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "numpy" },
     { name = "torch" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/d3/ed/54e049d3efaa3239f3afc61a100320a97bae28be239e05b721c13ce7b117/gmm_gpu-0.2.5.tar.gz", hash = "sha256:cb3083070ff80b9e03b2167858c58ef011c7b864ded85919dcf067f708a0f25f", size = 9461 }
+sdist = { url = "https://files.pythonhosted.org/packages/19/67/7fd222404b83f9699411cb89a3ace740dffff96bb5619290fc51e67e6bcd/gmm_gpu-0.2.8.tar.gz", hash = "sha256:05f0bbb07dd78e24fb0a2ba04db3275d0d6d4bb91e43f9f15b0a0473848820c2", size = 9700 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/bc/46/234a4126885f4d66d8562c7277bdb9b58ddfba231136fb7b36dab7382713/gmm_gpu-0.2.5-py3-none-any.whl", hash = "sha256:ca8e1d1d2fa58e377318b39dd5250c73fa1315a0ba84193f73ce7b6eec9198ed", size = 9884 },
+    { url = "https://files.pythonhosted.org/packages/18/ec/27cbbd50f1163c7944520c275a8fe5b711df396eb056a1873fd72caaf8fa/gmm_gpu-0.2.8-py3-none-any.whl", hash = "sha256:f25892a90a6b18314e568b9d064867dd7e5b854b13d5371e55c5ec041e02342d", size = 10147 },
 ]
 
 [[package]]
@@ -1144,7 +1144,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "gmm-gpu", specifier = ">=0.2.5" },
+    { name = "gmm-gpu", specifier = "==0.2.8" },
     { name = "gtfparse", specifier = ">=2.5.0" },
     { name = "jaxtyping", specifier = ">=0.2.38" },
     { name = "loguru", specifier = ">=0.5,<1.0" },
