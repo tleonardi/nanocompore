@@ -443,6 +443,7 @@ def plot_gmm(config: Config,
     else:
         worker_class = GenericWorker
     worker = worker_class(1, None, None, None, None, 'cpu', config)
+    worker.setup()
     data, samples, conditions = worker._read_data(transcript)
     prepared_data = worker._prepare_data(data, samples, conditions)
     data, samples, conditions, _ = prepared_data
@@ -459,29 +460,48 @@ def plot_gmm(config: Config,
     std = nanstd(data, 1)
     data = (data - data.nanmean(1).unsqueeze(1)) / std.unsqueeze(1)
 
-    gmm = GMM(n_components=2,
-              device='cpu',
-              random_seed=42,
-              dtype=torch.float32)
-    gmm.fit(data)
+    gmm1 = GMM(n_components=1,
+               device='cpu',
+               random_seed=42,
+               dtype=torch.float32)
+    gmm1.fit(data)
+    bic1 = gmm1.bic(data)[0]
+
+    gmm2 = GMM(n_components=2,
+               device='cpu',
+               random_seed=42,
+               dtype=torch.float32)
+    gmm2.fit(data)
+    bic2 = gmm2.bic(data)[0]
+
+    gmm = gmm1 if bic1 <= bic2 else gmm2
 
     # Means is a list with the means for each component.
     # The shape of each is (Points, Dims). We have a single point.
     c1_mean = gmm.means[0][0]
-    c2_mean = gmm.means[1][0]
+    if bic2 < bic1:
+        c2_mean = gmm.means[1][0]
 
     # Covs is a list with the cov matrices for the components.
     # The shape of each is (Points, Dims, Dims).
     c1_cov = gmm.covs[0][0]
-    c2_cov = gmm.covs[1][0]
+    if bic2 < bic1:
+        c2_cov = gmm.covs[1][0]
 
-    x1, y1 = np.random.multivariate_normal(c1_mean, c1_cov, 1000).T
-    x2, y2 = np.random.multivariate_normal(c2_mean, c2_cov, 1000).T
-    sampled_gaussians = pd.DataFrame(
-        {'x': np.concatenate([x1, x2]),
-         'y': np.concatenate([y1, y2]),
-         'cluster': np.concatenate([np.full((1000,), 'Cluster 1'),
-                                    np.full((1000,), 'Cluster 2')])})
+
+    y1, x1 = np.random.multivariate_normal(c1_mean, c1_cov, 1000).T
+    if bic2 < bic1:
+        y2, x2 = np.random.multivariate_normal(c2_mean, c2_cov, 1000).T
+        x = np.concatenate([x1, x2])
+        y = np.concatenate([y1, y2])
+        cluster = np.concatenate([np.full((1000,), 'Cluster 1'),
+                                  np.full((1000,), 'Cluster 2')])
+    else:
+        x = x1
+        y = y1
+        cluster = np.full((1000,), 'Cluster 1')
+
+    sampled_gaussians = pd.DataFrame({'x': x, 'y': y, 'cluster': cluster})
 
     df = pd.DataFrame(data[0], columns=['intensity', 'dwell'])
     cond_labels = config.get_condition_labels()
