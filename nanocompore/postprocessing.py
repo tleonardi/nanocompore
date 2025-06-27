@@ -31,12 +31,21 @@ class Postprocessor():
         # The test_result_columns are all columns from the database
         # that need to be added to the result TSV.
         test_result_columns = self._get_test_result_columns(all_columns)
-        self._export_results_tsv(test_result_columns)
+        if test_result_columns:
+            self._export_results_tsv(test_result_columns)
+        else:
+            logger.info("No test results found for exporting. "
+                        "Result TSV won't be exported.")
 
         if self._config.get_export_shift_stats():
             logger.info("Writing the shift stats to a file.")
             shift_stats_columns = self._get_shift_stats_columns()
-            self._export_shift_stats(shift_stats_columns)
+            if all(col in all_columns for col in shift_stats_columns):
+                self._export_shift_stats(shift_stats_columns)
+            else:
+                logger.info("No shift data was produced during the run. "
+                            "Shift data TSV won't be exported.")
+
         else:
             logger.info("Exporting shift statistics to a TSV is disabled. "
                         "However, you can still find them in the result database.")

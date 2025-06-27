@@ -3,9 +3,12 @@ import os
 import tempfile
 import shutil
 
+from unittest.mock import MagicMock
+
 import numpy as np
 import pandas as pd
 
+from nanocompore.database import ResultsDB
 from nanocompore.postprocessing import Postprocessor
 from nanocompore.config import Config
 
@@ -347,4 +350,28 @@ def test_export_shift_stats_multiple_chunks():
         test_position = results[(results.pos == 1982) & (results.ref_id == 'ENST00000642480.2|ENSG00000075624.17|OTTHUMG00000023268|OTTHUMT00000495153.1|ACTB-213|ACTB|2021|protein_coding|')].iloc[0]
         assert test_position.c1_mean_intensity == 7186.5
         assert test_position.c1_mean_dwell == 1.3476
+
+
+def test_no_results():
+    config_yaml = copy.deepcopy(BASIC_CONFIG)
+
+    # Since we may run tests in parallel we want to
+    # avoid having two tests write at the same path
+    # simultaneously.
+    with tempfile.TemporaryDirectory() as tmp:
+        config_yaml['outpath'] = tmp
+
+        config = Config(config_yaml)
+        postprocessor = Postprocessor(config)
+
+        # We create an empty results database.
+        postprocessor._db = ResultsDB(config, init_db = True)
+
+        postprocessor._export_results_tsv = MagicMock()
+        postprocessor._export_shift_stats = MagicMock()
+
+        postprocessor()
+
+        assert not postprocessor._export_results_tsv.called
+        assert not postprocessor._export_shift_stats.called
 
