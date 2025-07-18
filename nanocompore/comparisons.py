@@ -585,24 +585,12 @@ class TranscriptComparator:
         """
         depleted_cond = self._config.get_depleted_condition()
         depleted_cond_id = self._config.get_condition_ids()[depleted_cond]
+        ctrl_cond_id = 1 - depleted_cond_id
 
-        cond_counts = contingency.sum(2).to(torch.uint32)
-        # contingency will be something like this:
-        # e.g.      cluster
-        # condition   0   1
-        #         0  100  30
-        #         1   90  40
-        freq_contingency = contingency / cond_counts.unsqueeze(2)
+        ctrl0dep1 = contingency[:, ctrl_cond_id, 0] * contingency[:, depleted_cond_id, 1]
+        ctrl1dep0 = contingency[:, ctrl_cond_id, 1] * contingency[:, depleted_cond_id, 0]
 
-        # We assume that the unmodified cluster is the one
-        # in which the depleted condition has most of its
-        # points. Hence, the modified is the one, where
-        # the depleted condition has fewer points.
-        # I.e. if the condition 0 is the depleted one,
-        # in the example contingency above the modified
-        # cluster will be cluster 1.
-        mod_clusters = freq_contingency[:, depleted_cond_id, :].argmin(1)
-        return mod_clusters
+        return torch.where(ctrl0dep1 > ctrl1dep0, 0, 1)
 
 
     def retry(self, fn, delay=5, backoff=5, max_attempts=3, exception=Exception):

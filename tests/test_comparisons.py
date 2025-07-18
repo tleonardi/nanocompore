@@ -312,12 +312,17 @@ def test_get_cluster_counts():
     # are found in cluster 1, then we can guess that the
     # modification cluster is 1.
     # For the third, cluster 0 will be the modified one.
+    # The fourth position tests the case in which most reads
+    # from both conditions are assigned to the modified cluster,
+    # even the majority of the points for the depleted condition
+    # are assigned to it.
     conditions = torch.tensor([0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1])
     samples = torch.tensor([0, 0, 1, 1, 1, 2, 2, 3, 3, 3, 3])
     # We have predictions for three positions.
     predictions = torch.tensor([[0, 0, 1, 0, 0, 1, 0, 0, 1, 1, 1],
                                 [0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1],
-                                [1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0]])
+                                [1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0],
+                                [1, 1, 1, 0, 0, 1, 1, 1, 1, 1, 1]])
 
     contingency = get_contingency_matrices(conditions, predictions)
 
@@ -325,14 +330,14 @@ def test_get_cluster_counts():
 
     cluster_counts = comparator._get_cluster_counts(contingency, samples, predictions)
 
-    assert np.all(cluster_counts['kd1_mod'] == np.array([0, 0, 0]))
-    assert np.all(cluster_counts['kd2_mod'] == np.array([1, 0, 0]))
-    assert np.all(cluster_counts['wt1_mod'] == np.array([1, 2, 2]))
-    assert np.all(cluster_counts['wt2_mod'] == np.array([3, 4, 4]))
-    assert np.all(cluster_counts['kd1_unmod'] == np.array([2, 2, 2]))
-    assert np.all(cluster_counts['kd2_unmod'] == np.array([2, 3, 3]))
-    assert np.all(cluster_counts['wt1_unmod'] == np.array([1, 0, 0]))
-    assert np.all(cluster_counts['wt2_unmod'] == np.array([1, 0, 0]))
+    assert np.all(cluster_counts['kd1_mod'] == np.array([0, 0, 0, 2]))
+    assert np.all(cluster_counts['kd2_mod'] == np.array([1, 0, 0, 1]))
+    assert np.all(cluster_counts['wt1_mod'] == np.array([1, 2, 2, 2]))
+    assert np.all(cluster_counts['wt2_mod'] == np.array([3, 4, 4, 4]))
+    assert np.all(cluster_counts['kd1_unmod'] == np.array([2, 2, 2, 0]))
+    assert np.all(cluster_counts['kd2_unmod'] == np.array([2, 3, 3, 2]))
+    assert np.all(cluster_counts['wt1_unmod'] == np.array([1, 0, 0, 0]))
+    assert np.all(cluster_counts['wt2_unmod'] == np.array([1, 0, 0, 0]))
 
 
 def test_get_soft_cluster_counts():
