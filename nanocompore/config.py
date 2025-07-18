@@ -7,6 +7,8 @@ from nanocompore.common import Kit
 from nanocompore.common import EVENTALIGN
 from nanocompore.common import REMORA
 from nanocompore.common import UNCALLED4
+from nanocompore.common import SOFT_ASSIGNMENT
+from nanocompore.common import HARD_ASSIGNMENT
 
 
 def valid_device(value):
@@ -169,6 +171,7 @@ CONFIG_SCHEMA = Schema(And({
     Optional('log_level'): Or('warning', 'info', 'debug'),
     Optional('progress'): bool,
     Optional('export_shift_stats'): bool,
+    Optional('cluster_counts'): Or(HARD_ASSIGNMENT, SOFT_ASSIGNMENT, False),
     Optional('correction_method'): 'fdr_bh'},
     # Additional validation of the full configuration
     And(validate_db_data,
@@ -207,6 +210,7 @@ DEFAULT_RESULT_EXISTS_STRATEGY = 'stop'
 DEFAULT_LOG_LEVEL = 'info'
 DEFAULT_PROGRESS = False
 DEFAULT_EXPORT_SHIFT_STATS = False
+DEFAULT_CLUSTER_COUNTS = HARD_ASSIGNMENT
 DEFAULT_CORRECTION_METHOD = 'fdr_bh'
 
 
@@ -396,6 +400,14 @@ class Config:
         to a TSV during postprocessing.
         """
         return self._config.get('export_shift_stats', DEFAULT_EXPORT_SHIFT_STATS)
+
+
+    def get_cluster_counts(self):
+        """
+        Whether to export shift statistics from the DB
+        to a TSV during postprocessing.
+        """
+        return self._config.get('cluster_counts', DEFAULT_CLUSTER_COUNTS)
 
 
     def get_correction_method(self):

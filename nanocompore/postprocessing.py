@@ -9,6 +9,7 @@ from statsmodels.stats.multitest import multipletests
 from gtfparse import read_gtf
 
 from nanocompore.common import decode_kmer
+from nanocompore.common import HARD_ASSIGNMENT
 from nanocompore.database import ResultsDB
 
 
@@ -108,10 +109,11 @@ class Postprocessor():
             chunk['chr'] = 'NA'
             chunk['strand'] = 'NA'
 
-            # Make sure counts are integer
-            chunk = chunk.astype({col: 'int'
-                                  for col in chunk.columns
-                                  if col.endswith('_mod') or col.endswith('_unmod')})
+            if self._config.get_cluster_counts() == HARD_ASSIGNMENT:
+                # Make sure counts are integer
+                chunk = chunk.astype({col: 'int'
+                                      for col in chunk.columns
+                                      if col.endswith('_mod') or col.endswith('_unmod')})
 
             chunk['kmer'] = [decode_kmer(code, kmer_len) for code in chunk['kmer']]
 
