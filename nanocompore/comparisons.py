@@ -364,16 +364,20 @@ class TranscriptComparator:
             torch.cuda.empty_cache()
             torch.cuda.reset_peak_memory_stats()
 
-        contingencies = get_contingency_matrices(conditions, pred).to(device=device)
         if self._config.get_cluster_counts() == HARD_ASSIGNMENT:
+            contingencies = get_contingency_matrices(
+                    conditions, pred).to(device=device)
             counts = self._get_cluster_counts(contingencies, samples, pred)
         elif self._config.get_cluster_counts() == SOFT_ASSIGNMENT:
-            soft_contingencies = get_soft_contingency_matrices(
+            contingencies = get_soft_contingency_matrices(
                     conditions, cluster_probs).to(device=device)
             counts = self._get_soft_cluster_counts(
-                    soft_contingencies, samples, cluster_probs)
+                    contingencies, samples, cluster_probs)
         else:
+            contingencies = get_contingency_matrices(
+                    conditions, pred).to(device=device)
             counts = {}
+
         # We add 1 to all cells in all contingency
         # matrices to make sure we don't encounter
         # a devision by zero.

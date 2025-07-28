@@ -1,5 +1,20 @@
 # Changelog
 
+## v2.1.0
+
+### Added
+
+- Soft clustering: The `cluster_counts` option was added which can be used to switch to a soft assignment strategy in the GMM clustering. With the soft assignment each point is split proportionally between the two clusters depending on the probability of being assigned to them.
+
+### Fixed
+
+- Fixed how the modified cluster is inferred in the GMM test. The change affects the per-sample count columns, but not the p-value and GMM_LOR statistics.
+- Fixed error that was thrown when there are no results ([#233]).
+- Fixed the GMM plot subcommand.
+
+[#233]: https://github.com/tleonardi/nanocompore/issues/233
+
+
 ## v2.0.0
 
 This is major release that represents an almost complete redesign and rewrite of the tool. The more noteworthy changes include:

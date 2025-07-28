@@ -81,7 +81,9 @@ resquiggler: 'eventalign'
 # - Soft counts: For a given k-mer, each read is distributed to both clusters, depending
 # on the probability of being assigned to each of them.
 # - Off: Cluster counts won't be exported to the output.
-# Note: this option only affects the GMM test.
+# Note: This option only affects the GMM test and if set
+# to soft counting, the chi-square test (that is performed
+# on the GMM clusters) will be done using the soft counts.
 #cluster_counts: hard
 
 # Export a TSV file with the mean, median and sd for the intensity and dwell time
