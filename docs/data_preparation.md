@@ -104,7 +104,7 @@ f5c eventalign --bam {aligned_reads_bam} \
                --rna \
                --pore rna004 \
                --threads {num_threads}
-  | nanocompore eventalign_collapse --ref {transcriptome_fasta} -o {resquiggled_db} --threads {num_threads}
+  | nanocompore eventalign_collapse --ref {transcriptome_fasta} -o {resquiggled_db} --nthreads {num_threads}
 ```
 Note that the eventalign_collapse creates rather big temporary files. By default it would use the current working directory. If you want to change that, you can add `--tmp path/to/tmp_dir`.
 
@@ -132,6 +132,7 @@ nanocompore remora_resquiggle --ref {transcriptome_fasta} \
                               --pod5 {pod5} \
                               --bam {aligned_reads_bam} \
                               --kit RNA004 \
-                              --output {resquiggled_db}
+                              --output {resquiggled_db} \
+                              --nthreads {num_threads}
 ```
 
