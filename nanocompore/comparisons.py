@@ -373,6 +373,7 @@ class TranscriptComparator:
             torch.cuda.empty_cache()
             torch.cuda.reset_peak_memory_stats()
 
+        mod_clusters = None
         if self._config.get_cluster_counts() == HARD_ASSIGNMENT:
             contingencies = get_contingency_matrices(
                     conditions, pred).to(device=device)
@@ -392,15 +393,19 @@ class TranscriptComparator:
         else:
             contingencies = get_contingency_matrices(
                     conditions, pred).to(device=device)
-            mod_clusters = self._get_mod_cluster(contingencies)
             counts = {}
 
-        B, N = pred.shape
-        read_mod_probs = torch.gather(
-                cluster_probs,
-                2,
-                mod_clusters[:, None, None].expand((B, N, 1))
-            ).squeeze(2)
+        read_mod_probs = None
+        if self._config.get_read_results():
+            if not mod_clusters:
+                mod_clusters = self._get_mod_cluster(contingencies)
+
+            B, N = pred.shape
+            read_mod_probs = torch.gather(
+                    cluster_probs,
+                    2,
+                    mod_clusters[:, None, None].expand((B, N, 1))
+                ).squeeze(2)
 
         # We add 1 to all cells in all contingency
         # matrices to make sure we don't encounter

@@ -327,8 +327,9 @@ def test_get_cluster_counts():
     contingency = get_contingency_matrices(conditions, predictions)
 
     comparator = TranscriptComparator(config, MockWorker())
+    mod_clusters = comparator._get_mod_cluster(contingency)
 
-    cluster_counts = comparator._get_cluster_counts(contingency, samples, predictions)
+    cluster_counts = comparator._get_cluster_counts(contingency, samples, predictions, mod_clusters)
 
     assert np.all(cluster_counts['kd1_mod'] == np.array([0, 0, 0, 2]))
     assert np.all(cluster_counts['kd2_mod'] == np.array([1, 0, 0, 1]))
@@ -388,8 +389,9 @@ def test_get_soft_cluster_counts():
     contingency = get_soft_contingency_matrices(conditions, pred_proba)
 
     comparator = TranscriptComparator(config, MockWorker())
+    mod_clusters = comparator._get_mod_cluster(contingency)
 
-    cluster_counts = comparator._get_soft_cluster_counts(contingency, samples, pred_proba)
+    cluster_counts = comparator._get_soft_cluster_counts(contingency, samples, pred_proba, mod_clusters)
 
     assert np.allclose(cluster_counts['kd1_mod'], np.array([0.3, 0.13, 0.11]))
     assert np.allclose(cluster_counts['kd2_mod'], np.array([0.85, 0.18, 0.14]))
@@ -484,7 +486,7 @@ def test_gmm_test_split_single_component():
     # should have lower BIC value). We should've
     # detected that and omit reporting the p-value
     # from the 2-component GMM.
-    results = comparator._gmm_test_split(data, samples, conditions, 'cpu')
+    results, _ = comparator._gmm_test_split(data, samples, conditions, 'cpu')
     assert len(results['GMM_chi2_pvalue']) == 1
     assert np.isnan(results['GMM_chi2_pvalue'][0])
 
@@ -504,7 +506,7 @@ def test_gmm_test_split_two_components():
                                for cond in [0, 1]
                                for _ in range(50)])
 
-    results = comparator._gmm_test_split(data, samples, conditions, 'cpu')
+    results, _ = comparator._gmm_test_split(data, samples, conditions, 'cpu')
     assert len(results['GMM_chi2_pvalue']) == 1
     assert results['GMM_chi2_pvalue'] < 0.01
 

@@ -81,6 +81,40 @@ Where the annotation should be compatible with the reference FASTA that is used,
 
 As a result, the columns `chr`, `strand`, and `genomicPos` in the results TSV file will be populated. Note that the `genomicPos` would use a 0-based indexing (the first base on the chromosome has index 0).
 
+##### Read level results
+
+When the GMM test is used, Nanocompore can attempt to predict which reads are modified and store this information in the output SQLite database. Nanocompore does this by using the `depleted_condition` parameter from the configuration to infer which gaussian of the fitted GMM model represents the modified state and then assigns modification probability for all reads, based on their likelihood for that gaussian. To save the read level results to the output database add the following to the configuration:
+
+```yaml
+read_level: true
+```
+
+This will add a table with the following structure to the output SQLite database:
+
+
+```sql
+read_results (
+  transcript_id INTEGER NOT NULL,
+  read TEXT NOT NULL,
+  sample TEXT NOT NULL,
+  mod_probs BLOB,
+  FOREIGN KEY (transcript_id) REFERENCES transcripts(id)
+);
+```
+
+Where `mod_probs` is a binary encoded array of 8-bit integers with a length equal to the reference transcript's length. The values will be in the [0, 100] range with -1 indicating a gap. Here's an example Python code snippet to read the data for a given transcript:
+
+```python
+import sqlite3
+
+transcript_id = '<your_ref_id>'
+conn = sqlite3.connect("/path/to/out_sampComp_sql.db")
+query = 'SELECT read, sample, mod_probs FROM read_results WHERE transcript_id = ?'
+reads = conn.execute(query, (transcript_id,)).fetchall()
+reads = [(read, sample, np.frombuffer(probs, dtype=np.int8))
+             for read, sample, probs in reads]
+```
+
 ##### Shift statistics
 
 The shift statistics TSV gives summary statistics (mean, median, standard deviation) at the position level for the signal measurements (current intensity and dwell time) for the two conditions (see [Outputs](/output)). To enable the exporting of this file just add the folling to the configuration:

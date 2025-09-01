@@ -280,12 +280,13 @@ class ResultsDB():
                                 index=False,
                                 chunksize=1024,
                                 method='multi')
-            read_results.to_sql('read_results',
-                                conn,
-                                if_exists='append',
-                                index=False,
-                                chunksize=1024,
-                                method='multi')
+            if read_results:
+                read_results.to_sql('read_results',
+                                    conn,
+                                    if_exists='append',
+                                    index=False,
+                                    chunksize=1024,
+                                    method='multi')
             conn.commit()
 
 
