@@ -280,7 +280,7 @@ class ResultsDB():
                                 index=False,
                                 chunksize=1024,
                                 method='multi')
-            if read_results:
+            if read_results is not None:
                 read_results.to_sql('read_results',
                                     conn,
                                     if_exists='append',

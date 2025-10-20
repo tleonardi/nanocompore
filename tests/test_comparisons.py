@@ -442,12 +442,13 @@ def test_gmm_test():
 
     def test(data, samples, conditions, device):
         if data.shape[2] == 3:
-            return gmm_results_3d
-        return gmm_results_2d
+            return gmm_results_3d, None
+        return gmm_results_2d, None
 
     comparator._gmm_test_split = Mock(side_effect=test)
 
-    results = comparator._gmm_test(data, samples, conditions, 'cpu')
+    results, read_mod_probs = comparator._gmm_test(data, samples, conditions, 'cpu')
+    assert read_mod_probs is None
 
     callargs = comparator._gmm_test_split.call_args_list
 
@@ -466,6 +467,34 @@ def test_gmm_test():
     # are properly merged in the correct order.
     assert np.array_equal(results['GMM_chi2_pvalue'], np.array([0.1, 0.01, 0.82]))
     assert np.array_equal(results['GMM_LOR'], np.array([0.8, 1.3, 0.2]))
+
+
+def test_gmm_test_read_results():
+    config_yaml = copy.deepcopy(BASIC_CONFIG)
+    config_yaml['read_results'] = True
+    config = Config(config_yaml)
+    comparator = TranscriptComparator(config, MockWorker())
+    rand_gen = np.random.default_rng(seed=42)
+
+    # We genaret 10k reads with one position and 2 variable.
+    # Half of them we shift by 1.
+    data = torch.tensor(rand_gen.standard_normal((1, 10000, 2)))
+    data[:, 5000:, :] += 1
+
+    # We create one point that is in the middle
+    data = torch.concatenate([data, torch.tensor([[[0.5, 0.5]]])], axis=1)
+
+    samples = torch.tensor([samp
+                            for samp in [0, 1, 2, 3]
+                            for _ in range(2500)] + [1])
+    conditions = torch.tensor([cond
+                               for cond in [0, 1]
+                               for _ in range(5000)] + [1])
+
+    results, read_mod_probs = comparator._gmm_test(data, samples, conditions, 'cpu')
+
+    # The point that is in the middle should have around 50% modification probability
+    assert round(read_mod_probs[0, -1].item(), 4) == 0.4656
 
 
 def test_gmm_test_split_single_component():

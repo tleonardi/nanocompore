@@ -468,11 +468,11 @@ class Worker(multiprocessing.Process):
                 sample_id_to_label = np.vectorize(sample_id_to_label.get)
                 with self._db_lock:
                     self.log("info", f"Saving the results for {transcript.name}.")
-                    if read_results:
+                    if read_results is not None:
                         read_results = read_results.cpu().numpy()
                         read_results  = np.nan_to_num((read_results.round(decimals=2) * 100), nan=-1).astype(np.int8)
                         full_read_results = np.full((len(seq), read_results.shape[1]), -1, dtype=np.int8)
-                        full_read_results[positions.cpu(), :] = read_results
+                        full_read_results[results.pos, :] = read_results
                         read_results = pd.DataFrame(
                                 {'transcript_id': transcript.id,
                                  'read': reads,

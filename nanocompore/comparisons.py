@@ -116,7 +116,7 @@ class TranscriptComparator:
             self._worker.log(
                     "warning",
                     "The standard deviation cannot be calculated for some positions on "
-                    f"transcript {transcript.name}, but are required for scaling the data. "
+                    f"transcript {transcript.name}, but is required for scaling the data. "
                     f"The positions {positions[bad_stds].tolist()} will be skipped.")
             data = data[~bad_stds]
             positions = positions[~bad_stds]
@@ -131,6 +131,9 @@ class TranscriptComparator:
             auto_test_mask = self._auto_test_mask(data)
         test_masks = self._get_test_masks(auto_test_mask, n_positions)
 
+        # Right now we only have read level results from
+        # a single test (GMM) so we use a single variable
+        # for them.
         read_results = None
         for test, mask in test_masks.items():
             self._worker.log("debug", f"Start {test}")
@@ -310,38 +313,45 @@ class TranscriptComparator:
         # those would be tested with a 2D GMM.
         dim3_data, dim2_data, split = self._split_by_ndim(test_data)
         columns = set()
-        if dim3_data.shape[0] > 0:
-            dim3_results = self._gmm_test_split(dim3_data,
-                                                samples,
-                                                conditions,
-                                                device)
+        has_3d = dim3_data.shape[0] > 0
+        has_2d = dim2_data.shape[0] > 0
+        if has_3d:
+            dim3_results, dim3_mod_probs = self._gmm_test_split(
+                    dim3_data,
+                    samples,
+                    conditions,
+                    device)
             columns.update(dim3_results.keys())
-        if dim2_data.shape[0] > 0:
-            dim2_results = self._gmm_test_split(dim2_data,
-                                                samples,
-                                                conditions,
-                                                device)
+        if has_2d:
+            dim2_results, dim2_mod_probs = self._gmm_test_split(
+                    dim2_data,
+                    samples,
+                    conditions,
+                    device)
             columns.update(dim2_results.keys())
 
         results = {}
+        npos, nreads, ndim = test_data.shape
         for column in columns:
-            if dim3_data.shape[0] > 0:
-                dim3_values = dim3_results[column]
-            if dim2_data.shape[0] > 0:
-                dim2_values = dim2_results[column]
-            dim3_i = 0
-            dim2_i = 0
+            col_values = np.empty((npos,))
+            col_values[:] = np.nan
+            if has_3d:
+                col_values[split == 0] = dim3_results[column]
+            if has_2d:
+                col_values[split != 0] = dim2_results[column]
+            results[column] = col_values
 
-            merged = []
-            for s in split:
-                if s == 0:
-                    merged.append(dim3_values[dim3_i])
-                    dim3_i += 1
-                else:
-                    merged.append(dim2_values[dim2_i])
-                    dim2_i += 1
-            results[column] = merged
-        return results
+        if self._config.get_read_results():
+            read_mod_probs = np.empty((npos, nreads))
+            read_mod_probs[:, :] = np.nan
+            if has_3d:
+                read_mod_probs[split == 0, :] = dim3_mod_probs
+            if has_2d:
+                read_mod_probs[split != 0, :] = dim2_mod_probs
+        else:
+            read_mod_probs = None
+
+        return results, read_mod_probs
 
 
     def _gmm_test_split(self, data, samples, conditions, device):
@@ -397,7 +407,7 @@ class TranscriptComparator:
 
         read_mod_probs = None
         if self._config.get_read_results():
-            if not mod_clusters:
+            if mod_clusters is None:
                 mod_clusters = self._get_mod_cluster(contingencies)
 
             B, N = pred.shape
