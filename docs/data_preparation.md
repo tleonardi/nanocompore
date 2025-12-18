@@ -67,6 +67,7 @@ samtools index {aligned_reads_bam}
 ### Resquiggling
 
 Nanocompore supports using signal alignments from various sources. Currently supported ones are:
+
 - Eventalin TSVs as produced by [Nanopolish](https://github.com/jts/nanopolish) or [f5c](https://github.com/hasindu2008/f5c). Since f5c provides optimized implementations of the eventalign command from Nanopolish, most users would be advised to use f5c.
 - BAM files produced by [Uncalled4](https://github.com/skovaka/uncalled4).
 - [Remora](https://github.com/nanoporetech/remora) is a toolkit by ONT for training models for modification prediction. However, it also provides functionality for signal analysis, including capabilities to refine the signal alignments from the "moves" table produced by Dorado.
@@ -109,7 +110,7 @@ f5c eventalign --bam {aligned_reads_bam} \
 Note that the eventalign_collapse creates rather big temporary files. By default it would use the current working directory. If you want to change that, you can add `--tmp path/to/tmp_dir`.
 
 
-#### Uncalled
+#### Uncalled4
 
 ```bash
 # For RNA004
