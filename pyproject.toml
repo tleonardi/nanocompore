@@ -29,7 +29,7 @@ dependencies = [
     "gmm-gpu==0.2.8",
 ]
 name = "nanocompore"
-version = "2.1.0"
+version = "2.2.0"
 description = "Software package that identifies raw signal changes between two conditions from dRNA-Seq data."
 readme = "README.md"
 classifiers = [

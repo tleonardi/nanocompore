@@ -1,5 +1,11 @@
 # Changelog
 
+
+## v2.2.0
+
+- Add the capability to export read-level modification predictions. The `read_results` option in the configuration can be set to true to export modification probability for each position of each read to the output SQLite database.
+
+
 ## v2.1.0
 
 ### Added
