@@ -1,6 +1,5 @@
 import os
 import sqlite3
-import json
 
 from contextlib import closing
 from pathlib import Path
@@ -38,9 +37,24 @@ CREATE TABLE IF NOT EXISTS kmer_results (
 );
 """
 
+CREATE_READ_RESULTS_TABLE = """
+CREATE TABLE IF NOT EXISTS read_results (
+    transcript_id INTEGER NOT NULL,
+    read TEXT NOT NULL,
+    sample TEXT NOT NULL,
+    mod_probs BLOB,
+    FOREIGN KEY (transcript_id) REFERENCES transcripts(id)
+);
+"""
+
 CREATE_KMER_RESULTS_TRANSCRIPT_ID_INDEX = """
 CREATE INDEX IF NOT EXISTS kmer_results_transcript_id_index
     ON kmer_results(transcript_id);
+"""
+
+CREATE_READ_RESULTS_TRANSCRIPT_ID_INDEX = """
+CREATE INDEX IF NOT EXISTS read_results_transcript_id_index
+    ON read_results(transcript_id);
 """
 
 CREATE_TRANSCRIPTS_NAME_INDEX = """
@@ -132,7 +146,7 @@ INSERT INTO reads (read, id, invalid_kmers) VALUES(?, ?, ?);
 """
 
 GET_SIGNAL_DATA_FOR_TRANSCRIPT_QUERY = """
-SELECT intensity, dwell
+SELECT r.read, intensity, dwell
 FROM signal_data sd
 JOIN reads r ON sd.read_id = r.id
 JOIN transcripts t ON sd.transcript_id = t.id
@@ -253,13 +267,27 @@ class ResultsDB():
             return cursor.execute(query).fetchone()[0] + 1
 
 
-    def save_test_results(self, transcript, test_results):
+    def save_test_results(self, transcript, test_results, read_results):
         with closing(sqlite3.connect(self.db_path)) as conn,\
              closing(conn.cursor()) as cursor:
+            cursor.execute("BEGIN")
             cursor.execute(INSERT_TRANSCRIPTS_QUERY, (transcript.id, transcript.name))
             test_columns = dict(zip(test_results.columns, test_results.dtypes))
             self._create_missing_columns(test_columns, cursor)
-            test_results.to_sql('kmer_results', conn, if_exists='append', index=False)
+            test_results.to_sql('kmer_results',
+                                conn,
+                                if_exists='append',
+                                index=False,
+                                chunksize=1024,
+                                method='multi')
+            if read_results is not None:
+                read_results.to_sql('read_results',
+                                    conn,
+                                    if_exists='append',
+                                    index=False,
+                                    chunksize=1024,
+                                    method='multi')
+            conn.commit()
 
 
     def save_transcript(self, transcript):
@@ -274,6 +302,7 @@ class ResultsDB():
              closing(conn.cursor()) as cursor:
             cursor.execute(CREATE_TRANSCRIPTS_NAME_INDEX)
             cursor.execute(CREATE_KMER_RESULTS_TRANSCRIPT_ID_INDEX)
+            cursor.execute(CREATE_READ_RESULTS_TRANSCRIPT_ID_INDEX)
 
 
     def _create_missing_columns(self, test_columns, cursor):
@@ -322,6 +351,7 @@ class ResultsDB():
              closing(conn.cursor()) as cursor:
             cursor.execute(CREATE_TRANSCRIPTS_RESULTS_TABLE)
             cursor.execute(CREATE_KMER_RESULTS_TABLE)
+            cursor.execute(CREATE_READ_RESULTS_TABLE)
 
 
 class PreprocessingDB:
@@ -442,9 +472,9 @@ class PreprocessingDB:
         Returns
         -------
         list[tuple[bytearray, bytearray]]
-            List of tuples (intensity, dwell), where
+            List of tuples (read, intensity, dwell), where
             intensity and dwell are binary arrays
-            than need to be decoded to numpy arrays.
+            that need to be decoded to numpy arrays.
         """
         with closing(connection.cursor()) as cursor:
             return cursor.execute(GET_SIGNAL_DATA_FOR_TRANSCRIPT_QUERY,

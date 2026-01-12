@@ -327,8 +327,9 @@ def test_get_cluster_counts():
     contingency = get_contingency_matrices(conditions, predictions)
 
     comparator = TranscriptComparator(config, MockWorker())
+    mod_clusters = comparator._get_mod_cluster(contingency)
 
-    cluster_counts = comparator._get_cluster_counts(contingency, samples, predictions)
+    cluster_counts = comparator._get_cluster_counts(contingency, samples, predictions, mod_clusters)
 
     assert np.all(cluster_counts['kd1_mod'] == np.array([0, 0, 0, 2]))
     assert np.all(cluster_counts['kd2_mod'] == np.array([1, 0, 0, 1]))
@@ -388,8 +389,9 @@ def test_get_soft_cluster_counts():
     contingency = get_soft_contingency_matrices(conditions, pred_proba)
 
     comparator = TranscriptComparator(config, MockWorker())
+    mod_clusters = comparator._get_mod_cluster(contingency)
 
-    cluster_counts = comparator._get_soft_cluster_counts(contingency, samples, pred_proba)
+    cluster_counts = comparator._get_soft_cluster_counts(contingency, samples, pred_proba, mod_clusters)
 
     assert np.allclose(cluster_counts['kd1_mod'], np.array([0.3, 0.13, 0.11]))
     assert np.allclose(cluster_counts['kd2_mod'], np.array([0.85, 0.18, 0.14]))
@@ -440,12 +442,13 @@ def test_gmm_test():
 
     def test(data, samples, conditions, device):
         if data.shape[2] == 3:
-            return gmm_results_3d
-        return gmm_results_2d
+            return gmm_results_3d, None
+        return gmm_results_2d, None
 
     comparator._gmm_test_split = Mock(side_effect=test)
 
-    results = comparator._gmm_test(data, samples, conditions, 'cpu')
+    results, read_mod_probs = comparator._gmm_test(data, samples, conditions, 'cpu')
+    assert read_mod_probs is None
 
     callargs = comparator._gmm_test_split.call_args_list
 
@@ -466,6 +469,34 @@ def test_gmm_test():
     assert np.array_equal(results['GMM_LOR'], np.array([0.8, 1.3, 0.2]))
 
 
+def test_gmm_test_read_results():
+    config_yaml = copy.deepcopy(BASIC_CONFIG)
+    config_yaml['read_results'] = True
+    config = Config(config_yaml)
+    comparator = TranscriptComparator(config, MockWorker())
+    rand_gen = np.random.default_rng(seed=42)
+
+    # We genaret 10k reads with one position and 2 variable.
+    # Half of them we shift by 1.
+    data = torch.tensor(rand_gen.standard_normal((1, 10000, 2)))
+    data[:, 5000:, :] += 1
+
+    # We create one point that is in the middle
+    data = torch.concatenate([data, torch.tensor([[[0.5, 0.5]]])], axis=1)
+
+    samples = torch.tensor([samp
+                            for samp in [0, 1, 2, 3]
+                            for _ in range(2500)] + [1])
+    conditions = torch.tensor([cond
+                               for cond in [0, 1]
+                               for _ in range(5000)] + [1])
+
+    results, read_mod_probs = comparator._gmm_test(data, samples, conditions, 'cpu')
+
+    # The point that is in the middle should have around 50% modification probability
+    assert round(read_mod_probs[0, -1].item(), 4) == 0.4656
+
+
 def test_gmm_test_split_single_component():
     config = Config(BASIC_CONFIG)
     comparator = TranscriptComparator(config, MockWorker())
@@ -484,7 +515,7 @@ def test_gmm_test_split_single_component():
     # should have lower BIC value). We should've
     # detected that and omit reporting the p-value
     # from the 2-component GMM.
-    results = comparator._gmm_test_split(data, samples, conditions, 'cpu')
+    results, _ = comparator._gmm_test_split(data, samples, conditions, 'cpu')
     assert len(results['GMM_chi2_pvalue']) == 1
     assert np.isnan(results['GMM_chi2_pvalue'][0])
 
@@ -504,7 +535,7 @@ def test_gmm_test_split_two_components():
                                for cond in [0, 1]
                                for _ in range(50)])
 
-    results = comparator._gmm_test_split(data, samples, conditions, 'cpu')
+    results, _ = comparator._gmm_test_split(data, samples, conditions, 'cpu')
     assert len(results['GMM_chi2_pvalue']) == 1
     assert results['GMM_chi2_pvalue'] < 0.01
 

@@ -2,6 +2,7 @@ import copy
 import multiprocessing
 import os
 import shutil
+import sqlite3
 import tempfile
 
 import numpy as np
@@ -62,6 +63,57 @@ def test_run():
 
         with open(os.path.join(output_path, "out_nanocompore_results.tsv")) as f:
             assert len(f.readlines()) == 3520
+    finally:
+        shutil.rmtree(output_path)
+        multiprocessing.set_start_method("fork", force=True)
+
+
+def test_run_read_results():
+    """
+    A very simple integration test that just
+    checks that the run command can finish
+    successfully and produces the correct
+    number of rows for the fixture bams.
+    This test also checks that the read
+    level results are stored in the database.
+    """
+    config_yaml = copy.deepcopy(BASIC_CONFIG)
+    output_path = tempfile.mkdtemp(prefix="test_")
+    config_yaml['outpath'] = output_path
+    config_yaml['min_coverage'] = 1
+    config_yaml['read_results'] = True
+
+    # This is a workaround for a very nasty issue
+    # where running this integration test after
+    # test_comparisons would cause it to crash with
+    # a segmentation fault.
+    # I've traced the problem and it appears that when
+    # we run the GMM in the following tests:
+    # - test_comparisons.test_gmm_test_split_single_component
+    # - test_comparisons.test_gmm_test_split_two_components
+    # then initialising any tensors in the run flow here
+    # causes the segfault in the GOMP library.
+    # Probably we're hitting some incompatibility
+    # between the multiprocessing and the MPI used
+    # by pytorch.
+    # The workaround is to use spawn() to start the
+    # worker processes, so that the torch memory
+    # is not shared between the processes.
+    # We then revert the change back to using
+    # fork().
+    multiprocessing.set_start_method("spawn", force=True)
+    try:
+        config = Config(config_yaml)
+        run_cmd = RunCmd(config)
+
+        run_cmd()
+
+        with open(os.path.join(output_path, "out_nanocompore_results.tsv")) as f:
+            assert len(f.readlines()) == 3520
+
+        with sqlite3.connect(os.path.join(output_path, 'out_sampComp_sql.db')) as conn:
+            read_results = conn.execute('SELECT transcript_id, read, sample, mod_probs FROM read_results').fetchall()
+            assert len(read_results) == 24
     finally:
         shutil.rmtree(output_path)
         multiprocessing.set_start_method("fork", force=True)
@@ -183,14 +235,16 @@ def test_downsample():
 
     sample_ids = torch.arange(6)
     condition_ids = torch.tensor([0, 0, 0, 1, 1, 1])
+    reads = torch.arange(6)
 
     max_reads = 2
-    r = worker._downsample(data, sample_ids, condition_ids, max_reads)
-    data, samples, conditions = r
+    r = worker._downsample(data, sample_ids, condition_ids, reads, max_reads)
+    data, samples, conditions, reads = r
 
     assert data.shape == (3, 4, 2)
     assert torch.equal(samples, torch.tensor([0, 2, 4, 5]))
     assert torch.equal(conditions, torch.tensor([0, 0, 1, 1]))
+    assert torch.equal(reads, torch.tensor([0, 2, 4, 5]))
 
 
 def test_filter_processed_transcripts():
@@ -249,7 +303,7 @@ def test_read_data_uncalled4():
 
     transcript = Transcript(1, ref_id, ref_seq)
 
-    data, samples, conditions = worker._read_data(transcript)
+    data, samples, conditions, reads = worker._read_data(transcript)
 
     assert data.shape == (2554, 12, 2)
     assert not np.isnan(data[301:303, :, :]).any()
@@ -278,9 +332,7 @@ def test_read_data_eventalign():
 
     transcript = Transcript(1, ref_id, ref_seq)
 
-    data, samples, conditions = worker._read_data(transcript)
-    print(data)
-    print(samples, conditions)
+    data, samples, conditions, reads = worker._read_data(transcript)
 
     # In eventalign we have additional information
     # from the resquigglers that we can use to see
@@ -306,6 +358,12 @@ def test_read_data_eventalign():
 
     expected_condition_ids = np.array([0, 0, 0, 1])
     assert np.array_equal(conditions, expected_condition_ids)
+
+    expected_read_ids = np.array(['73d62df4-f04a-4207-a4bc-7b9739b3c3b2',
+                                  'b7bc9a36-318e-4be2-a90f-74a5aa6439bf',
+                                  'ac486e16-15be-47a8-902c-2cfa2887c534',
+                                  'a4395b0d-dd3b-48e3-8afb-4085374b1147'])
+    assert np.array_equal(reads, expected_read_ids)
 
 
 def test_get_transcripts_for_processing_insufficient_coverage():

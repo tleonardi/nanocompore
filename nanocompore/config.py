@@ -121,6 +121,14 @@ def validate_auto_test_multiple_test_correcton(config):
     return True
 
 
+def validate_read_level_used_with_gmm(config):
+    if config.get('read_level', False) and (
+            'GMM' not in config['comparison_methods'] and
+            'GAUSSIAN_MIXTURE_MODEL' not in config['comparison_methods']):
+        return False
+    return True
+
+
 def depleted_condition_exists(config):
     return config['depleted_condition'] in config['data']
 
@@ -170,6 +178,7 @@ CONFIG_SCHEMA = Schema(And({
     Optional('result_exists_strategy'): Or("stop", "continue", "overwrite"),
     Optional('log_level'): Or('warning', 'info', 'debug'),
     Optional('progress'): bool,
+    Optional('read_results'): bool,
     Optional('export_shift_stats'): bool,
     Optional('cluster_counts'): Or(HARD_ASSIGNMENT, SOFT_ASSIGNMENT, False),
     Optional('correction_method'): 'fdr_bh'},
@@ -190,7 +199,10 @@ CONFIG_SCHEMA = Schema(And({
               "defined in 'data'."),
     And(validate_auto_test_multiple_test_correcton,
         error="If the auto test is used in 'comparison_methods' then 'correction_method' "
-              "should be either 'fhr_bh' (for Benjamini-Hochberg) or 'bonferroni'.")))
+              "should be either 'fhr_bh' (for Benjamini-Hochberg) or 'bonferroni'."),
+    And(validate_read_level_used_with_gmm,
+        error="Read level results can only be exported when the GMM test is used. "
+              "Please add 'GMM' to 'comparison_methods'.")))
 
 
 DEFAULT_KIT = 'RNA002'
@@ -210,6 +222,7 @@ DEFAULT_RESULT_EXISTS_STRATEGY = 'stop'
 DEFAULT_LOG_LEVEL = 'info'
 DEFAULT_PROGRESS = False
 DEFAULT_EXPORT_SHIFT_STATS = False
+DEFAULT_READ_RESULTS = False
 DEFAULT_CLUSTER_COUNTS = HARD_ASSIGNMENT
 DEFAULT_CORRECTION_METHOD = 'fdr_bh'
 
@@ -400,6 +413,13 @@ class Config:
         to a TSV during postprocessing.
         """
         return self._config.get('export_shift_stats', DEFAULT_EXPORT_SHIFT_STATS)
+
+
+    def get_read_results(self):
+        """
+        Whether to save read-level results to the DB.
+        """
+        return self._config.get('read_results', DEFAULT_READ_RESULTS)
 
 
     def get_cluster_counts(self):

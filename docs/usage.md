@@ -1,6 +1,6 @@
 # How to use Nanocompore
 
-Once all samples have been preprocessed as explained in the [Data preparation]( e/data_preparation) page, we can proceed to perform the comparison of the two conditions with Nanocompore.
+Once all samples have been preprocessed as explained in the [Data preparation](/data_preparation) page, we can proceed to perform the comparison of the two conditions with Nanocompore.
 
 ### Creating a configuration file
 
@@ -81,6 +81,40 @@ Where the annotation should be compatible with the reference FASTA that is used,
 
 As a result, the columns `chr`, `strand`, and `genomicPos` in the results TSV file will be populated. Note that the `genomicPos` would use a 0-based indexing (the first base on the chromosome has index 0).
 
+##### Read level results
+
+When the GMM test is used, Nanocompore can attempt to predict which reads are modified and store this information in the output SQLite database. Nanocompore does this by using the `depleted_condition` parameter from the configuration to infer which gaussian of the fitted GMM model represents the modified state and then assigns modification probability for all reads, based on their likelihood for that gaussian. To save the read level results to the output database add the following to the configuration:
+
+```yaml
+read_results: true
+```
+
+This will add a table with the following structure to the output SQLite database:
+
+
+```sql
+read_results (
+  transcript_id INTEGER NOT NULL,
+  read TEXT NOT NULL,
+  sample TEXT NOT NULL,
+  mod_probs BLOB,
+  FOREIGN KEY (transcript_id) REFERENCES transcripts(id)
+);
+```
+
+Where `mod_probs` is a binary encoded array of 8-bit integers with a length equal to the reference transcript's length. The values will be in the [0, 100] range with -1 indicating a gap. Here's an example Python code snippet to read the data for a given transcript:
+
+```python
+import sqlite3
+
+transcript_id = '<your_ref_id>'
+conn = sqlite3.connect("/path/to/out_sampComp_sql.db")
+query = 'SELECT read, sample, mod_probs FROM read_results WHERE transcript_id = ?'
+reads = conn.execute(query, (transcript_id,)).fetchall()
+reads = [(read, sample, np.frombuffer(probs, dtype=np.int8))
+             for read, sample, probs in reads]
+```
+
 ##### Shift statistics
 
 The shift statistics TSV gives summary statistics (mean, median, standard deviation) at the position level for the signal measurements (current intensity and dwell time) for the two conditions (see [Outputs](/output)). To enable the exporting of this file just add the folling to the configuration:
@@ -141,4 +175,8 @@ nanocompore run analysis.yaml
 ```
 
 Nanocompore should immediately create a directory "nanocompore_output" in the current working directory (unless you have set the `outpath` parameter in the configuration file to a different location). All working files, logs, and results will be placed in that directory.
+
+### Common pitfalls
+
+**WARNINING:** Nanocompore will downsample the reads for transcripts with very high coverage before performing the analysis, however it will try to read all reads in memory first. For transcripts with an extremely high number of reads, this may lead to out of memory errors (depending on the amount of available memory, number of processes that are used, and other factors). Users are advised to look for ERROR messages in the logs after running the tool to make sure relevant transcripts are not missing from the results. Some workarounds or ways to mitigate this issue are: subsampling before running Nanocompore, providing more RAM if possible, or decreasing the number of parallel processes. Sometimes, restarting the run after setting `results_exists_strategy: "continue"` in the configuration in order to try to process again the missing transcripts may be enough.
 

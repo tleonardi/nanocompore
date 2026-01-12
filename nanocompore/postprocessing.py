@@ -58,8 +58,12 @@ class Postprocessor():
 
         map_genomic_positions = bool(self._config.get_gtf())
         if map_genomic_positions:
+            logger.info(f"A GTF reference has been provided. Starting to parse it in order to"
+                        " add genomic positions.")
             transcript_positions = self._get_transcript_positions(self._config.get_gtf())
             genomic_positions = np.vectorize(transcript_positions.get)
+
+        logger.info("Reading test results and performing multiple test correction.")
 
         # In order to do the multiple test correction we need
         # all p-values. However, we'd like to avoid loading
