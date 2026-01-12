@@ -22,7 +22,7 @@
       
       
       <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.14">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.15">
     
     
       
@@ -459,6 +459,24 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#some-transcripts-fail-with-an-out-of-memory-error" class="md-nav__link">
+    <span class="md-ellipsis">
+      Some transcripts fail with an Out of memory error
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cuda-error-no-kernel-image-is-available-for-execution-on-the-device" class="md-nav__link">
+    <span class="md-ellipsis">
+      CUDA error: no kernel image is available for execution on the device
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -642,6 +660,24 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#some-transcripts-fail-with-an-out-of-memory-error" class="md-nav__link">
+    <span class="md-ellipsis">
+      Some transcripts fail with an Out of memory error
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cuda-error-no-kernel-image-is-available-for-execution-on-the-device" class="md-nav__link">
+    <span class="md-ellipsis">
+      CUDA error: no kernel image is available for execution on the device
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -666,6 +702,10 @@
 <p>If you're getting error like <code>OSError: libcufft.so.11: cannot open shared object file: No such file or directory</code> it may be because your system doesn't have an NVidia GPU. A possible workaround is to use the CPU version of PyTorch:</p>
 <div class="highlight"><pre><span></span><code>$<span class="w"> </span>pip3<span class="w"> </span>install<span class="w"> </span>torch<span class="w">  </span>--extra-index-url<span class="w"> </span>https://download.pytorch.org/whl/cpu
 </code></pre></div>
+<h3 id="some-transcripts-fail-with-an-out-of-memory-error">Some transcripts fail with an Out of memory error</h3>
+<p>Please take a look at the <a href="/usage/#common-pitfalls">Common pitfalls section</a>.</p>
+<h3 id="cuda-error-no-kernel-image-is-available-for-execution-on-the-device">CUDA error: no kernel image is available for execution on the device</h3>
+<p>This error may happen when there's a mismatch between the GPU architecture and the CUDA toolkit that is installed. Please make sure that you have installed the correct driver version for your GPU model and the version of the CUDA toolkit is compatible with the drivers and the GPU model. You can also check stderr, since pytorch may output a more detailed error message there. For information on CUDA/GPU comptability refer to the <a href="https://developer.nvidia.com/cuda/gpus">NVidia's official documentation</a>.</p>
 
 
 
@@ -721,7 +761,7 @@
       <script id="__config" type="application/json">{"base": "..", "features": [], "search": "../assets/javascripts/workers/search.d50fe291.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../assets/javascripts/bundle.13a4f30d.min.js"></script>
+      <script src="../assets/javascripts/bundle.56ea9cef.min.js"></script>
       
     
   </body>

@@ -22,7 +22,7 @@
       
       
       <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.14">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.15">
     
     
       
@@ -344,9 +344,9 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#uncalled" class="md-nav__link">
+  <a href="#uncalled4" class="md-nav__link">
     <span class="md-ellipsis">
-      Uncalled
+      Uncalled4
     </span>
   </a>
   
@@ -786,9 +786,9 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#uncalled" class="md-nav__link">
+  <a href="#uncalled4" class="md-nav__link">
     <span class="md-ellipsis">
-      Uncalled
+      Uncalled4
     </span>
   </a>
   
@@ -871,10 +871,12 @@ minimap2<span class="w"> </span>-y<span class="w"> </span>-ax<span class="w"> </
 samtools<span class="w"> </span>index<span class="w"> </span><span class="o">{</span>aligned_reads_bam<span class="o">}</span>
 </code></pre></div>
 <h3 id="resquiggling">Resquiggling</h3>
-<p>Nanocompore supports using signal alignments from various sources. Currently supported ones are:
-- Eventalin TSVs as produced by <a href="https://github.com/jts/nanopolish">Nanopolish</a> or <a href="https://github.com/hasindu2008/f5c">f5c</a>. Since f5c provides optimized implementations of the eventalign command from Nanopolish, most users would be advised to use f5c.
-- BAM files produced by <a href="https://github.com/skovaka/uncalled4">Uncalled4</a>.
-- <a href="https://github.com/nanoporetech/remora">Remora</a> is a toolkit by ONT for training models for modification prediction. However, it also provides functionality for signal analysis, including capabilities to refine the signal alignments from the "moves" table produced by Dorado.</p>
+<p>Nanocompore supports using signal alignments from various sources. Currently supported ones are:</p>
+<ul>
+<li>Eventalin TSVs as produced by <a href="https://github.com/jts/nanopolish">Nanopolish</a> or <a href="https://github.com/hasindu2008/f5c">f5c</a>. Since f5c provides optimized implementations of the eventalign command from Nanopolish, most users would be advised to use f5c.</li>
+<li>BAM files produced by <a href="https://github.com/skovaka/uncalled4">Uncalled4</a>.</li>
+<li><a href="https://github.com/nanoporetech/remora">Remora</a> is a toolkit by ONT for training models for modification prediction. However, it also provides functionality for signal analysis, including capabilities to refine the signal alignments from the "moves" table produced by Dorado.</li>
+</ul>
 <h4 id="f5c">f5c</h4>
 <p>Since f5c doesn't support pod5, but uses the community-driven <code>slow5/blow5</code> formats, first you'll need to convert the pod5 to blow5 using <a href="https://github.com/Psy-Fer/blue-crab">blue-crab</a>.</p>
 <p>Make sure that you have blue-crab installed. Typically, this should involve running:
@@ -901,10 +903,10 @@ f5c<span class="w"> </span>eventalign<span class="w"> </span>--bam<span class="w
 <span class="w">               </span>--rna<span class="w"> </span><span class="se">\</span>
 <span class="w">               </span>--pore<span class="w"> </span>rna004<span class="w"> </span><span class="se">\</span>
 <span class="w">               </span>--threads<span class="w"> </span><span class="o">{</span>num_threads<span class="o">}</span>
-<span class="w">  </span><span class="p">|</span><span class="w"> </span>nanocompore<span class="w"> </span>eventalign_collapse<span class="w"> </span>--ref<span class="w"> </span><span class="o">{</span>transcriptome_fasta<span class="o">}</span><span class="w"> </span>-o<span class="w"> </span><span class="o">{</span>resquiggled_db<span class="o">}</span><span class="w"> </span>--threads<span class="w"> </span><span class="o">{</span>num_threads<span class="o">}</span>
+<span class="w">  </span><span class="p">|</span><span class="w"> </span>nanocompore<span class="w"> </span>eventalign_collapse<span class="w"> </span>--ref<span class="w"> </span><span class="o">{</span>transcriptome_fasta<span class="o">}</span><span class="w"> </span>-o<span class="w"> </span><span class="o">{</span>resquiggled_db<span class="o">}</span><span class="w"> </span>--nthreads<span class="w"> </span><span class="o">{</span>num_threads<span class="o">}</span>
 </code></pre></div>
 Note that the eventalign_collapse creates rather big temporary files. By default it would use the current working directory. If you want to change that, you can add <code>--tmp path/to/tmp_dir</code>.</p>
-<h4 id="uncalled">Uncalled</h4>
+<h4 id="uncalled4">Uncalled4</h4>
 <p><div class="highlight"><pre><span></span><code><span class="c1"># For RNA004</span>
 uncalled4<span class="w"> </span>align<span class="w"> </span>--ref<span class="w"> </span><span class="o">{</span>transcriptome_fasta<span class="o">}</span><span class="w"> </span><span class="se">\</span>
 <span class="w">                </span>--reads<span class="w"> </span><span class="o">{</span>pod5<span class="o">}</span><span class="w"> </span><span class="se">\</span>
@@ -920,7 +922,8 @@ This will produce a bam file with the signal alignment data that you can directl
 <span class="w">                              </span>--pod5<span class="w"> </span><span class="o">{</span>pod5<span class="o">}</span><span class="w"> </span><span class="se">\</span>
 <span class="w">                              </span>--bam<span class="w"> </span><span class="o">{</span>aligned_reads_bam<span class="o">}</span><span class="w"> </span><span class="se">\</span>
 <span class="w">                              </span>--kit<span class="w"> </span>RNA004<span class="w"> </span><span class="se">\</span>
-<span class="w">                              </span>--output<span class="w"> </span><span class="o">{</span>resquiggled_db<span class="o">}</span>
+<span class="w">                              </span>--output<span class="w"> </span><span class="o">{</span>resquiggled_db<span class="o">}</span><span class="w"> </span><span class="se">\</span>
+<span class="w">                              </span>--nthreads<span class="w"> </span><span class="o">{</span>num_threads<span class="o">}</span>
 </code></pre></div>
 
 
@@ -977,7 +980,7 @@ This will produce a bam file with the signal alignment data that you can directl
       <script id="__config" type="application/json">{"base": "..", "features": [], "search": "../assets/javascripts/workers/search.d50fe291.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../assets/javascripts/bundle.13a4f30d.min.js"></script>
+      <script src="../assets/javascripts/bundle.56ea9cef.min.js"></script>
       
     
   </body>

@@ -22,7 +22,7 @@
       
       
       <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.14">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.15">
     
     
       
@@ -365,6 +365,15 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#read-level-results" class="md-nav__link">
+    <span class="md-ellipsis">
+      Read level results
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#shift-statistics" class="md-nav__link">
     <span class="md-ellipsis">
       Shift statistics
@@ -414,6 +423,15 @@
   <a href="#run-the-analysis" class="md-nav__link">
     <span class="md-ellipsis">
       Run the analysis
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#common-pitfalls" class="md-nav__link">
+    <span class="md-ellipsis">
+      Common pitfalls
     </span>
   </a>
   
@@ -738,6 +756,15 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#read-level-results" class="md-nav__link">
+    <span class="md-ellipsis">
+      Read level results
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#shift-statistics" class="md-nav__link">
     <span class="md-ellipsis">
       Shift statistics
@@ -792,6 +819,15 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#common-pitfalls" class="md-nav__link">
+    <span class="md-ellipsis">
+      Common pitfalls
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -812,7 +848,7 @@
 
 
 <h1 id="how-to-use-nanocompore">How to use Nanocompore</h1>
-<p>Once all samples have been preprocessed as explained in the <a href="e/data_preparation">Data preparation</a> page, we can proceed to perform the comparison of the two conditions with Nanocompore.</p>
+<p>Once all samples have been preprocessed as explained in the <a href="/data_preparation">Data preparation</a> page, we can proceed to perform the comparison of the two conditions with Nanocompore.</p>
 <h3 id="creating-a-configuration-file">Creating a configuration file</h3>
 <p>Nanocompore uses a YAML configuration file that contains all parameters for a given analysis. We can generate a new configuration using the <strong>template</strong> subcommand:</p>
 <div class="highlight"><pre><span></span><code>nanocompore<span class="w"> </span>template<span class="w"> </span>analysis.yaml
@@ -876,6 +912,29 @@ The <code>data</code> field should list all samples, preprocessed with the same 
 </code></pre></div>
 <p>Where the annotation should be compatible with the reference FASTA that is used, i.e. it should provide information for all references in the FASTA.</p>
 <p>As a result, the columns <code>chr</code>, <code>strand</code>, and <code>genomicPos</code> in the results TSV file will be populated. Note that the <code>genomicPos</code> would use a 0-based indexing (the first base on the chromosome has index 0).</p>
+<h5 id="read-level-results">Read level results</h5>
+<p>When the GMM test is used, Nanocompore can attempt to predict which reads are modified and store this information in the output SQLite database. Nanocompore does this by using the <code>depleted_condition</code> parameter from the configuration to infer which gaussian of the fitted GMM model represents the modified state and then assigns modification probability for all reads, based on their likelihood for that gaussian. To save the read level results to the output database add the following to the configuration:</p>
+<div class="highlight"><pre><span></span><code><span class="nt">read_results</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+</code></pre></div>
+<p>This will add a table with the following structure to the output SQLite database:</p>
+<div class="highlight"><pre><span></span><code><span class="n">read_results</span><span class="w"> </span><span class="p">(</span>
+<span class="w">  </span><span class="n">transcript_id</span><span class="w"> </span><span class="nb">INTEGER</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<span class="w">  </span><span class="k">read</span><span class="w"> </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<span class="w">  </span><span class="n">sample</span><span class="w"> </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<span class="w">  </span><span class="n">mod_probs</span><span class="w"> </span><span class="nb">BLOB</span><span class="p">,</span>
+<span class="w">  </span><span class="k">FOREIGN</span><span class="w"> </span><span class="k">KEY</span><span class="w"> </span><span class="p">(</span><span class="n">transcript_id</span><span class="p">)</span><span class="w"> </span><span class="k">REFERENCES</span><span class="w"> </span><span class="n">transcripts</span><span class="p">(</span><span class="n">id</span><span class="p">)</span>
+<span class="p">);</span>
+</code></pre></div>
+<p>Where <code>mod_probs</code> is a binary encoded array of 8-bit integers with a length equal to the reference transcript's length. The values will be in the [0, 100] range with -1 indicating a gap. Here's an example Python code snippet to read the data for a given transcript:</p>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">sqlite3</span>
+
+<span class="n">transcript_id</span> <span class="o">=</span> <span class="s1">&#39;&lt;your_ref_id&gt;&#39;</span>
+<span class="n">conn</span> <span class="o">=</span> <span class="n">sqlite3</span><span class="o">.</span><span class="n">connect</span><span class="p">(</span><span class="s2">&quot;/path/to/out_sampComp_sql.db&quot;</span><span class="p">)</span>
+<span class="n">query</span> <span class="o">=</span> <span class="s1">&#39;SELECT read, sample, mod_probs FROM read_results WHERE transcript_id = ?&#39;</span>
+<span class="n">reads</span> <span class="o">=</span> <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">query</span><span class="p">,</span> <span class="p">(</span><span class="n">transcript_id</span><span class="p">,))</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()</span>
+<span class="n">reads</span> <span class="o">=</span> <span class="p">[(</span><span class="n">read</span><span class="p">,</span> <span class="n">sample</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">frombuffer</span><span class="p">(</span><span class="n">probs</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int8</span><span class="p">))</span>
+             <span class="k">for</span> <span class="n">read</span><span class="p">,</span> <span class="n">sample</span><span class="p">,</span> <span class="n">probs</span> <span class="ow">in</span> <span class="n">reads</span><span class="p">]</span>
+</code></pre></div>
 <h5 id="shift-statistics">Shift statistics</h5>
 <p>The shift statistics TSV gives summary statistics (mean, median, standard deviation) at the position level for the signal measurements (current intensity and dwell time) for the two conditions (see <a href="/output">Outputs</a>). To enable the exporting of this file just add the folling to the configuration:</p>
 <div class="highlight"><pre><span></span><code><span class="nt">export_shift_stats</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">True</span>
@@ -919,6 +978,8 @@ If you set the parameter to "continue", Nanocompore will try to reuse the databa
 <div class="highlight"><pre><span></span><code>nanocompore<span class="w"> </span>run<span class="w"> </span>analysis.yaml
 </code></pre></div>
 <p>Nanocompore should immediately create a directory "nanocompore_output" in the current working directory (unless you have set the <code>outpath</code> parameter in the configuration file to a different location). All working files, logs, and results will be placed in that directory.</p>
+<h3 id="common-pitfalls">Common pitfalls</h3>
+<p><strong>WARNINING:</strong> Nanocompore will downsample the reads for transcripts with very high coverage before performing the analysis, however it will try to read all reads in memory first. For transcripts with an extremely high number of reads, this may lead to out of memory errors (depending on the amount of available memory, number of processes that are used, and other factors). Users are advised to look for ERROR messages in the logs after running the tool to make sure relevant transcripts are not missing from the results. Some workarounds or ways to mitigate this issue are: subsampling before running Nanocompore, providing more RAM if possible, or decreasing the number of parallel processes. Sometimes, restarting the run after setting <code>results_exists_strategy: "continue"</code> in the configuration in order to try to process again the missing transcripts may be enough.</p>
 
 
 
@@ -974,7 +1035,7 @@ If you set the parameter to "continue", Nanocompore will try to reuse the databa
       <script id="__config" type="application/json">{"base": "..", "features": [], "search": "../assets/javascripts/workers/search.d50fe291.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../assets/javascripts/bundle.13a4f30d.min.js"></script>
+      <script src="../assets/javascripts/bundle.56ea9cef.min.js"></script>
       
     
   </body>
