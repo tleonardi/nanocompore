@@ -1157,7 +1157,7 @@ requires-dist = [
     { name = "pyfaidx", specifier = ">=0.8,<1.0" },
     { name = "pynvml", specifier = ">=12.0.0,<13.0.0" },
     { name = "pysam", specifier = ">=0.22.0,<1.0.0" },
-    { name = "pyyaml", specifier = ">=5,<5.4" },
+    { name = "pyyaml", specifier = ">=5,<5.5" },
     { name = "schema", specifier = ">=0.7.5,<1.0.0" },
     { name = "scikit-learn", specifier = ">=1.4,<2.0" },
     { name = "scipy", specifier = ">=1.15,<2.0" },
@@ -1880,9 +1880,9 @@ wheels = [
 
 [[package]]
 name = "pyyaml"
-version = "5.3.1"
+version = "5.4"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/64/c2/b80047c7ac2478f9501676c988a5411ed5572f35d1beff9cae07d321512c/PyYAML-5.3.1.tar.gz", hash = "sha256:b8eac752c5e14d3eca0e6dd9199cd627518cb5ec06add0de9d32baeee6fe645d", size = 269377, upload-time = "2020-03-18T21:41:21.618Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/b5/fd/15638de2da0a5aa91c095718444624aa565f766fc178249ca6faa372f71a/PyYAML-5.4.tar.gz", hash = "sha256:3c49e39ac034fd64fd576d63bb4db53cda89b362768a67f07749d55f128ac18a", size = 174831, upload-time = "2021-01-19T20:54:47.482Z" }
 
 [[package]]
 name = "pyyaml-env-tag"
