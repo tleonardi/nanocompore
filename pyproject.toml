@@ -49,7 +49,7 @@ nanocompore = "nanocompore.__main__:main"
 
 [dependency-groups]
 dev = [
-    "pytest<9,>=8",
+    "pytest>=8,<10",
     "nbconvert<8,>=7",
     "mkdocs>=1.6",
     "pymdown-extensions>=10",
